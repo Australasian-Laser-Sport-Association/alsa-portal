@@ -2,14 +2,36 @@
 
 ## Project Purpose
 
-This is the ALSA Portal: a governance and event management platform for the Australasian Laser Sport Association. It handles ZLTAC event registration, team management, finals administration, referee testing, code of conduct forms, and admin tooling for the committee.
+This is the ALSA Portal: a governance and event management platform for the
+Australasian Laser Sport Association. It handles ZLTAC event registration,
+team management, referee testing, code of conduct forms, media release forms,
+under-18 forms, a lightweight CMS for public site content, and admin tooling
+for the committee.
 
 ## Critical Patterns
 
-**Supabase client usage:**
-- `src/lib/supabase.js` — anon client, used for auth and user-scoped queries (respects RLS)
-- `src/lib/supabaseAdmin.js` — service role client, used for all cross-user queries that need to bypass RLS (e.g. admin reads of other users' registrations, team lookups, bulk operations)
-- Any query that reads data across multiple users MUST use `supabaseAdmin`, not `supabase`
+### Supabase clients
+
+- `src/lib/supabase.js` — anon client. Used for auth and user-scoped queries.
+  Respects Row Level Security. Import this in client components.
+- `src/lib/supabaseAdmin.js` — service role client. Bypasses RLS. **Server-side
+  only** (Vercel API routes). Do not import from client components — the
+  service role key must never be bundled into the browser.
+- Any query that reads data across multiple users (committee dashboards, bulk
+  admin operations) must run via `supabaseAdmin` in a server context.
+
+### Authorisation
+
+- A user's roles live in `public.profiles.roles` (text array). The canonical
+  admin/committee roles are: `superadmin`, `alsa_committee`, `zltac_committee`,
+  `advisor`. Regular users have `['player']`; captains additionally have
+  `'captain'`.
+- RLS policies use the `public.is_committee()` helper function to check
+  admin access. Do not duplicate the role list in ad-hoc policies — if the
+  set of admin roles ever changes, it changes in one place.
+- Never write RLS policies that reference `auth.jwt() -> 'user_metadata'`.
+  user_metadata is user-editable and checking it for authorisation is a
+  privilege-escalation hole.
 
 ## Conventions
 
@@ -18,13 +40,20 @@ This is the ALSA Portal: a governance and event management platform for the Aust
 - Utilities and clients: `src/lib/`
 - Routes defined in `src/App.jsx`
 - Admin sidebar nav defined in `src/components/AdminLayout.jsx`
+- Brand tokens: `src/index.css` under `@theme` (Tailwind v4) and `:root`.
+  Palette reference: `brand.md`.
 
-## Do NOT Touch
+## Database Migrations
 
-- Supabase table names or column names
-- RLS policies (managed in Supabase dashboard)
-- Environment variables (do not rename or add without team discussion)
-- `supabase/` directory contents
+- Schema changes are managed via the Supabase CLI. Migration files live in
+  `supabase/migrations/` and are named `YYYYMMDDHHMMSS_short_description.sql`.
+- Migrations are applied to the linked Supabase project with `supabase db push`.
+- Do not edit migrations that have already been applied to production. To
+  change the schema, add a new migration file.
+- Do not make schema changes via the Supabase dashboard SQL editor for
+  anything that should be permanent — it creates drift between the deployed
+  schema and the repo. One-off investigative queries in the dashboard are
+  fine.
 
 ## Rules for AI Coding Assistants
 
@@ -51,8 +80,8 @@ These rules exist to keep changes focused, reviewable, and to save tokens.
 - **Don't restyle or refactor unprompted.** If asked to rebrand text,
   only change text. Don't "improve" styling, component structure,
   naming, or logic unless explicitly asked.
-- **Don't touch Supabase schema, RLS policies, or env vars.** These
-  are managed separately and changes here break deployed environments.
+- **Don't touch RLS policies without being asked.** Policy changes are
+  security-sensitive. Flag any concerns; let the maintainer decide.
 - **Don't add dependencies without asking.** Check `package.json` for
   existing tools first. If something genuinely needs a new library,
   propose it and wait for approval.
@@ -73,24 +102,27 @@ These rules exist to keep changes focused, reviewable, and to save tokens.
 - **Don't narrate.** Skip "Let me think about this" / "I'll now edit X"
   preamble. Just do it.
 
-### Critical patterns in this codebase
+### Critical codebase patterns
 
-- Cross-user Supabase queries MUST use `supabaseAdmin` (service role client)
-  from `src/lib/supabaseAdmin.js` to bypass RLS. Regular `supabase` client
+- Cross-user Supabase queries must use `supabaseAdmin` (service role)
+  in server-side code (Vercel API routes under `/api/`). The anon client
   will return empty results for queries that cross user boundaries.
 - Routes are defined in `src/App.jsx`. Adding a page requires adding
   both the import and the `<Route>` entry.
 - Admin sidebar nav lives in `src/components/AdminLayout.jsx`.
+- Any new table requires an RLS policy. Use `public.is_committee()` for
+  admin access checks — do not duplicate role arrays.
 
 ## Scope and Ownership
 
-- This is the ALSA organisational portal. Tournament scheduling algorithms
-  (cascade generators, round robin, finals brackets) live in a separate
-  project owned personally by Adam Crouch and are not part of this repo.
-- If schedule generation features are requested in the future, the committee
-  should discuss whether to license or integrate the external tool, rather
-  than rebuilding here.
+This is the ALSA organisational portal. Tournament scheduling algorithms
+(cascade generators, round robin, finals brackets) live in a separate
+private project owned by Adam Crouch and are not part of this repo.
+If schedule generation features are requested in the future, the committee
+should discuss whether to license or integrate the external tool rather
+than rebuilding here.
 
 ## Brand
 
-Palette and logo references live in `brand.md`. Primary accent is `--brand-green: #00FF41` on dark backgrounds.
+Palette and logo references live in `brand.md`. Primary accent is
+`--brand-green: #00FF41` on dark backgrounds (`--brand-black: #0F0F0F`).
