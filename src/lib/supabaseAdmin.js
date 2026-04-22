@@ -1,10 +1,11 @@
-// SERVER-SIDE ONLY. Do not import from client components. Use in /api/ serverless functions only.
+// TEMPORARY: Using anon client. Admin cross-user queries should migrate to Vercel API routes using the service role key.
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { autoRefreshToken: false, persistSession: false }
+})
 
 export default supabaseAdmin
