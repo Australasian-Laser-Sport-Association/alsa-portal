@@ -185,7 +185,9 @@ export default function ZLTACLanding() {
                 </svg>
               </div>
               <p className="text-[#e5e5e5]/40 text-sm font-medium">Results coming soon</p>
-              <p className="text-[#e5e5e5]/25 text-xs mt-1">Check back after ZLTAC 2027</p>
+              <p className="text-[#e5e5e5]/25 text-xs mt-1">
+                Check back after {activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'the next ZLTAC event'}
+              </p>
             </div>
           )}
 

@@ -1,5 +1,6 @@
 ﻿import { Link } from 'react-router-dom'
 import Footer from '../components/Footer'
+import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
 const COMMITTEE_DEFAULT = [
   {
@@ -34,8 +35,20 @@ const COMMITTEE_DEFAULT = [
   },
 ]
 
+const STATIC_MILESTONES = [
+  { year: '2017', label: 'ALSA Founded', desc: 'The association is established with a mission to grow competitive laser sport.' },
+  { year: '2018', label: 'ZLTAC Inaugural', desc: 'The first Zone Laser Tag Australasian Championship is held.' },
+  { year: '2020', label: 'NZ Expansion', desc: 'New Zealand competitors join the championship, making it truly Australasian.' },
+  { year: '2024', label: 'Digital Portal', desc: 'Launch of the ALSA portal for permanent player registration.' },
+]
+
 export default function About() {
+  const { event: currentEvent, eventName } = useCurrentEvent()
   const committee = COMMITTEE_DEFAULT
+
+  const milestones = currentEvent
+    ? [...STATIC_MILESTONES, { year: String(currentEvent.year), label: eventName, desc: 'The championship enters its most ambitious season yet.' }]
+    : STATIC_MILESTONES
 
   return (
     <div className="bg-base text-white">
@@ -74,13 +87,7 @@ export default function About() {
             </div>
           </div>
           <div className="flex flex-col gap-4">
-            {[
-              { year: '2017', event: 'ALSA Founded', desc: 'The association is established with a mission to grow competitive laser sport.' },
-              { year: '2018', event: 'ZLTAC Inaugural', desc: 'The first Zone Laser Tag Australasian Championship is held.' },
-              { year: '2020', event: 'NZ Expansion', desc: 'New Zealand competitors join the championship, making it truly Australasian.' },
-              { year: '2024', event: 'Digital Portal', desc: 'Launch of the ALSA portal for permanent player registration.' },
-              { year: '2027', event: 'ZLTAC 2027', desc: 'The championship enters its most ambitious season yet.' },
-            ].map(({ year, event, desc }) => (
+            {milestones.map(({ year, label, desc }) => (
               <div key={year} className="flex gap-5 items-start">
                 <div className="flex-shrink-0 w-14 text-right">
                   <span className="text-brand font-black text-sm">{year}</span>
@@ -90,7 +97,7 @@ export default function About() {
                   <div className="w-px flex-1 bg-line mt-1" style={{ minHeight: 40 }} />
                 </div>
                 <div className="pb-4">
-                  <p className="text-white font-semibold text-sm mb-0.5">{event}</p>
+                  <p className="text-white font-semibold text-sm mb-0.5">{label}</p>
                   <p className="text-[#e5e5e5]/45 text-xs leading-relaxed">{desc}</p>
                 </div>
               </div>

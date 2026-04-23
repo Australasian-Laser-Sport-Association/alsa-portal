@@ -1,4 +1,7 @@
-﻿export default function CaptainPortal() {
+﻿import { useCurrentEvent } from '../hooks/useCurrentEvent'
+
+export default function CaptainPortal() {
+  const { eventName } = useCurrentEvent()
   return (
     <div className="min-h-screen bg-base p-8">
       <div className="max-w-4xl mx-auto">
@@ -18,7 +21,7 @@
             <h2 className="text-white font-semibold text-lg mb-4">Team Entries</h2>
             <p className="text-[#e5e5e5]/40 text-sm">No active event entries.</p>
             <button className="mt-4 bg-line hover:bg-[#374056] text-white font-semibold rounded-lg px-4 py-2 text-sm transition-colors">
-              Enter ZLTAC 2026
+              Enter {eventName}
             </button>
           </div>
         </div>

@@ -48,6 +48,7 @@ export default function AdminHome() {
         { data: recentPayments },
         { data: recentCoc },
         { count: refPassed },
+        { data: activeEvent },
       ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         supabase.from('teams').select('*', { count: 'exact', head: true }),
@@ -57,9 +58,11 @@ export default function AdminHome() {
         supabase.from('payments').select('amount, created_at, profiles(first_name, alias)').eq('status', 'paid').order('created_at', { ascending: false }).limit(5),
         supabase.from('code_of_conduct_signatures').select('signed_at, profiles(first_name, alias)').order('signed_at', { ascending: false }).limit(5),
         supabase.from('referee_test_results').select('*', { count: 'exact', head: true }).eq('passed', true),
+        supabase.from('zltac_events').select('name, year').eq('status', 'open').limit(1).maybeSingle(),
       ])
 
       const totalRevenue = (payments ?? []).reduce((sum, p) => sum + (p.amount ?? 0), 0)
+      const eventLabel = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : '—'
 
       setStats({
         memberCount: memberCount ?? 0,
@@ -67,6 +70,8 @@ export default function AdminHome() {
         playerCount: playerCount ?? 0,
         totalRevenue,
         refPassed: refPassed ?? 0,
+        eventLabel,
+        eventOpen: !!activeEvent,
       })
 
       const feed = []
@@ -108,9 +113,9 @@ export default function AdminHome() {
             <StatCard label="Total Members" value={stats.memberCount} color="text-white" />
             <StatCard label="Teams Registered" value={stats.teamCount} color="text-brand" />
             <StatCard label="Players Registered" value={stats.playerCount} color="text-white" />
-            <StatCard label="Payments Received" value={dollars(stats.totalRevenue)} sub="ZLTAC 2027" color="text-brand" />
+            <StatCard label="Payments Received" value={dollars(stats.totalRevenue)} sub={stats.eventLabel} color="text-brand" />
             <StatCard label="Ref Tests Passed" value={stats.refPassed} color="text-white" />
-            <StatCard label="Active Event" value="ZLTAC 2027" sub="Registration open" color="text-brand" />
+            <StatCard label="Active Event" value={stats.eventLabel} sub={stats.eventOpen ? 'Registration open' : 'No event open'} color="text-brand" />
           </div>
 
           {/* Activity feed */}

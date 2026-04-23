@@ -170,7 +170,7 @@ export default function Home() {
                 { label: 'Founded', value: '2025' },
                 { label: 'Annual Events', value: 'ZLTAC' },
                 { label: 'Governing Region', value: 'AU & NZ' },
-                { label: 'Next Event', value: 'ZLTAC 2027' },
+                { label: 'Next Event', value: activeEvent === undefined ? '...' : activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'Coming Soon' },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-surface border border-line rounded-2xl p-6">
                   <p className="text-brand font-black text-2xl mb-1">{value}</p>

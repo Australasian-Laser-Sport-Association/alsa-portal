@@ -1,6 +1,8 @@
 ﻿import { Link } from 'react-router-dom'
+import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
 export default function Footer() {
+  const { event, eventName } = useCurrentEvent()
   return (
     <footer className="bg-navy-deep border-t border-line mt-auto">
       <div className="max-w-7xl mx-auto px-6 py-14">
@@ -45,17 +47,17 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* ZLTAC 2027 */}
+          {/* Current event links */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand/50 mb-4">ZLTAC 2027</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-brand/50 mb-4">{eventName}</p>
             <div className="flex flex-col gap-2.5">
               {[
-                { label: 'Event Hub', to: '/zltac/2027' },
+                { label: 'Event Hub', to: event ? `/events/${event.year}` : '/zltac' },
                 { label: 'Player Registration', to: '/zltac/register' },
                 { label: 'Register as Captain', to: '/captain' },
                 { label: 'Results', to: '/results' },
               ].map(({ label, to }) => (
-                <Link key={to} to={to} className="text-[#e5e5e5]/45 hover:text-brand text-sm transition-colors">
+                <Link key={label} to={to} className="text-[#e5e5e5]/45 hover:text-brand text-sm transition-colors">
                   {label}
                 </Link>
               ))}
