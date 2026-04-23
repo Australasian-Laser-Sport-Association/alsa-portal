@@ -1,8 +1,7 @@
 # ADR-0003: Authentication and Password Policy
 
-**Status:** Accepted
+**Status:** Draft — for committee review
 **Date:** 2026-04-22
-**Deciders:** ALSA Technical Sub-Committee
 **Supersedes:** None
 **Related:** [ADR-0002: RLS + GRANT Security Model](./0002-rls-plus-grant-security-model.md)
 
@@ -17,7 +16,7 @@ The ALSA Portal requires user authentication for members to register for events,
 3. Be operable by a volunteer committee without specialist security expertise
 4. Align with contemporary authentication best practice, not historical defaults
 
-Supabase Auth provides the authentication primitives. Many of its default settings are conservative for a generic project but too weak for an organisation handling personal data for minors. This ADR documents which defaults we have changed and why.
+Supabase Auth provides the authentication primitives. Many of its default settings are conservative for a generic project but too weak for an organisation handling personal data for minors. This ADR documents which defaults have been changed and why.
 
 ## Decision
 
@@ -25,10 +24,10 @@ Supabase Auth provides the authentication primitives. Many of its default settin
 
 Users sign up with an email address and password. New accounts cannot sign in until the email address has been confirmed via a one-time link sent to that address.
 
-We chose email + password over OAuth (Google, Discord, Apple, etc.) for launch because:
+Email + password was chosen over OAuth (Google, Discord, Apple, etc.) for launch because:
 - It does not require members to have an account with a third-party provider
 - It does not require the committee to register and maintain OAuth applications with external vendors
-- It gives us control over the account lifecycle without external dependencies
+- It gives control over the account lifecycle without external dependencies
 - It is universally understood by members of all ages and technical backgrounds
 
 Social login can be added later as an additional option without disrupting existing accounts.
@@ -47,7 +46,7 @@ Email confirmation is required because:
 | Symbols required | No | NIST SP 800-63B guidance: length adds more entropy than symbol complexity. Symbol requirements produce predictable substitutions (`a → @`, `o → 0`) and user frustration. |
 | Prevent use of leaked passwords | Off (requires Pro plan) | Tracked as a future upgrade — the Have I Been Pwned integration is the single highest-value auth hardening toggle available and should be enabled when the portal moves to the Pro plan. |
 
-Our policy favours **length over complexity**, consistent with modern guidance (NIST SP 800-63B, 2020+). A 10-character mixed-case-with-digits password provides approximately 60 bits of entropy, which is adequate for an application of this sensitivity given the other controls in place (rate limiting, email confirmation, secure password change).
+The policy favours **length over complexity**, consistent with modern guidance (NIST SP 800-63B, 2020+). A 10-character mixed-case-with-digits password provides approximately 60 bits of entropy, which is adequate for an application of this sensitivity given the other controls in place (rate limiting, email confirmation, secure password change).
 
 ### Password change protections
 
@@ -83,7 +82,7 @@ Both controls are enabled together deliberately. Each alone has a plausible bypa
 
 ### Providers disabled at launch
 
-All OAuth providers (Google, Apple, Discord, GitHub, Facebook, etc.), SAML 2.0, phone auth, and Web3 wallet auth are **disabled**. If social login is added in the future, it will be the subject of its own ADR so the tradeoff (convenience vs. external dependency + additional privacy implications) can be documented.
+All OAuth providers (Google, Apple, Discord, GitHub, Facebook, etc.), SAML 2.0, phone auth, and Web3 wallet auth are **disabled**. If social login is added in the future, it should be the subject of its own ADR so the tradeoff (convenience vs. external dependency + additional privacy implications) can be documented.
 
 ## Consequences
 
@@ -96,7 +95,7 @@ All OAuth providers (Google, Apple, Discord, GitHub, Facebook, etc.), SAML 2.0, 
 
 ### Negative
 
-- **Stricter password requirements create minor friction.** A 10-character password with mixed case and digits is harder to type on mobile than a 6-character lowercase password. We believe the security tradeoff is worth the friction for an application handling this kind of data.
+- **Stricter password requirements create minor friction.** A 10-character password with mixed case and digits is harder to type on mobile than a 6-character lowercase password. The security tradeoff is worth the friction for an application handling this kind of data.
 - **Email confirmation adds a step to signup.** Members must check their email before they can log in. Mitigated by clear UI messaging and the 1-hour confirmation window.
 - **Leaked-password detection is not active.** A member who reuses a password that has been exposed in a third-party breach can still use it. This gap is accepted for the free tier and should be closed when the portal upgrades to Pro.
 - **Default Supabase email sender is rate-limited and unbranded.** Emails come from `noreply@mail.supabase.io` at 4/hour. This is tolerable for initial rollout but should be replaced with a dedicated SMTP provider (Resend, Postmark, or AWS SES) before broad launch. Tracked as an operational task.

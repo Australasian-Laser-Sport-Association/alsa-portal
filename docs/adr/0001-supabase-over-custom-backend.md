@@ -1,8 +1,7 @@
 # ADR-0001: Supabase Over Custom Backend
 
-**Status:** Accepted
-**Date:** 2026-04-22 (retrospective — decision made at project inception, documented here)
-**Deciders:** ALSA Technical Sub-Committee
+**Status:** Draft — for committee review
+**Date:** 2026-04-22 (documents a choice made at project inception)
 **Supersedes:** None
 **Related:** [ADR-0002: RLS + GRANT Security Model](./0002-rls-plus-grant-security-model.md), [ADR-0003: Authentication and Password Policy](./0003-authentication-and-password-policy.md)
 
@@ -28,7 +27,7 @@ We also have specific non-functional requirements that shaped the choice:
 
 ## Decision
 
-We adopt **Supabase** as the backend for the ALSA Portal. Supabase provides the Postgres database, authentication service, object storage, and realtime subscriptions as a managed offering built around a standard Postgres instance.
+The portal uses **Supabase** as its backend. Supabase provides the Postgres database, authentication service, object storage, and realtime subscriptions as a managed offering built around a standard Postgres instance.
 
 ### What Supabase provides
 
@@ -134,7 +133,7 @@ Worth revisiting for future standalone projects where SQLite is appropriate.
 
 ### Appwrite (open-source Supabase alternative)
 
-**Considered, rejected.** Appwrite is functionally similar to Supabase and is a credible alternative. We chose Supabase because:
+**Considered, rejected.** Appwrite is functionally similar to Supabase and is a credible alternative. Supabase was preferred because:
 
 - Supabase is standard Postgres; Appwrite abstracts the database behind its own API layer, reducing portability.
 - Supabase's Vercel integration is more mature and better-documented.
