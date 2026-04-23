@@ -679,7 +679,7 @@ export default function PlayerHub() {
 
     // Fetch team roster if player is on a team
     if (reg?.team_id) {
-      const { profiles: rosterProfs } = await apiFetch('/api/player/team-roster', {
+      const { profiles: rosterProfs } = await apiFetch('/api/profiles', {
         method: 'POST',
         body: JSON.stringify({ teamId: reg.team_id, eventYear }),
       })

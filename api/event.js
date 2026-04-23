@@ -1,4 +1,4 @@
-import supabaseAdmin from '../_lib/supabase.js'
+import supabaseAdmin from './_lib/supabase.js'
 
 // Public endpoint — confirmed side-event pairs for the event page display.
 export default async function handler(req, res) {

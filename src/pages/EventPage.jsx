@@ -439,7 +439,7 @@ export default function EventPage() {
         setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
 
         // Fetch confirmed doubles/triples for public display
-        const { doubles: doublesData, triples: triplesData } = await apiFetch(`/api/event/pairs?year=${parseInt(year)}`)
+        const { doubles: doublesData, triples: triplesData } = await apiFetch(`/api/event?year=${parseInt(year)}`)
         setDoublesPairs(doublesData ?? [])
         setTriplesTeams(triplesData ?? [])
 

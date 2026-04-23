@@ -444,7 +444,7 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {
-                            await apiFetch('/api/admin/doubles-pair', { method: 'DELETE', body: JSON.stringify({ id: d.id }) })
+                            await apiFetch('/api/admin/registrations', { method: 'DELETE', body: JSON.stringify({ resource: 'doubles', id: d.id }) })
                             setDoubles(prev => prev.filter(x => x.id !== d.id))
                           }}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
@@ -502,7 +502,7 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {
-                            await apiFetch('/api/admin/triples-team', { method: 'DELETE', body: JSON.stringify({ id: t.id }) })
+                            await apiFetch('/api/admin/registrations', { method: 'DELETE', body: JSON.stringify({ resource: 'triples', id: t.id }) })
                             setTriples(prev => prev.filter(x => x.id !== t.id))
                           }}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">

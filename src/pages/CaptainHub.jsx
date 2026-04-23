@@ -122,8 +122,8 @@ export default function CaptainHub() {
   async function loadCompletions(playerIds, eventYear) {
     if (!playerIds.length) return
     const { coc_sigs, payments, ref_results, u18_subs, media_subs } = await apiFetch(
-      '/api/captain/team-completions',
-      { method: 'POST', body: JSON.stringify({ playerIds, eventYear }) },
+      '/api/captain',
+      { method: 'POST', body: JSON.stringify({ action: 'team-completions', playerIds, eventYear }) },
     )
     const cocSet   = new Set((coc_sigs  ?? []).map(c => c.user_id))
     const payMap   = Object.fromEntries((payments   ?? []).map(p => [p.user_id, p.status]))
@@ -196,9 +196,9 @@ export default function CaptainHub() {
     console.log('addPlayer: captain team.id =', team.id, '| player user_id =', profile.id, '| year =', event.year)
 
     try {
-      await apiFetch('/api/captain/add-player', {
+      await apiFetch('/api/captain', {
         method: 'POST',
-        body: JSON.stringify({ playerId: profile.id, teamId: team.id, year: event.year }),
+        body: JSON.stringify({ action: 'add-player', playerId: profile.id, teamId: team.id, year: event.year }),
       })
     } catch (err) {
       showToast(`Error: ${err.message}`)

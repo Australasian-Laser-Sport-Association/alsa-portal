@@ -111,7 +111,7 @@ export default function AdminUsers() {
     setMsg(null)
     setConfirmDelete(null)
     setLoadingDetail(true)
-    const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/user?id=${u.id}`)
+    const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/users?id=${u.id}`)
     setSelectedRegs(regs ?? [])
     setSelectedPayments(pays ?? [])
     setLoadingDetail(false)
@@ -121,7 +121,7 @@ export default function AdminUsers() {
     const finalRoles = [...new Set(['player', ...draftRoles])]
     setSavingRoles(true)
     try {
-      await apiFetch(`/api/admin/user?id=${userId}`, {
+      await apiFetch(`/api/admin/users?id=${userId}`, {
         method: 'PATCH',
         body: JSON.stringify({ roles: finalRoles }),
       })
@@ -139,7 +139,7 @@ export default function AdminUsers() {
   }
 
   async function toggleSuspend(userId, suspended) {
-    await apiFetch(`/api/admin/user?id=${userId}`, {
+    await apiFetch(`/api/admin/users?id=${userId}`, {
       method: 'PATCH',
       body: JSON.stringify({ suspended: !suspended }),
     })
@@ -400,7 +400,7 @@ export default function AdminUsers() {
                     <p className="text-xs text-[#e5e5e5]/60 mb-3">Are you sure? This cannot be undone.</p>
                     <div className="flex gap-2">
                       <button onClick={async () => {
-                        await apiFetch(`/api/admin/user?id=${selected.id}`, { method: 'DELETE' })
+                        await apiFetch(`/api/admin/users?id=${selected.id}`, { method: 'DELETE' })
                         setUsers(us => us.filter(u => u.id !== selected.id))
                         setSelected(null)
                         setConfirmDelete(null)

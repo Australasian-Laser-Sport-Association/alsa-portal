@@ -38,7 +38,22 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
-    const { userId, year } = req.body ?? {}
+    const { resource, id, userId, year } = req.body ?? {}
+
+    if (resource === 'doubles') {
+      if (!id) return res.status(400).json({ error: 'id is required' })
+      const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
+      if (delErr) return res.status(500).json({ error: delErr.message })
+      return res.json({ ok: true })
+    }
+
+    if (resource === 'triples') {
+      if (!id) return res.status(400).json({ error: 'id is required' })
+      const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
+      if (delErr) return res.status(500).json({ error: delErr.message })
+      return res.json({ ok: true })
+    }
+
     if (!userId || !year) return res.status(400).json({ error: 'userId and year are required' })
 
     const { error: delErr } = await supabaseAdmin
