@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import supabaseAdmin from '../../lib/supabaseAdmin'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 export default function AdminTeams() {
   const [teams, setTeams] = useState([])
@@ -7,10 +7,7 @@ export default function AdminTeams() {
   const [saveStatus, setSaveStatus] = useState('idle') // 'idle' | 'saving' | 'saved' | 'error'
   const [deletedIds, setDeletedIds] = useState([])
 
-  // Only true when the user has made a change — prevents auto-save firing on initial load
   const dirtyRef = useRef(false)
-
-  // Drag-to-reorder
   const dragItem = useRef(null)
   const [dragOver, setDragOver] = useState(null)
 
@@ -18,15 +15,13 @@ export default function AdminTeams() {
 
   useEffect(() => {
     async function load() {
-      const { data, error } = await supabaseAdmin
-        .from('rr_teams')
-        .select('*')
-        .order('seed_rank', { ascending: true })
-
-      if (!error && data) setTeams(data)
+      try {
+        const { teams: data } = await apiFetch('/api/admin/rr-teams')
+        setTeams(data ?? [])
+      } catch (err) {
+        console.error('[AdminTeams] load failed:', err)
+      }
       setLoading(false)
-      // Mark dirty only AFTER the state update from setTeams has been flushed,
-      // so the auto-save effect's first run (triggered by the load) is skipped.
       setTimeout(() => { dirtyRef.current = false }, 0)
     }
     load()
@@ -40,25 +35,11 @@ export default function AdminTeams() {
     const timer = setTimeout(async () => {
       setSaveStatus('saving')
       try {
-        if (deletedIds.length > 0) {
-          const { error } = await supabaseAdmin.from('rr_teams').delete().in('id', deletedIds)
-          if (error) throw error
-          setDeletedIds([])
-        }
-
-        if (teams.length > 0) {
-          const rows = teams.map((t, i) => ({
-            id: t.id,
-            name: t.name || '',
-            seed_rank: i + 1,
-            region: t.region || null,
-            notes: t.notes || null,
-            updated_at: new Date().toISOString(),
-          }))
-          const { error } = await supabaseAdmin.from('rr_teams').upsert(rows)
-          if (error) throw error
-        }
-
+        await apiFetch('/api/admin/rr-teams', {
+          method: 'POST',
+          body: JSON.stringify({ teams, deletedIds }),
+        })
+        setDeletedIds([])
         setSaveStatus('saved')
         setTimeout(() => setSaveStatus('idle'), 2000)
       } catch (err) {

@@ -40,10 +40,12 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [profileLoading, setProfileLoading] = useState(true)
 
   async function fetchProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
     setProfile(data ?? null)
+    setProfileLoading(false)
   }
 
   useEffect(() => {
@@ -54,6 +56,8 @@ export function AuthProvider({ children }) {
       if (u) {
         ensureProfile(u)
         fetchProfile(u.id)
+      } else {
+        setProfileLoading(false)
       }
     })
 
@@ -83,7 +87,7 @@ export function AuthProvider({ children }) {
   function refreshProfile() { if (user) fetchProfile(user.id) }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, profile, userRoles, isAdmin, isCaptain, hasRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, profileLoading, signOut, profile, userRoles, isAdmin, isCaptain, hasRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

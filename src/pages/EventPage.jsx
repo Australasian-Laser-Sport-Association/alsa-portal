@@ -2,7 +2,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import supabaseAdmin from '../lib/supabaseAdmin'
+import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
 
 function fmtDate(d) {
@@ -421,17 +421,17 @@ export default function EventPage() {
         const rawTeams = teamsData ?? []
         const rawRegs = regsData ?? []
 
-        // Collect all user IDs (players + captains) and fetch profiles via admin client
+        // Collect all user IDs (players + captains) and fetch profiles via API
         const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
         const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
         const allIds = [...new Set([...playerIds, ...captainIds])]
 
         let profileMap = {}
         if (allIds.length > 0) {
-          const { data: profileData } = await supabaseAdmin
-            .from('profiles')
-            .select('id, first_name, last_name, alias, state, dob')
-            .in('id', allIds)
+          const { profiles: profileData } = await apiFetch('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ ids: allIds }),
+          })
           profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
         }
 
@@ -439,10 +439,7 @@ export default function EventPage() {
         setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
 
         // Fetch confirmed doubles/triples for public display
-        const [{ data: doublesData }, { data: triplesData }] = await Promise.all([
-          supabaseAdmin.from('doubles_pairs').select('*').eq('event_year', parseInt(year)).eq('confirmed', true),
-          supabaseAdmin.from('triples_teams').select('*').eq('event_year', parseInt(year)).eq('confirmed', true),
-        ])
+        const { doubles: doublesData, triples: triplesData } = await apiFetch(`/api/event/pairs?year=${parseInt(year)}`)
         setDoublesPairs(doublesData ?? [])
         setTriplesTeams(triplesData ?? [])
 
@@ -453,8 +450,10 @@ export default function EventPage() {
         const missingIds = [...pairIds].filter(id => !profileMap[id])
         let fullPairMap = { ...profileMap }
         if (missingIds.length > 0) {
-          const { data: extraProfs } = await supabaseAdmin.from('profiles')
-            .select('id, first_name, last_name, alias').in('id', missingIds)
+          const { profiles: extraProfs } = await apiFetch('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ ids: missingIds }),
+          })
           ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
         }
         setPairProfileMap(fullPairMap)

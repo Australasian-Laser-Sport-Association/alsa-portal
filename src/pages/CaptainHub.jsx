@@ -2,7 +2,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import supabaseAdmin from '../lib/supabaseAdmin'
+import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
 
 function isUnder18(dob, eventYear) {
@@ -95,27 +95,20 @@ export default function CaptainHub() {
   }
 
   async function loadRoster(t, eventYear) {
-    console.log('loadRoster: team_id =', t.id, '| year =', eventYear)
-
-    // Fetch registrations for this team
-    const { data: regsData, error: regsError } = await supabase
+    const { data: regsData } = await supabase
       .from('zltac_registrations')
       .select('id, user_id, side_events, dinner_guests, status, emergency_contact_name')
       .eq('team_id', t.id)
       .eq('year', eventYear)
 
-    console.log('loadRoster regs result:', regsData, regsError)
-
     const rows = regsData ?? []
 
-    // Manually fetch profiles via admin client to bypass RLS (no FK constraint on user_id)
     if (rows.length > 0) {
       const userIds = rows.map(r => r.user_id).filter(Boolean)
-      const { data: profData, error: profError } = await supabaseAdmin
-        .from('profiles')
-        .select('id, first_name, last_name, alias, state, dob, avatar_url')
-        .in('id', userIds)
-      console.log('loadRoster profiles result:', profData, profError)
+      const { profiles: profData } = await apiFetch('/api/profiles', {
+        method: 'POST',
+        body: JSON.stringify({ ids: userIds }),
+      })
       const profMap = Object.fromEntries((profData ?? []).map(p => [p.id, p]))
       const enriched = rows.map(r => ({ ...r, profiles: profMap[r.user_id] ?? null }))
       setRoster(enriched)
@@ -128,27 +121,17 @@ export default function CaptainHub() {
 
   async function loadCompletions(playerIds, eventYear) {
     if (!playerIds.length) return
-    const [
-      { data: cocs },
-      { data: payments },
-      { data: tests },
-      { data: u18s },
-      { data: medias },
-    ] = await Promise.all([
-      supabaseAdmin.from('code_of_conduct_signatures').select('user_id').in('user_id', playerIds),
-      supabase.from('payments').select('user_id, status').in('user_id', playerIds).eq('event_year', eventYear),
-      supabase.from('referee_test_results').select('user_id, passed, score').in('user_id', playerIds),
-      supabase.from('under18_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
-      supabase.from('media_release_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
-    ])
-    const cocSet   = new Set((cocs   ?? []).map(c => c.user_id))
-    const payMap   = Object.fromEntries((payments ?? []).map(p => [p.user_id, p.status]))
-    const testMap  = Object.fromEntries((tests    ?? []).map(t => [t.user_id, t]))
-    const u18Set   = new Set((u18s   ?? []).map(u => u.user_id))
-    const mediaSet = new Set((medias ?? []).map(m => m.user_id))
+    const { coc_sigs, payments, ref_results, u18_subs, media_subs } = await apiFetch(
+      '/api/captain/team-completions',
+      { method: 'POST', body: JSON.stringify({ playerIds, eventYear }) },
+    )
+    const cocSet   = new Set((coc_sigs  ?? []).map(c => c.user_id))
+    const payMap   = Object.fromEntries((payments   ?? []).map(p => [p.user_id, p.status]))
+    const testMap  = Object.fromEntries((ref_results ?? []).map(t => [t.user_id, t]))
+    const u18Set   = new Set((u18_subs  ?? []).map(u => u.user_id))
+    const mediaSet = new Set((media_subs ?? []).map(m => m.user_id))
     const comp = {}
     playerIds.forEach(uid => {
-      const u18needed = false // dob checked in roster row
       comp[uid] = {
         coc:       cocSet.has(uid),
         paid:      payMap[uid] === 'paid',
@@ -192,14 +175,18 @@ export default function CaptainHub() {
       return
     }
 
-    const { data: matches } = await supabaseAdmin
-      .from('profiles')
-      .select('id, first_name, last_name, alias, state')
-      .in('id', unassignedIds)
-      .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,alias.ilike.%${term}%`)
-      .limit(10)
+    const { profiles: allProfiles } = await apiFetch('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ ids: unassignedIds }),
+    })
+    const q = term.toLowerCase()
+    const matches = (allProfiles ?? []).filter(p =>
+      (p.first_name ?? '').toLowerCase().includes(q) ||
+      (p.last_name ?? '').toLowerCase().includes(q) ||
+      (p.alias ?? '').toLowerCase().includes(q)
+    ).slice(0, 10)
 
-    setSearchResults(matches ?? [])
+    setSearchResults(matches)
     setSearchDone(true)
     setSearching(false)
   }
@@ -208,23 +195,15 @@ export default function CaptainHub() {
     if (!team || !event?.year) return
     console.log('addPlayer: captain team.id =', team.id, '| player user_id =', profile.id, '| year =', event.year)
 
-    const { data: updateData, error: updateError } = await supabaseAdmin
-      .from('zltac_registrations')
-      .update({ team_id: team.id })
-      .eq('user_id', profile.id)
-      .eq('year', event.year)
-      .select()
-
-    console.log('Update result:', updateData, updateError)
-
-    if (updateError) { showToast(`Error: ${updateError.message}`); return }
-
-    // Verification check — confirm the row was actually updated
-    const { data: check } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id, team_id, year')
-      .eq('user_id', profile.id)
-    console.log('Verification check:', check)
+    try {
+      await apiFetch('/api/captain/add-player', {
+        method: 'POST',
+        body: JSON.stringify({ playerId: profile.id, teamId: team.id, year: event.year }),
+      })
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+      return
+    }
 
     // Optimistically add to roster
     const newRow = { id: `tmp-${profile.id}`, user_id: profile.id, profiles: profile, side_events: null, dinner_guests: 0, status: 'pending' }
@@ -234,8 +213,6 @@ export default function CaptainHub() {
     setSearchDone(false)
     showToast(`${profile.alias || profile.first_name} added to your team`)
 
-    // Reload for accurate completion data
-    console.log('Triggering loadRoster with team:', team.id, 'year:', event.year)
     if (team && event?.year) loadRoster(team, event.year)
   }
 

@@ -120,13 +120,12 @@ function SidebarLink({ to, end, icon, label, onClick }) {
 const ADMIN_ROLES = ['alsa_committee', 'zltac_committee', 'superadmin', 'advisor']
 
 export default function AdminLayout() {
-  const { user, userRoles, loading: authLoading } = useAuth()
+  const { user, userRoles, loading: authLoading, profileLoading } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const hasAdminAccess = userRoles.some(r => ADMIN_ROLES.includes(r))
   const isSuperAdmin = userRoles.includes('superadmin')
-  // Derive a display role string for the sidebar badge
   const role = isSuperAdmin ? 'superadmin'
     : userRoles.includes('alsa_committee') ? 'alsa_committee'
     : userRoles.includes('zltac_committee') ? 'zltac_committee'
@@ -134,13 +133,13 @@ export default function AdminLayout() {
     : null
 
   useEffect(() => {
-    if (authLoading) return
+    if (authLoading || profileLoading) return
     if (!user || !hasAdminAccess) {
       navigate('/dashboard', { state: { accessDenied: true } })
     }
-  }, [user, authLoading, hasAdminAccess, navigate])
+  }, [user, authLoading, profileLoading, hasAdminAccess, navigate])
 
-  if (authLoading) {
+  if (authLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />

@@ -1,8 +1,8 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import supabaseAdmin from '../lib/supabaseAdmin'
+import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
 
 function shuffle(arr) {
@@ -56,7 +56,6 @@ export default function RefereeTest() {
 
     if (sData) setSettings({ pass_score: sData.pass_score ?? 70, time_limit_minutes: sData.time_limit_minutes ?? 30, questions_per_test: sData.questions_per_test ?? 20 })
 
-    // Check if already passed this year
     if (user) {
       const { data: existing } = await supabase
         .from('referee_test_results')
@@ -112,30 +111,20 @@ export default function RefereeTest() {
     clearTimeout(timerRef.current)
     setPhase('results')
 
-    // answers already contains all responses including the last question (added in selectAnswer)
     const correct = answers.filter(a => a.isCorrect).length
     const pct = questions.length > 0 ? Math.min(Math.round((correct / questions.length) * 100), 100) : 0
     const passed = pct >= settings.pass_score
 
     if (user) {
       setSaving(true)
-      const takenAt = new Date().toISOString()
-      const { data: existing } = await supabase
-        .from('referee_test_results')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      const { error } = existing
-        ? await supabaseAdmin
-            .from('referee_test_results')
-            .update({ score: pct, passed, taken_at: takenAt })
-            .eq('user_id', user.id)
-        : await supabaseAdmin
-            .from('referee_test_results')
-            .insert({ user_id: user.id, score: pct, passed, taken_at: takenAt })
-
-      if (error) setSaveErr(error.message)
+      try {
+        await apiFetch('/api/referee-test', {
+          method: 'POST',
+          body: JSON.stringify({ score: pct, passed, taken_at: new Date().toISOString() }),
+        })
+      } catch (err) {
+        setSaveErr(err.message)
+      }
       setSaving(false)
       setExistingResult({ passed, score: pct })
     }

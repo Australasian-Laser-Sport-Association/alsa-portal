@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import supabaseAdmin from '../../lib/supabaseAdmin'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 function fmt(d) {
   if (!d) return '—'
@@ -34,9 +34,8 @@ function StatusBadge({ status }) {
   )
 }
 
-const YEAR = 2027
-
 export default function AdminRegistrations() {
+  const [eventYear, setEventYear] = useState(undefined) // undefined = loading, null = no open event
   const [tab, setTab] = useState('players')
   const [regs, setRegs] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -54,7 +53,21 @@ export default function AdminRegistrations() {
   const [removeConfirm, setRemoveConfirm] = useState(null) // { userId, name, alias }
   const [toast, setToast] = useState(null)
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => {
+    supabase
+      .from('zltac_events')
+      .select('year')
+      .eq('status', 'open')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setEventYear(data?.year ?? null))
+  }, [])
+
+  useEffect(() => {
+    if (eventYear === undefined) return
+    if (eventYear === null) { setLoading(false); return }
+    fetchAll()
+  }, [eventYear])
 
   function showToast(msg) {
     setToast(msg)
@@ -64,66 +77,20 @@ export default function AdminRegistrations() {
   async function fetchAll() {
     setLoading(true)
     setError(null)
-
-    const [
-      { data: regsData,    error: regsErr },
-      { data: profsData,   error: profsErr },
-      { data: teamsData,   error: teamsErr },
-      { data: cocData,     error: cocErr },
-      { data: refData,     error: refErr },
-      { data: mediaData,   error: mediaErr },
-      { data: payData,     error: payErr },
-      { data: doublesData, error: doublesErr },
-      { data: triplesData, error: triplesErr },
-    ] = await Promise.all([
-      supabase
-        .from('zltac_registrations')
-        .select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests')
-        .eq('year', YEAR)
-        .order('created_at', { ascending: false }),
-      supabaseAdmin
-        .from('profiles')
-        .select('id, first_name, last_name, alias, state'),
-      supabase
-        .from('teams')
-        .select('id, name, state, status, captain_id, created_at'),
-      supabaseAdmin
-        .from('code_of_conduct_signatures')
-        .select('user_id, signed_at'),
-      supabaseAdmin
-        .from('referee_test_results')
-        .select('user_id, passed, score'),
-      supabaseAdmin
-        .from('media_release_submissions')
-        .select('user_id, submitted_at'),
-      supabaseAdmin
-        .from('payments')
-        .select('user_id, status, amount_paid')
-        .eq('event_year', YEAR),
-      supabaseAdmin
-        .from('doubles_pairs')
-        .select('*')
-        .eq('event_year', YEAR)
-        .order('created_at', { ascending: false }),
-      supabaseAdmin
-        .from('triples_teams')
-        .select('*')
-        .eq('event_year', YEAR)
-        .order('created_at', { ascending: false }),
-    ])
-
-    const errs = [regsErr, profsErr, teamsErr, cocErr, refErr, mediaErr, payErr, doublesErr, triplesErr].filter(Boolean)
-    if (errs.length) setError(errs.map(e => e.message).join(' | '))
-
-    setRegs(regsData ?? [])
-    setProfiles(profsData ?? [])
-    setTeams(teamsData ?? [])
-    setCocSigs(cocData ?? [])
-    setRefResults(refData ?? [])
-    setMediaReleases(mediaData ?? [])
-    setPayments(payData ?? [])
-    setDoubles(doublesData ?? [])
-    setTriples(triplesData ?? [])
+    try {
+      const data = await apiFetch(`/api/admin/registrations?year=${eventYear}`)
+      setRegs(data.registrations ?? [])
+      setProfiles(data.profiles ?? [])
+      setTeams(data.teams ?? [])
+      setCocSigs(data.coc_sigs ?? [])
+      setRefResults(data.ref_results ?? [])
+      setMediaReleases(data.media_releases ?? [])
+      setPayments(data.payments ?? [])
+      setDoubles(data.doubles ?? [])
+      setTriples(data.triples ?? [])
+    } catch (err) {
+      setError(err.message)
+    }
     setLoading(false)
   }
 
@@ -179,14 +146,16 @@ export default function AdminRegistrations() {
 
   async function removePlayer() {
     if (!removeConfirm) return
-    const { error } = await supabaseAdmin
-      .from('zltac_registrations')
-      .delete()
-      .eq('user_id', removeConfirm.userId)
-      .eq('year', YEAR)
-    if (error) { showToast(`Error: ${error.message}`); setRemoveConfirm(null); return }
-    setRegs(prev => prev.filter(r => r.user_id !== removeConfirm.userId))
-    showToast(`${removeConfirm.alias || removeConfirm.name} removed from ZLTAC ${YEAR}`)
+    try {
+      await apiFetch('/api/admin/registrations', {
+        method: 'DELETE',
+        body: JSON.stringify({ userId: removeConfirm.userId, year: eventYear }),
+      })
+      setRegs(prev => prev.filter(r => r.user_id !== removeConfirm.userId))
+      showToast(`${removeConfirm.alias || removeConfirm.name} removed from ZLTAC ${eventYear}`)
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+    }
     setRemoveConfirm(null)
   }
 
@@ -206,7 +175,7 @@ export default function AdminRegistrations() {
             <p className="text-white font-bold mb-2">Remove player?</p>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               Remove <span className="text-white font-semibold">{removeConfirm.name}</span>
-              {removeConfirm.alias ? <span className="text-brand"> ({removeConfirm.alias})</span> : ''} from ZLTAC {YEAR}?
+              {removeConfirm.alias ? <span className="text-brand"> ({removeConfirm.alias})</span> : ''} from ZLTAC {eventYear}?
               This will delete their registration record. This cannot be undone.
             </p>
             <div className="flex gap-3">
@@ -222,11 +191,11 @@ export default function AdminRegistrations() {
         <div>
           <h1 className="text-2xl font-black text-white">Registrations</h1>
           <p className="text-[#e5e5e5]/40 text-sm mt-1">
-            ZLTAC {YEAR} — {players.length} players · <span className="text-green-400">{completeCount} complete</span> · <span className="text-red-400">{incompleteCount} incomplete</span>
+            ZLTAC {eventYear} — {players.length} players · <span className="text-green-400">{completeCount} complete</span> · <span className="text-red-400">{incompleteCount} incomplete</span>
           </p>
         </div>
         <button
-          onClick={fetchAll}
+          onClick={() => eventYear && fetchAll()}
           className="text-xs bg-surface border border-line hover:border-brand text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors"
         >
           ↻ Refresh
@@ -262,6 +231,10 @@ export default function AdminRegistrations() {
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : eventYear === null ? (
+        <div className="text-center py-20 text-[#e5e5e5]/40 text-sm">
+          No active event. Set an event to "open" in the Admin Event panel.
         </div>
       ) : tab === 'players' ? (
 
@@ -471,7 +444,7 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {
-                            await supabaseAdmin.from('doubles_pairs').delete().eq('id', d.id)
+                            await apiFetch('/api/admin/doubles-pair', { method: 'DELETE', body: JSON.stringify({ id: d.id }) })
                             setDoubles(prev => prev.filter(x => x.id !== d.id))
                           }}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
@@ -529,7 +502,7 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {
-                            await supabaseAdmin.from('triples_teams').delete().eq('id', t.id)
+                            await apiFetch('/api/admin/triples-team', { method: 'DELETE', body: JSON.stringify({ id: t.id }) })
                             setTriples(prev => prev.filter(x => x.id !== t.id))
                           }}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">

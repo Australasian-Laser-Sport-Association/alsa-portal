@@ -43,12 +43,14 @@ import AdminTeams from './pages/admin/AdminTeams'
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
 import ProtectedRoute from './components/ProtectedRoute'
+import ScrollToTop from './components/ScrollToTop'
 import NotFound from './pages/NotFound'
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <NavBar />
         <Routes>
           {/* Public */}

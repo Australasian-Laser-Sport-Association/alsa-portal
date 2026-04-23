@@ -2,7 +2,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import supabaseAdmin from '../lib/supabaseAdmin'
+import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
 
 function dollars(cents) {
@@ -263,70 +263,37 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     setSearch(q)
     if (q.trim().length < 2) { setResults([]); return }
     setSearching(true)
-    console.log('[DoublesSelector] currentYear (eventYear):', eventYear)
     try {
-      // Step 1: All players registered for the year, excluding self
-      const { data: eligible } = await supabaseAdmin
-        .from('zltac_registrations').select('user_id')
-        .eq('year', eventYear).neq('user_id', userId)
-      console.log('Eligible regs:', eligible)
-      const eligibleIds = (eligible ?? []).map(r => r.user_id)
-      if (!eligibleIds.length) { setResults([]); return }
-
-      // Step 2: Exclude players already in a doubles pair this year
-      const { data: existingPairs } = await supabaseAdmin
-        .from('doubles_pairs').select('player1_id, player2_id').eq('event_year', eventYear)
-      const takenIds = new Set()
-      existingPairs?.forEach(pair => {
-        if (pair.player1_id) takenIds.add(pair.player1_id)
-        if (pair.player2_id) takenIds.add(pair.player2_id)
+      const { results: res } = await apiFetch('/api/player/doubles', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'search', eventYear, term: q.trim() }),
       })
-      console.log('Taken IDs:', [...takenIds])
-      const availableIds = eligibleIds.filter(id => !takenIds.has(id))
-      console.log('Available after exclusion:', availableIds)
-      if (!availableIds.length) { setResults([]); return }
-
-      // Step 3: Profile search server-side via supabaseAdmin
-      const { data: profs } = await supabaseAdmin
-        .from('profiles').select('id, first_name, last_name, alias, state')
-        .in('id', availableIds)
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,alias.ilike.%${q}%`)
-      console.log('Partner profiles:', profs)
-      if (!profs?.length) { setResults([]); return }
-
-      // Step 4: Fetch team names for results
-      const profIds = profs.map(p => p.id)
-      const { data: teamRegs } = await supabaseAdmin
-        .from('zltac_registrations').select('user_id, teams(name)')
-        .eq('year', eventYear).in('user_id', profIds)
-      const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-
-      setResults(profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null })))
+      setResults(res ?? [])
     } finally { setSearching(false) }
   }
 
   async function invite(pid) {
     setSaving(true); setErr('')
-    const { data, error } = await supabaseAdmin
-      .from('doubles_pairs')
-      .insert({ event_year: eventYear, player1_id: userId, player2_id: pid, confirmed: false })
-      .select().single()
-    if (error) { setSaving(false); setErr(error.message); return }
-    // Add 'doubles' to partner's side_events
-    const { data: partnerReg } = await supabaseAdmin
-      .from('zltac_registrations').select('side_events').eq('user_id', pid).eq('year', eventYear).single()
-    if (partnerReg) {
-      const newSlugs = [...new Set([...(partnerReg.side_events ?? []), 'doubles'])]
-      await supabaseAdmin.from('zltac_registrations').update({ side_events: newSlugs }).eq('user_id', pid).eq('year', eventYear)
+    try {
+      const { record: rec } = await apiFetch('/api/player/doubles', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'create', eventYear, partnerId: pid }),
+      })
+      onUpdate(rec, { [pid]: results.find(r => r.id === pid) })
+      setSearch(''); setResults([])
+    } catch (err) {
+      setErr(err.message)
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-    onUpdate(data, { [pid]: results.find(r => r.id === pid) })
-    setSearch(''); setResults([])
   }
 
   async function changePartner() {
     setSaving(true)
-    await supabaseAdmin.from('doubles_pairs').delete().eq('id', record.id)
+    await apiFetch('/api/player/doubles', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', id: record.id }),
+    })
     setSaving(false)
     onUpdate(null, {})
   }
@@ -421,93 +388,63 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     setSearch(q)
     if (q.trim().length < 2) { setResults([]); return }
     setSearching(true)
-    console.log('[TriplesSelector] currentYear (eventYear):', eventYear)
     try {
-      // Step 1: All players registered for the year, excluding self
-      const { data: eligible } = await supabaseAdmin
-        .from('zltac_registrations').select('user_id')
-        .eq('year', eventYear).neq('user_id', userId)
-      console.log('Eligible regs:', eligible)
-      let eligibleIds = (eligible ?? []).map(r => r.user_id)
-        .filter(id => id !== record?.player2_id && id !== record?.player3_id)
-      if (!eligibleIds.length) { setResults([]); return }
-
-      // Step 2: Exclude players already in a triples team this year
-      const { data: existingTriples } = await supabaseAdmin
-        .from('triples_teams').select('player1_id, player2_id, player3_id').eq('event_year', eventYear)
-      const takenIds = new Set()
-      existingTriples?.forEach(t => {
-        if (t.player1_id) takenIds.add(t.player1_id)
-        if (t.player2_id) takenIds.add(t.player2_id)
-        if (t.player3_id) takenIds.add(t.player3_id)
+      const { results: res } = await apiFetch('/api/player/triples', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'search',
+          eventYear,
+          term: q.trim(),
+          existingPlayer2Id: record?.player2_id ?? null,
+          existingPlayer3Id: record?.player3_id ?? null,
+        }),
       })
-      console.log('Taken IDs:', [...takenIds])
-      const availableIds = eligibleIds.filter(id => !takenIds.has(id))
-      console.log('Available after exclusion:', availableIds)
-      if (!availableIds.length) { setResults([]); return }
-
-      // Step 3: Profile search server-side via supabaseAdmin
-      const { data: profs } = await supabaseAdmin
-        .from('profiles').select('id, first_name, last_name, alias, state')
-        .in('id', availableIds)
-        .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,alias.ilike.%${q}%`)
-      console.log('Partner profiles:', profs)
-      if (!profs?.length) { setResults([]); return }
-
-      // Step 4: Fetch team names for results
-      const profIds = profs.map(p => p.id)
-      const { data: teamRegs } = await supabaseAdmin
-        .from('zltac_registrations').select('user_id, teams(name)')
-        .eq('year', eventYear).in('user_id', profIds)
-      const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-
-      setResults(profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null })))
+      setResults(res ?? [])
     } finally { setSearching(false) }
-  }
-
-  async function addPartnerSideEvent(pid) {
-    const { data: partnerReg } = await supabaseAdmin
-      .from('zltac_registrations').select('side_events').eq('user_id', pid).eq('year', eventYear).single()
-    if (partnerReg) {
-      const newSlugs = [...new Set([...(partnerReg.side_events ?? []), 'triples'])]
-      await supabaseAdmin.from('zltac_registrations').update({ side_events: newSlugs }).eq('user_id', pid).eq('year', eventYear)
-    }
   }
 
   async function inviteToSlot(slot, pid) {
     setSaving(true); setErr('')
     const partnerProfile = results.find(r => r.id === pid)
-    if (!record) {
-      const { data, error } = await supabaseAdmin.from('triples_teams')
-        .insert({ event_year: eventYear, player1_id: userId, [`player${slot}_id`]: pid, confirmed: false, player2_confirmed: false, player3_confirmed: false })
-        .select().single()
-      if (error) { setSaving(false); setErr(error.message); return }
-      await addPartnerSideEvent(pid)
+    try {
+      const { record: rec } = await apiFetch('/api/player/triples', {
+        method: 'POST',
+        body: JSON.stringify(
+          record
+            ? { action: 'add-slot', id: record.id, slot, partnerId: pid, eventYear }
+            : { action: 'create', eventYear, slot, partnerId: pid }
+        ),
+      })
+      onUpdate(rec, partnerProfile ? { [pid]: partnerProfile } : {})
+      setSearch(''); setResults([]); setSearchSlot(null)
+    } catch (err) {
+      setErr(err.message)
+    } finally {
       setSaving(false)
-      onUpdate(data, partnerProfile ? { [pid]: partnerProfile } : {})
-    } else {
-      const { data, error } = await supabaseAdmin.from('triples_teams')
-        .update({ [`player${slot}_id`]: pid, [`player${slot}_confirmed`]: false, confirmed: false }).eq('id', record.id).select().single()
-      if (error) { setSaving(false); setErr(error.message); return }
-      await addPartnerSideEvent(pid)
-      setSaving(false)
-      onUpdate(data, partnerProfile ? { [pid]: partnerProfile } : {})
     }
-    setSearch(''); setResults([]); setSearchSlot(null)
   }
 
   async function clearSlot(slot) {
     setSaving(true)
-    const { data, error } = await supabaseAdmin.from('triples_teams')
-      .update({ [`player${slot}_id`]: null, [`player${slot}_confirmed`]: false, confirmed: false }).eq('id', record.id).select().single()
-    setSaving(false)
-    if (error) { setErr(error.message); return }
-    onUpdate(data, {})
+    try {
+      const { record: rec } = await apiFetch('/api/player/triples', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'clear-slot', id: record.id, slot }),
+      })
+      onUpdate(rec, {})
+    } catch (err) {
+      setErr(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function disbandTeam() {
     setSaving(true)
-    await supabaseAdmin.from('triples_teams').delete().eq('id', record.id)
+    await apiFetch('/api/player/triples', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'disband', id: record.id }),
+    })
     setSaving(false)
     onUpdate(null, {})
   }
@@ -742,14 +679,11 @@ export default function PlayerHub() {
 
     // Fetch team roster if player is on a team
     if (reg?.team_id) {
-      const { data: rosterRegs } = await supabaseAdmin
-        .from('zltac_registrations').select('user_id').eq('year', eventYear).eq('team_id', reg.team_id)
-      const rosterIds = (rosterRegs ?? []).map(r => r.user_id)
-      if (rosterIds.length > 0) {
-        const { data: rosterProfs } = await supabaseAdmin
-          .from('profiles').select('id, first_name, last_name, alias, state').in('id', rosterIds)
-        setTeamRoster(rosterProfs ?? [])
-      }
+      const { profiles: rosterProfs } = await apiFetch('/api/player/team-roster', {
+        method: 'POST',
+        body: JSON.stringify({ teamId: reg.team_id, eventYear }),
+      })
+      setTeamRoster(rosterProfs ?? [])
     }
 
     // Fetch doubles/triples records
@@ -780,8 +714,10 @@ export default function PlayerHub() {
       })
     }
     if (partnerIds.size > 0) {
-      const { data: partnerProfs } = await supabaseAdmin
-        .from('profiles').select('id, first_name, last_name, alias').in('id', [...partnerIds])
+      const { profiles: partnerProfs } = await apiFetch('/api/profiles', {
+        method: 'POST',
+        body: JSON.stringify({ ids: [...partnerIds] }),
+      })
       setPartnerProfileMap(Object.fromEntries((partnerProfs ?? []).map(p => [p.id, p])))
     }
 
@@ -795,10 +731,16 @@ export default function PlayerHub() {
     setSelectedSlugs(newSlugs)
     if (removing) {
       if (slug === 'doubles' && doublesRecord) {
-        supabaseAdmin.from('doubles_pairs').delete().eq('id', doublesRecord.id).then(() => setDoublesRecord(null))
+        apiFetch('/api/player/doubles', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
+        }).then(() => setDoublesRecord(null))
       }
       if (slug === 'triples' && triplesRecord) {
-        supabaseAdmin.from('triples_teams').delete().eq('id', triplesRecord.id).then(() => setTriplesRecord(null))
+        apiFetch('/api/player/triples', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
+        }).then(() => setTriplesRecord(null))
       }
     }
   }
@@ -949,16 +891,21 @@ export default function PlayerHub() {
               <div className="flex gap-3">
                 <button
                   onClick={async () => {
-                    const { data } = await supabaseAdmin.from('doubles_pairs')
-                      .update({ confirmed: true }).eq('id', doublesRecord.id).select().single()
-                    if (data) setDoublesRecord(data)
+                    const { record } = await apiFetch('/api/player/doubles', {
+                      method: 'POST',
+                      body: JSON.stringify({ action: 'confirm', id: doublesRecord.id }),
+                    })
+                    if (record) setDoublesRecord(record)
                   }}
                   className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
                   Accept
                 </button>
                 <button
                   onClick={async () => {
-                    await supabaseAdmin.from('doubles_pairs').delete().eq('id', doublesRecord.id)
+                    await apiFetch('/api/player/doubles', {
+                      method: 'POST',
+                      body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
+                    })
                     setDoublesRecord(null)
                   }}
                   className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">
@@ -972,9 +919,7 @@ export default function PlayerHub() {
         {/* ── Triples team invitation alert ── */}
         {triplesRecord && triplesRecord.player1_id !== user.id && !triplesRecord.confirmed && (() => {
           const mySlot = triplesRecord.player2_id === user.id ? 2 : 3
-          const myConfirmedField = `player${mySlot}_confirmed`
-          const otherConfirmedField = mySlot === 2 ? 'player3_confirmed' : 'player2_confirmed'
-          const alreadyAccepted = triplesRecord[myConfirmedField] === true
+          const alreadyAccepted = triplesRecord[`player${mySlot}_confirmed`] === true
           if (alreadyAccepted) return null
           const inviter = partnerProfileMap[triplesRecord.player1_id]
           return (
@@ -990,21 +935,21 @@ export default function PlayerHub() {
               <div className="flex gap-3">
                 <button
                   onClick={async () => {
-                    const otherConfirmed = triplesRecord[otherConfirmedField] === true
-                    const updates = {
-                      [myConfirmedField]: true,
-                      ...(otherConfirmed ? { confirmed: true } : {}),
-                    }
-                    const { data } = await supabaseAdmin.from('triples_teams')
-                      .update(updates).eq('id', triplesRecord.id).select().single()
-                    if (data) setTriplesRecord(data)
+                    const { record } = await apiFetch('/api/player/triples', {
+                      method: 'POST',
+                      body: JSON.stringify({ action: 'confirm', id: triplesRecord.id, mySlot }),
+                    })
+                    if (record) setTriplesRecord(record)
                   }}
                   className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
                   Accept
                 </button>
                 <button
                   onClick={async () => {
-                    await supabaseAdmin.from('triples_teams').delete().eq('id', triplesRecord.id)
+                    await apiFetch('/api/player/triples', {
+                      method: 'POST',
+                      body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
+                    })
                     setTriplesRecord(null)
                   }}
                   className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">

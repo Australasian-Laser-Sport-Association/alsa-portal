@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import supabaseAdmin from '../../lib/supabaseAdmin'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 const ALL_ROLES = ['player', 'captain', 'zltac_committee', 'alsa_committee', 'advisor', 'superadmin']
 const ROLE_ORDER = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor', 'captain', 'player']
@@ -81,21 +81,15 @@ export default function AdminUsers() {
 
   async function loadUsers() {
     setLoading(true)
-    const [{ data: profiles }, { data: regRows }, { data: teamRows }] = await Promise.all([
-      supabaseAdmin.from('profiles')
-        .select('id, first_name, last_name, alias, state, role, roles, suspended, created_at, home_arena')
-        .order('created_at', { ascending: false }),
-      supabaseAdmin.from('zltac_registrations').select('user_id, year'),
-      supabaseAdmin.from('teams').select('id, name, captain_id'),
-    ])
+    const { profiles, registrations, teams } = await apiFetch('/api/admin/users')
 
     const regMap = {}
-    for (const r of (regRows ?? [])) {
+    for (const r of (registrations ?? [])) {
       if (!regMap[r.user_id]) regMap[r.user_id] = []
       regMap[r.user_id].push(r)
     }
     const captainTeamMap = {}
-    for (const t of (teamRows ?? [])) {
+    for (const t of (teams ?? [])) {
       if (t.captain_id) captainTeamMap[t.captain_id] = t.name
     }
 
@@ -117,35 +111,38 @@ export default function AdminUsers() {
     setMsg(null)
     setConfirmDelete(null)
     setLoadingDetail(true)
-    const [{ data: regs }, { data: pays }] = await Promise.all([
-      supabaseAdmin.from('zltac_registrations').select('*, teams(name)').eq('user_id', u.id).order('year', { ascending: false }),
-      supabaseAdmin.from('payments').select('*').eq('user_id', u.id).order('created_at', { ascending: false }),
-    ])
+    const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/user?id=${u.id}`)
     setSelectedRegs(regs ?? [])
     setSelectedPayments(pays ?? [])
     setLoadingDetail(false)
   }
 
   async function saveRoles(userId) {
-    // Always ensure 'player' is included
     const finalRoles = [...new Set(['player', ...draftRoles])]
     setSavingRoles(true)
-    const { error } = await supabaseAdmin.from('profiles').update({ roles: finalRoles }).eq('id', userId)
-    setSavingRoles(false)
-    if (error) {
-      setMsg({ type: 'error', text: error.message })
-    } else {
+    try {
+      await apiFetch(`/api/admin/user?id=${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ roles: finalRoles }),
+      })
       const update = u => u.id === userId ? { ...u, roles: finalRoles, _roles: finalRoles } : u
       setUsers(us => us.map(update))
       setSelected(s => s ? { ...s, roles: finalRoles, _roles: finalRoles } : s)
       setDraftRoles(finalRoles)
       setEditingRoles(false)
       setMsg({ type: 'ok', text: 'Roles updated.' })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message })
+    } finally {
+      setSavingRoles(false)
     }
   }
 
   async function toggleSuspend(userId, suspended) {
-    await supabaseAdmin.from('profiles').update({ suspended: !suspended }).eq('id', userId)
+    await apiFetch(`/api/admin/user?id=${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ suspended: !suspended }),
+    })
     const update = u => u.id === userId ? { ...u, suspended: !suspended } : u
     setUsers(us => us.map(update))
     setSelected(s => s ? { ...s, suspended: !suspended } : s)
@@ -403,7 +400,7 @@ export default function AdminUsers() {
                     <p className="text-xs text-[#e5e5e5]/60 mb-3">Are you sure? This cannot be undone.</p>
                     <div className="flex gap-2">
                       <button onClick={async () => {
-                        await supabaseAdmin.from('profiles').delete().eq('id', selected.id)
+                        await apiFetch(`/api/admin/user?id=${selected.id}`, { method: 'DELETE' })
                         setUsers(us => us.filter(u => u.id !== selected.id))
                         setSelected(null)
                         setConfirmDelete(null)
