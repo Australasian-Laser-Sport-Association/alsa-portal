@@ -1,7 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings']
 
@@ -95,8 +93,6 @@ function StatusBanner({ status, onChangeStatus, saving, archived }) {
 }
 
 export default function AdminEvent() {
-  const { role } = useOutletContext()
-  const { user } = useAuth()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState(0)
@@ -108,7 +104,7 @@ export default function AdminEvent() {
   const [form, setForm] = useState({})
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
-  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', max_teams: '', max_players_per_team: '', require_coc: true, require_ref_test: true, allow_side_events_only: false, enable_waitlist: false })
+  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false })
 
   // Logo
   const [logoFile, setLogoFile] = useState(null)
@@ -163,9 +159,11 @@ export default function AdminEvent() {
       reg_open_date: ev.reg_open_date ? ev.reg_open_date.slice(0, 16) : '',
       reg_close_date: ev.reg_close_date ? ev.reg_close_date.slice(0, 16) : '',
       max_teams: ev.max_teams ?? '',
+      max_players: ev.max_players ?? '',
       max_players_per_team: ev.max_players_per_team ?? '',
       require_coc: ev.require_coc ?? true,
       require_ref_test: ev.require_ref_test ?? true,
+      require_payment: ev.require_payment ?? true,
       allow_side_events_only: ev.allow_side_events_only ?? false,
       enable_waitlist: ev.enable_waitlist ?? false,
     })
@@ -224,9 +222,11 @@ export default function AdminEvent() {
       reg_open_date: settings.reg_open_date || null,
       reg_close_date: settings.reg_close_date || null,
       max_teams: settings.max_teams ? parseInt(settings.max_teams) : null,
+      max_players: settings.max_players ? parseInt(settings.max_players) : null,
       max_players_per_team: settings.max_players_per_team ? parseInt(settings.max_players_per_team) : null,
       require_coc: settings.require_coc,
       require_ref_test: settings.require_ref_test,
+      require_payment: settings.require_payment,
       allow_side_events_only: settings.allow_side_events_only,
       enable_waitlist: settings.enable_waitlist,
       updated_at: new Date().toISOString(),
@@ -583,9 +583,13 @@ export default function AdminEvent() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {[{ label: 'Max Teams', key: 'max_teams' }, { label: 'Max Players per Team', key: 'max_players_per_team' }].map(({ label, key }) => (
+            {[
+              { label: 'Max Teams', key: 'max_teams', hint: 'Event-wide cap on total teams' },
+              { label: 'Max Players', key: 'max_players', hint: 'Event-wide cap on total players' },
+            ].map(({ label, key, hint }) => (
               <div key={key}>
                 <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <p className="text-xs text-[#e5e5e5]/30 mb-1.5">{hint}</p>
                 <input type="number" value={settings[key] ?? ''} placeholder="Unlimited" disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
@@ -594,10 +598,20 @@ export default function AdminEvent() {
             ))}
           </div>
 
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Max Players per Team</label>
+            <p className="text-xs text-[#e5e5e5]/30 mb-1.5">Team composition limit — applies to each team individually</p>
+            <input type="number" value={settings.max_players_per_team ?? ''} placeholder="Unlimited" disabled={isArchived}
+              onChange={e => setSettings(s => ({ ...s, max_players_per_team: e.target.value || '' }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+            />
+          </div>
+
           <div className="space-y-3 pt-1">
             {[
               { label: 'Require Code of Conduct', sub: 'Players must sign CoC before registration is complete', key: 'require_coc' },
               { label: 'Require Referee Test', sub: 'At least one team member must pass the referee test', key: 'require_ref_test' },
+              { label: 'Require Payment', sub: 'Registration is only confirmed once the event fee is paid — turn off for free or on-the-day-paid events', key: 'require_payment' },
               { label: 'Allow Side Events Only', sub: 'Players can register for side events without joining a team', key: 'allow_side_events_only' },
               { label: 'Enable Waitlist', sub: 'When max teams/players is reached, allow waitlist sign-ups', key: 'enable_waitlist' },
             ].map(({ label, sub, key }) => (

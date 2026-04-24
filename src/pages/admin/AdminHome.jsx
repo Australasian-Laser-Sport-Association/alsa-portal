@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { dollars } from '../../lib/pricing'
 
@@ -32,7 +31,6 @@ function fmt(d) {
 }
 
 export default function AdminHome() {
-  const { role } = useOutletContext()
   const [stats, setStats] = useState({})
   const [activity, setActivity] = useState([])
   const [loading, setLoading] = useState(true)
