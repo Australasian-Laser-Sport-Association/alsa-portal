@@ -1,6 +1,5 @@
 import supabaseAdmin from './supabase.js'
-
-const COMMITTEE_ROLES = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor']
+import { COMMITTEE_ROLES } from '../../src/lib/roles.js'
 
 export function statusForAuthError(error) {
   if (error === 'Unauthorized') return 401

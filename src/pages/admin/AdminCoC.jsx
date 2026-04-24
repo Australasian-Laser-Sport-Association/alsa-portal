@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatDate } from '../../lib/dateFormat'
 
 const DEFAULT_COC = `# ALSA Code of Conduct
 
@@ -79,7 +80,7 @@ export default function AdminCoC() {
       content: draftText,
       is_published: true,
       created_by: user.id,
-      version_note: `Published ${new Date().toLocaleDateString('en-AU')}`,
+      version_note: `Published ${formatDate(new Date(), 'numeric')}`,
     })
     if (!error) {
       // Flag players who need to re-sign
@@ -136,7 +137,7 @@ export default function AdminCoC() {
         <div>
           {current && (
             <div className="mb-3 text-xs text-[#e5e5e5]/40">
-              Currently published: <span className="text-brand">{current.version_note}</span> on {new Date(current.created_at).toLocaleDateString('en-AU')}
+              Currently published: <span className="text-brand">{current.version_note}</span> on {formatDate(current.created_at, 'numeric')}
             </div>
           )}
           <textarea
@@ -191,7 +192,7 @@ export default function AdminCoC() {
                   )}
                 </div>
                 <p className="text-xs text-[#e5e5e5]/40">
-                  {new Date(v.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {formatDate(v.created_at, 'longWithTime')}
                 </p>
               </div>
               <button

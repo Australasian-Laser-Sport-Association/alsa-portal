@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { formatDate } from '../../lib/dateFormat'
 
 const DEFAULT_CONTENT = `ALSA Media Release Form
 
@@ -96,7 +97,7 @@ export default function AdminMediaRelease() {
       content: draftText,
       is_published: true,
       created_by: user.id,
-      version_note: `Published ${new Date().toLocaleDateString('en-AU')}`,
+      version_note: `Published ${formatDate(new Date(), 'numeric')}`,
     })
     setPublishing(false)
     if (error) setMsg({ type: 'error', text: error.message })
@@ -148,7 +149,7 @@ export default function AdminMediaRelease() {
         <div>
           {current && (
             <div className="mb-3 text-xs text-[#e5e5e5]/40">
-              Currently published: <span className="text-brand">{current.version_note}</span> on {new Date(current.created_at).toLocaleDateString('en-AU')}
+              Currently published: <span className="text-brand">{current.version_note}</span> on {formatDate(current.created_at, 'numeric')}
             </div>
           )}
           <textarea
@@ -188,7 +189,7 @@ export default function AdminMediaRelease() {
                   {v.is_published && <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded font-bold">Live</span>}
                 </div>
                 <p className="text-xs text-[#e5e5e5]/40">
-                  {new Date(v.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {formatDate(v.created_at, 'longWithTime')}
                 </p>
               </div>
               <button onClick={() => { setDraftText(v.content); setActiveTab('edit') }} className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/70 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors">

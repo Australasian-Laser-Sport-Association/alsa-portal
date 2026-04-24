@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { dollars } from '../../lib/pricing'
+import { formatDate } from '../../lib/dateFormat'
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -25,9 +26,7 @@ function ActivityRow({ icon, text, time }) {
 }
 
 function fmt(d) {
-  if (!d) return '—'
-  const dt = new Date(d)
-  return dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return formatDate(d, 'shortWithTime') || '—'
 }
 
 export default function AdminHome() {

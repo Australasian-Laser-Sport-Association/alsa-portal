@@ -3,15 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
+import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 
 function dollars(cents) {
   return `$${((cents ?? 0) / 100).toFixed(2)}`
-}
-
-function fmtDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 function isUnder18(dob, eventYear) {
@@ -1013,7 +1009,7 @@ export default function PlayerHub() {
 
             <ChecklistItem
               status={!isRegistered ? 'pending' : cocSig ? 'done' : 'error'}
-              label={cocSig ? `Code of Conduct — signed ${fmtDate(cocSig.signed_at)}` : 'Code of Conduct — not yet signed'}
+              label={cocSig ? `Code of Conduct — signed ${formatDate(cocSig.signed_at)}` : 'Code of Conduct — not yet signed'}
             >
               {isRegistered && !cocSig && (
                 <CoCPanel
@@ -1052,7 +1048,7 @@ export default function PlayerHub() {
             {u18Required && (
               <ChecklistItem
                 status={!isRegistered ? 'pending' : u18Sub ? 'done' : 'error'}
-                label={u18Sub ? `Under 18 Parental Consent — submitted ${fmtDate(u18Sub.submitted_at)}` : 'Under 18 Parental Consent — not yet submitted'}
+                label={u18Sub ? `Under 18 Parental Consent — submitted ${formatDate(u18Sub.submitted_at)}` : 'Under 18 Parental Consent — not yet submitted'}
               >
                 {isRegistered && !u18Sub && (
                   <Under18Panel

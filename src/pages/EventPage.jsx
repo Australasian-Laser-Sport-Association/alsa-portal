@@ -3,12 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
+import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
-
-function fmtDate(d) {
-  if (!d) return null
-  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
-}
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -510,9 +506,9 @@ export default function EventPage() {
             )}
             {(event.reg_open_date || event.reg_close_date) && (
               <p className="text-[#e5e5e5]/45" style={{ fontSize: '18px' }}>
-                {event.reg_open_date && fmtDate(event.reg_open_date)}
+                {event.reg_open_date && formatDate(event.reg_open_date)}
                 {event.reg_open_date && event.reg_close_date && ' — '}
-                {event.reg_close_date && fmtDate(event.reg_close_date)}
+                {event.reg_close_date && formatDate(event.reg_close_date)}
               </p>
             )}
           </div>
@@ -556,7 +552,7 @@ export default function EventPage() {
             Registration for {event.name} is not yet open. Check back soon.
           </p>
           {event.reg_open_date && (
-            <p className="mt-4 text-sm text-brand/70">Opens {fmtDate(event.reg_open_date)}</p>
+            <p className="mt-4 text-sm text-brand/70">Opens {formatDate(event.reg_open_date)}</p>
           )}
           <Link to="/zltac" className="mt-8 text-sm text-[#e5e5e5]/40 hover:text-white transition-colors">
             ← Back to ZLTAC
@@ -606,9 +602,9 @@ export default function EventPage() {
           )}
           {(event.reg_open_date || event.reg_close_date) && (
             <p className="text-[#e5e5e5]/55 font-medium" style={{ fontSize: '18px' }}>
-              {event.reg_open_date && `Registration opens ${fmtDate(event.reg_open_date)}`}
+              {event.reg_open_date && `Registration opens ${formatDate(event.reg_open_date)}`}
               {event.reg_open_date && event.reg_close_date && ' · '}
-              {event.reg_close_date && `closes ${fmtDate(event.reg_close_date)}`}
+              {event.reg_close_date && `closes ${formatDate(event.reg_close_date)}`}
             </p>
           )}
         </div>

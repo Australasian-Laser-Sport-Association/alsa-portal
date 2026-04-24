@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 
 function PhotoLightbox({ urls, startIndex, onClose }) {
@@ -90,11 +91,6 @@ export default function ZLTACYearDetail() {
   const hasPodium = event.champion_team || event.runner_up_team || event.third_place_team
   const hasSideEvents = event.side_event_results?.length > 0
   const hasPhotos = event.photo_urls?.length > 0
-
-  function formatDate(d) {
-    if (!d) return null
-    return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
-  }
 
   const dateRange = event.start_date
     ? event.end_date && event.end_date !== event.start_date

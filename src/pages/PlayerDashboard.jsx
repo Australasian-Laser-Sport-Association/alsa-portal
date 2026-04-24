@@ -2,6 +2,8 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { formatDate } from '../lib/dateFormat'
+import { COMMITTEE_ROLES, ROLE_ORDER } from '../lib/roles'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -187,13 +189,13 @@ function ProfileCard({ profile, userId, userEmail, onUpdated }) {
             <Field label="First Name" value={profile?.first_name} />
             <Field label="Last Name" value={profile?.last_name} />
             <Field label="Alias" value={profile?.alias} green />
-            <Field label="Date of Birth" value={profile?.dob ? new Date(profile.dob).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : null} />
+            <Field label="Date of Birth" value={formatDate(profile?.dob) || null} />
             <Field label="State / Territory" value={profile?.state} />
             <Field label="Home Arena" value={profile?.home_arena} />
             <Field label="Email" value={userEmail} />
             <Field label="Phone" value={profile?.phone} />
             <Field label="Emergency Contact" value={profile?.emergency_contact_name ? `${profile.emergency_contact_name}${profile.emergency_contact_phone ? ` · ${profile.emergency_contact_phone}` : ''}` : null} />
-            <Field label="Member Since" value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' }) : null} />
+            <Field label="Member Since" value={formatDate(profile?.created_at, 'monthYear') || null} />
           </div>
         )}
       </div>
@@ -284,8 +286,6 @@ const ROLE_PILL_META = {
   captain:         { label: 'Captain',         cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
   player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/40 border-transparent' },
 }
-const ROLE_ORDER = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor', 'captain', 'player']
-
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function PlayerDashboard() {
   const { user, userRoles } = useAuth()
@@ -336,7 +336,7 @@ export default function PlayerDashboard() {
 
   const showPlayerHub = !!registration
   const showTeamHub   = userRoles.includes('captain') || userRoles.some(r => ['alsa_committee', 'zltac_committee', 'superadmin'].includes(r))
-  const showAdminHub  = userRoles.some(r => ['alsa_committee', 'zltac_committee', 'superadmin', 'advisor'].includes(r))
+  const showAdminHub  = userRoles.some(r => COMMITTEE_ROLES.includes(r))
   const showAnyHub    = showPlayerHub || showTeamHub || showAdminHub
 
   return (

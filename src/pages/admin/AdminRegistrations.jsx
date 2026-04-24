@@ -1,10 +1,10 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { formatDate } from '../../lib/dateFormat'
 
 function fmt(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+  return formatDate(d, 'short') || '—'
 }
 
 function Pill({ color, children }) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { COMMITTEE_ROLES } from '../lib/roles'
 
 const NAV_ITEMS = [
   {
@@ -117,14 +118,12 @@ function SidebarLink({ to, end, icon, label, onClick }) {
   )
 }
 
-const ADMIN_ROLES = ['alsa_committee', 'zltac_committee', 'superadmin', 'advisor']
-
 export default function AdminLayout() {
   const { user, userRoles, loading: authLoading, profileLoading } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const hasAdminAccess = userRoles.some(r => ADMIN_ROLES.includes(r))
+  const hasAdminAccess = userRoles.some(r => COMMITTEE_ROLES.includes(r))
   const isSuperAdmin = userRoles.includes('superadmin')
   const role = isSuperAdmin ? 'superadmin'
     : userRoles.includes('alsa_committee') ? 'alsa_committee'

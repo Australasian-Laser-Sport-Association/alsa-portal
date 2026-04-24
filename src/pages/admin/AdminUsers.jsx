@@ -1,9 +1,10 @@
 ﻿import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { formatDate } from '../../lib/dateFormat'
+import { COMMITTEE_ROLES, ROLE_ORDER } from '../../lib/roles'
 
 const ALL_ROLES = ['player', 'captain', 'zltac_committee', 'alsa_committee', 'advisor', 'superadmin']
-const ROLE_ORDER = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor', 'captain', 'player']
 
 const ROLE_META = {
   superadmin:      { label: 'Superadmin',      cls: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
@@ -150,7 +151,7 @@ export default function AdminUsers() {
 
   function canAssignRole(targetRole) {
     if (isSuperAdmin) return true
-    return !['alsa_committee', 'zltac_committee', 'superadmin', 'advisor'].includes(targetRole)
+    return !COMMITTEE_ROLES.includes(targetRole)
   }
 
   const allStates = [...new Set(users.map(u => u.state).filter(Boolean))].sort()
@@ -234,7 +235,7 @@ export default function AdminUsers() {
                   <td className="px-4 py-3"><RolePills roles={u._roles} /></td>
                   <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
                   <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.team_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{u.created_at ? new Date(u.created_at).toLocaleDateString('en-AU') : '—'}</td>
+                  <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
                   <td className="px-4 py-3">
                     <button onClick={() => openUser(u)} className="text-xs text-brand/70 hover:text-brand transition-colors font-semibold">
                       View →
@@ -265,7 +266,7 @@ export default function AdminUsers() {
                 </p>
                 {selected.alias && <p className="text-brand text-sm">"{selected.alias}"</p>}
                 <p className="text-[#e5e5e5]/40 text-xs mt-0.5">
-                  Joined {selected.created_at ? new Date(selected.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+                  Joined {formatDate(selected.created_at) || '—'}
                 </p>
               </div>
             </div>
@@ -384,7 +385,7 @@ export default function AdminUsers() {
                 <div key={p.id} className="bg-base border border-line rounded-lg px-4 py-3 mb-2 flex justify-between items-center">
                   <div>
                     <p className="text-sm text-white font-semibold">${((p.amount ?? 0) / 100).toFixed(2)}</p>
-                    <p className="text-xs text-[#e5e5e5]/40">{p.created_at ? new Date(p.created_at).toLocaleDateString('en-AU') : ''}</p>
+                    <p className="text-xs text-[#e5e5e5]/40">{formatDate(p.created_at, 'numeric')}</p>
                   </div>
                   <span className={`text-xs font-bold uppercase ${p.status === 'paid' ? 'text-brand' : 'text-yellow-400'}`}>{p.status}</span>
                 </div>

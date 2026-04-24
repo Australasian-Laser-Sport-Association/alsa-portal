@@ -2,6 +2,7 @@
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { COMMITTEE_ROLES } from '../lib/roles'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -58,7 +59,7 @@ export default function NavBar() {
     setVisiblePills({
       player: false, // loaded async below
       team: userRoles.includes('captain'),
-      admin: userRoles.some(r => ['alsa_committee', 'zltac_committee', 'superadmin', 'advisor'].includes(r)),
+      admin: userRoles.some(r => COMMITTEE_ROLES.includes(r)),
     })
     loadPlayerPill()
   }, [user, userRoles, activeEvent])

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 
 const DEFAULT_STATS = [
@@ -63,11 +64,6 @@ const FEATURES = [
     desc: 'From grassroots local competitions to the annual ZLTAC Australasian Championship — there is a pathway for every competitive player.',
   },
 ]
-
-function formatDate(dateStr) {
-  if (!dateStr) return null
-  return new Date(dateStr).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
-}
 
 export default function Home() {
   const [activeEvent, setActiveEvent] = useState(undefined) // undefined = loading, null = none found
