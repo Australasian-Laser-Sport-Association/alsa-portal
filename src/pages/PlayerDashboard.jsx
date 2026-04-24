@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../lib/dateFormat'
@@ -289,12 +289,10 @@ const ROLE_PILL_META = {
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function PlayerDashboard() {
   const { user, userRoles } = useAuth()
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [openEvent, setOpenEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
-  const [captainTeam, setCaptainTeam] = useState(null)
 
   useEffect(() => {
     if (!user) return
@@ -302,14 +300,12 @@ export default function PlayerDashboard() {
   }, [user]) // eslint-disable-line
 
   async function load() {
-    const [{ data: prof }, { data: ev }, { data: ct }] = await Promise.all([
+    const [{ data: prof }, { data: ev }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('zltac_events').select('name, year').eq('status', 'open').maybeSingle(),
-      supabase.from('teams').select('id').eq('captain_id', user.id).maybeSingle(),
     ])
     setProfile(prof)
     setOpenEvent(ev)
-    setCaptainTeam(ct)
 
     if (ev?.year) {
       const { data: reg } = await supabase

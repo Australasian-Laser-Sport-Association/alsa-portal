@@ -49,7 +49,7 @@ export default function AdminTeams() {
     }, 1000)
 
     return () => clearTimeout(timer)
-  }, [teams, deletedIds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [teams, deletedIds])
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 

@@ -23,7 +23,6 @@ export default function RefereeTest() {
   const [phase, setPhase] = useState('loading') // loading | intro | running | results | error
   const [questions, setQuestions] = useState([])
   const [settings, setSettings] = useState({ pass_score: 70, time_limit_minutes: 30, questions_per_test: 20 })
-  const [eventYear, setEventYear] = useState(null)
   const [existingResult, setExistingResult] = useState(null)
 
   // Quiz state
@@ -45,14 +44,10 @@ export default function RefereeTest() {
   }, [authLoading, user]) // eslint-disable-line
 
   async function loadData() {
-    const [{ data: ev }, { data: qData }, { data: sData }] = await Promise.all([
-      supabase.from('zltac_events').select('year').eq('status', 'open').maybeSingle(),
+    const [{ data: qData }, { data: sData }] = await Promise.all([
       supabase.from('referee_questions').select('*').eq('active', true),
       supabase.from('referee_test_settings').select('*').limit(1).maybeSingle(),
     ])
-
-    const year = ev?.year ?? null
-    setEventYear(year)
 
     if (sData) setSettings({ pass_score: sData.pass_score ?? 70, time_limit_minutes: sData.time_limit_minutes ?? 30, questions_per_test: sData.questions_per_test ?? 20 })
 
@@ -165,8 +160,6 @@ export default function RefereeTest() {
   }
 
   const correctCount = answers.filter(a => a.isCorrect).length
-  const pct = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0
-  const passed = pct >= settings.pass_score
   const progress = questions.length > 0 ? ((idx + (answered ? 1 : 0)) / questions.length) * 100 : 0
   const currentQ = questions[idx]
 

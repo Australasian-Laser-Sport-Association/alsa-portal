@@ -17,14 +17,14 @@ async function ensureProfile(user) {
     try {
       const pending = JSON.parse(pendingRaw)
       if (pending.userId === userId) {
-        console.log('[AuthContext] Retrying pending profile save for', userId)
+        if (import.meta.env.DEV) console.log('[AuthContext] Retrying pending profile save for', userId)
         const { userId: _uid, ...profileData } = pending
         const { error } = await supabase
           .from('profiles')
           .upsert(profileData, { onConflict: 'id' })
         if (!error) {
           localStorage.removeItem('pending_profile')
-          console.log('[AuthContext] Pending profile data saved and cleared')
+          if (import.meta.env.DEV) console.log('[AuthContext] Pending profile data saved and cleared')
         } else {
           console.error('[AuthContext] Pending profile retry failed:', error.message)
         }

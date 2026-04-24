@@ -14,9 +14,6 @@ function isUnder18(dob, eventYear) {
   if (!dob) return false
   const cutoff = new Date(`${eventYear}-07-01`)
   const birth = new Date(dob)
-  const age = cutoff.getFullYear() - birth.getFullYear()
-    - (cutoff < new Date(birth.getFullYear() + 18, birth.getMonth(), birth.getDate()) ? 0 : 0)
-  // simple calculation
   const eighteenth = new Date(birth)
   eighteenth.setFullYear(eighteenth.getFullYear() + 18)
   return eighteenth > cutoff
@@ -63,7 +60,7 @@ function ChecklistItem({ status, label, children }) {
 function CoCPanel({ userId, eventYear, content, onSigned }) {
   const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   async function sign() {
     if (!agreed) return
@@ -74,23 +71,20 @@ function CoCPanel({ userId, eventYear, content, onSigned }) {
       .eq('user_id', userId)
       .eq('event_year', eventYear)
       .maybeSingle()
-    if (checkErr) { setSaving(false); setErr(checkErr.message); return }
+    if (checkErr) { setSaving(false); setError(checkErr.message); return }
     const signedAt = new Date().toISOString()
-    let error
+    let saveError
     if (existing) {
-      console.log('[CoC] Updating existing signature:', { user_id: userId, event_year: eventYear })
-      ;({ error } = await supabase.from('code_of_conduct_signatures')
+      ;({ error: saveError } = await supabase.from('code_of_conduct_signatures')
         .update({ signed_at: signedAt })
         .eq('user_id', userId)
         .eq('event_year', eventYear))
     } else {
-      const insertPayload = { user_id: userId, event_year: eventYear, signed_at: signedAt }
-      console.log('[CoC] Inserting new signature:', insertPayload)
-      ;({ error } = await supabase.from('code_of_conduct_signatures')
-        .insert(insertPayload))
+      ;({ error: saveError } = await supabase.from('code_of_conduct_signatures')
+        .insert({ user_id: userId, event_year: eventYear, signed_at: signedAt }))
     }
     setSaving(false)
-    if (error) { setErr(error.message); return }
+    if (saveError) { setError(saveError.message); return }
     onSigned()
   }
 
@@ -103,7 +97,7 @@ function CoCPanel({ userId, eventYear, content, onSigned }) {
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
         <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">I have read and agree to the ALSA Code of Conduct</span>
       </label>
-      {err && <p className="text-red-400 text-xs mb-2">{err}</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
       <button
         onClick={sign}
         disabled={!agreed || saving}
@@ -123,13 +117,13 @@ function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted 
   const [parentEmail, setParentEmail] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   async function submit() {
-    if (!parentName.trim() || !parentPhone.trim()) { setErr('Parent/Guardian name and phone are required.'); return }
-    if (!agreed) { setErr('Guardian consent is required.'); return }
+    if (!parentName.trim() || !parentPhone.trim()) { setError('Parent/Guardian name and phone are required.'); return }
+    if (!agreed) { setError('Guardian consent is required.'); return }
     setSaving(true)
-    const { error } = await supabase.from('under18_submissions').upsert({
+    const { error: submitError } = await supabase.from('under18_submissions').upsert({
       user_id: userId,
       event_year: eventYear,
       parent_name: parentName.trim(),
@@ -139,7 +133,7 @@ function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted 
       submitted_at: new Date().toISOString(),
     }, { onConflict: 'user_id,event_year' })
     setSaving(false)
-    if (error) { setErr(error.message); return }
+    if (submitError) { setError(submitError.message); return }
     onSubmitted()
   }
 
@@ -180,7 +174,7 @@ function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted 
           </span>
         </label>
       </div>
-      {err && <p className="text-red-400 text-xs mb-2">{err}</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
       <button
         onClick={submit}
         disabled={saving}
@@ -196,19 +190,19 @@ function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted 
 function MediaReleasePanel({ userId, eventYear, formContent, onSubmitted }) {
   const [consents, setConsents] = useState(null) // null | true | false
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   async function submit() {
-    if (consents === null) { setErr('Please select an option.'); return }
+    if (consents === null) { setError('Please select an option.'); return }
     setSaving(true)
-    const { error } = await supabase.from('media_release_submissions').upsert({
+    const { error: submitError } = await supabase.from('media_release_submissions').upsert({
       user_id: userId,
       event_year: eventYear,
       consents,
       submitted_at: new Date().toISOString(),
     }, { onConflict: 'user_id,event_year' })
     setSaving(false)
-    if (error) { setErr(error.message); return }
+    if (submitError) { setError(submitError.message); return }
     onSubmitted(consents)
   }
 
@@ -229,7 +223,7 @@ function MediaReleasePanel({ userId, eventYear, formContent, onSubmitted }) {
           <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">I do not consent to my image being used</span>
         </label>
       </div>
-      {err && <p className="text-red-400 text-xs mb-2">{err}</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
       <button
         onClick={submit}
         disabled={saving || consents === null}
@@ -247,7 +241,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   const partnerId = record
     ? (record.player1_id === userId ? record.player2_id : record.player1_id)
@@ -269,7 +263,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   }
 
   async function invite(pid) {
-    setSaving(true); setErr('')
+    setSaving(true); setError('')
     try {
       const { record: rec } = await apiFetch('/api/player/doubles', {
         method: 'POST',
@@ -278,7 +272,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       onUpdate(rec, { [pid]: results.find(r => r.id === pid) })
       setSearch(''); setResults([])
     } catch (err) {
-      setErr(err.message)
+      setError(err.message)
     } finally {
       setSaving(false)
     }
@@ -316,7 +310,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
             {record.confirmed ? 'Confirmed' : isInitiator ? 'Pending their confirmation' : 'Pending your confirmation'}
           </span>
         </div>
-        {err && <p className="text-red-400 text-xs mb-2">{err}</p>}
+        {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
         {isInitiator && (
           <button onClick={changePartner} disabled={saving}
             className="text-xs text-[#e5e5e5]/40 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
@@ -363,7 +357,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       {search.trim().length >= 2 && !searching && results.length === 0 && (
         <p className="text-[#e5e5e5]/30 text-xs">No available doubles players found for "{search}"</p>
       )}
-      {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
+      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
     </div>
   )
 }
@@ -375,7 +369,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   const isCreator = !record || record.player1_id === userId
   const filledSlots = record ? [record.player2_id, record.player3_id].filter(Boolean).length : 0
@@ -400,7 +394,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   }
 
   async function inviteToSlot(slot, pid) {
-    setSaving(true); setErr('')
+    setSaving(true); setError('')
     const partnerProfile = results.find(r => r.id === pid)
     try {
       const { record: rec } = await apiFetch('/api/player/triples', {
@@ -414,7 +408,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       onUpdate(rec, partnerProfile ? { [pid]: partnerProfile } : {})
       setSearch(''); setResults([]); setSearchSlot(null)
     } catch (err) {
-      setErr(err.message)
+      setError(err.message)
     } finally {
       setSaving(false)
     }
@@ -429,7 +423,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       })
       onUpdate(rec, {})
     } catch (err) {
-      setErr(err.message)
+      setError(err.message)
     } finally {
       setSaving(false)
     }
@@ -565,7 +559,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       {searchSlot && search.trim().length >= 2 && !searching && results.length === 0 && (
         <p className="text-[#e5e5e5]/30 text-xs mt-2">No available triples players found</p>
       )}
-      {err && <p className="text-red-400 text-xs mt-2">{err}</p>}
+      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
       {record && isCreator && (
         <button onClick={disbandTeam} disabled={saving}
           className="mt-3 text-xs text-[#e5e5e5]/25 hover:text-red-400 transition-colors">

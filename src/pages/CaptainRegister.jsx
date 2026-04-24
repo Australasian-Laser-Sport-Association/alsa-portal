@@ -22,7 +22,7 @@ export default function CaptainRegister() {
   const [event, setEvent] = useState(null)
   const [initialLoading, setInitialLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
   const [copyDone, setCopyDone] = useState(false)
 
   // Form fields
@@ -54,34 +54,34 @@ export default function CaptainRegister() {
   function handleLogoSelect(e) {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) { setErr('Logo must be under 2MB.'); return }
+    if (file.size > 2 * 1024 * 1024) { setError('Logo must be under 2MB.'); return }
     setLogoFile(file)
     setLogoPreview(URL.createObjectURL(file))
-    setErr('')
+    setError('')
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!teamName.trim()) { setErr('Team name is required.'); return }
-    if (!teamState) { setErr('Please select your home state.'); return }
-    if (!agreed) { setErr('You must agree to the captain responsibilities.'); return }
+    if (!teamName.trim()) { setError('Team name is required.'); return }
+    if (!teamState) { setError('Please select your home state.'); return }
+    if (!agreed) { setError('You must agree to the captain responsibilities.'); return }
 
     setSaving(true)
-    setErr('')
+    setError('')
 
     let logo_url = null
     if (logoFile) {
       const ext = logoFile.name.split('.').pop()
       const path = `${user.id}/${Date.now()}.${ext}`
       const { data: up, error: upErr } = await supabase.storage.from('team-logos').upload(path, logoFile, { upsert: true })
-      if (upErr) { setErr(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
+      if (upErr) { setError(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
       const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
       logo_url = urlData.publicUrl
     }
 
     const invite_code = generateInviteCode()
 
-    const { data: newTeam, error } = await supabase.from('teams').insert({
+    const { data: newTeam, error: insertError } = await supabase.from('teams').insert({
       name: teamName.trim(),
       captain_id: user.id,
       status: 'pending',
@@ -93,7 +93,7 @@ export default function CaptainRegister() {
       invite_active: true,
     }).select().single()
 
-    if (error) { setErr(error.message); setSaving(false); return }
+    if (insertError) { setError(insertError.message); setSaving(false); return }
 
     // Register the captain as a player on their own team
     await supabase.from('zltac_registrations').upsert({
@@ -299,7 +299,7 @@ export default function CaptainRegister() {
             </label>
           </div>
 
-          {err && <p className="text-red-400 text-sm">{err}</p>}
+          {error && <p className="text-red-400 text-sm">{error}</p>}
 
           <button
             type="submit"

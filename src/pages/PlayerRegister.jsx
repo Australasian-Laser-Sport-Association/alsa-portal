@@ -13,7 +13,6 @@ export default function PlayerRegister() {
 
   const [initialLoading, setInitialLoading] = useState(true)
   const [event, setEvent] = useState(null)
-  const [profile, setProfile] = useState(null)
   const [existingReg, setExistingReg] = useState(null)
 
   // Form fields (pre-filled from profile)
@@ -26,7 +25,7 @@ export default function PlayerRegister() {
   const [emergencyPhone, setEmergencyPhone] = useState('')
 
   const [submitting, setSubmitting] = useState(false)
-  const [err, setErr] = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
@@ -39,7 +38,6 @@ export default function PlayerRegister() {
         supabase.from('zltac_registrations').select('id, team_id').eq('user_id', user.id).eq('year', parseInt(year)).maybeSingle(),
       ])
       setEvent(ev)
-      setProfile(prof)
       setExistingReg(reg)
       if (prof) {
         setFirstName(prof.first_name ?? '')
@@ -55,11 +53,11 @@ export default function PlayerRegister() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!firstName.trim() || !lastName.trim()) { setErr('Full name is required.'); return }
-    if (!dob) { setErr('Date of birth is required.'); return }
+    if (!firstName.trim() || !lastName.trim()) { setError('Full name is required.'); return }
+    if (!dob) { setError('Date of birth is required.'); return }
 
     setSubmitting(true)
-    setErr('')
+    setError('')
 
     // Trigger already created the profile row — just update it with form data
     const { error: profErr } = await supabase
@@ -78,7 +76,7 @@ export default function PlayerRegister() {
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
     }
 
-    const { error } = await supabase.from('zltac_registrations').upsert({
+    const { error: regError } = await supabase.from('zltac_registrations').upsert({
       user_id: user.id,
       year: parseInt(year),
       team_id: null,
@@ -90,7 +88,7 @@ export default function PlayerRegister() {
     }, { onConflict: 'user_id,year' })
 
     setSubmitting(false)
-    if (error) { setErr(error.message); return }
+    if (regError) { setError(regError.message); return }
     navigate(`/player-hub`)
   }
 
@@ -246,7 +244,7 @@ export default function PlayerRegister() {
             </div>
           </div>
 
-          {err && <p className="text-red-400 text-sm">{err}</p>}
+          {error && <p className="text-red-400 text-sm">{error}</p>}
 
           <button
             type="submit"

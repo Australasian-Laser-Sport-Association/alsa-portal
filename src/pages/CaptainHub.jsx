@@ -193,7 +193,6 @@ export default function CaptainHub() {
 
   async function addPlayer(profile) {
     if (!team || !event?.year) return
-    console.log('addPlayer: captain team.id =', team.id, '| player user_id =', profile.id, '| year =', event.year)
 
     try {
       await apiFetch('/api/captain', {

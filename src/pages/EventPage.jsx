@@ -198,7 +198,6 @@ function SideEventPanel({ sideEvent, entries }) {
 
 // ── Registered Teams Section ────────────────────────────────────────────────
 function RegisteredTeamsSection({ teams, regs }) {
-  const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]))
   const regsByTeam = {}
   regs.forEach(r => {
     if (r.team_id) {
@@ -396,7 +395,6 @@ export default function EventPage() {
           : Promise.resolve({ data: null }),
       ])
       setEvent(ev)
-      const role = profileResult?.data?.role ?? 'player'
       const admin = (profileResult?.data?.roles ?? []).some(r => ['alsa_committee', 'zltac_committee', 'superadmin'].includes(r))
       setIsAdmin(admin)
 
