@@ -2,20 +2,23 @@ import supabaseAdmin from '../_lib/supabase.js'
 import { verifyUser } from '../_lib/auth.js'
 
 async function addPartnerSideEvent(partnerId, eventYear) {
-  const { data: reg } = await supabaseAdmin
+  const { data: reg, error: regErr } = await supabaseAdmin
     .from('zltac_registrations')
     .select('side_events')
     .eq('user_id', partnerId)
     .eq('year', eventYear)
-    .single()
+    .maybeSingle()
+  if (regErr) return { error: regErr }
   if (reg) {
     const newSlugs = [...new Set([...(reg.side_events ?? []), 'triples'])]
-    await supabaseAdmin
+    const { error: updErr } = await supabaseAdmin
       .from('zltac_registrations')
       .update({ side_events: newSlugs })
       .eq('user_id', partnerId)
       .eq('year', eventYear)
+    if (updErr) return { error: updErr }
   }
+  return { error: null }
 }
 
 export default async function handler(req, res) {
@@ -32,21 +35,25 @@ export default async function handler(req, res) {
     const { eventYear, term, existingPlayer2Id, existingPlayer3Id } = body
     if (!eventYear || !term) return res.status(400).json({ error: 'eventYear and term are required' })
 
-    const { data: eligible } = await supabaseAdmin
+    const { data: eligible, error: eligErr } = await supabaseAdmin
       .from('zltac_registrations')
       .select('user_id')
       .eq('year', eventYear)
       .neq('user_id', user.id)
+
+    if (eligErr) return res.status(500).json({ error: eligErr.message })
 
     let eligibleIds = (eligible ?? []).map(r => r.user_id)
       .filter(id => id !== existingPlayer2Id && id !== existingPlayer3Id)
 
     if (!eligibleIds.length) return res.json({ results: [] })
 
-    const { data: existingTriples } = await supabaseAdmin
+    const { data: existingTriples, error: triplesErr } = await supabaseAdmin
       .from('triples_teams')
       .select('player1_id, player2_id, player3_id')
       .eq('event_year', eventYear)
+
+    if (triplesErr) return res.status(500).json({ error: triplesErr.message })
 
     const takenIds = new Set()
     existingTriples?.forEach(t => {
@@ -58,20 +65,23 @@ export default async function handler(req, res) {
     const availableIds = eligibleIds.filter(id => !takenIds.has(id))
     if (!availableIds.length) return res.json({ results: [] })
 
-    const { data: profs } = await supabaseAdmin
+    const { data: profs, error: profsErr } = await supabaseAdmin
       .from('profiles')
       .select('id, first_name, last_name, alias, state')
       .in('id', availableIds)
       .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,alias.ilike.%${term}%`)
 
+    if (profsErr) return res.status(500).json({ error: profsErr.message })
     if (!profs?.length) return res.json({ results: [] })
 
     const profIds = profs.map(p => p.id)
-    const { data: teamRegs } = await supabaseAdmin
+    const { data: teamRegs, error: teamRegsErr } = await supabaseAdmin
       .from('zltac_registrations')
       .select('user_id, teams(name)')
       .eq('year', eventYear)
       .in('user_id', profIds)
+
+    if (teamRegsErr) return res.status(500).json({ error: teamRegsErr.message })
 
     const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
     return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null })) })
@@ -96,7 +106,8 @@ export default async function handler(req, res) {
       .single()
 
     if (insertErr) return res.status(500).json({ error: insertErr.message })
-    await addPartnerSideEvent(partnerId, eventYear)
+    const { error: sideErr } = await addPartnerSideEvent(partnerId, eventYear)
+    if (sideErr) return res.status(500).json({ error: sideErr.message })
     return res.json({ record })
   }
 
@@ -105,7 +116,8 @@ export default async function handler(req, res) {
     const { id, slot, partnerId, eventYear } = body
     if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })
 
-    const { data: existing } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).single()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).maybeSingle()
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
 
     const { data: record, error: updateErr } = await supabaseAdmin
@@ -116,7 +128,8 @@ export default async function handler(req, res) {
       .single()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
-    await addPartnerSideEvent(partnerId, eventYear)
+    const { error: sideErr } = await addPartnerSideEvent(partnerId, eventYear)
+    if (sideErr) return res.status(500).json({ error: sideErr.message })
     return res.json({ record })
   }
 
@@ -125,7 +138,8 @@ export default async function handler(req, res) {
     const { id, mySlot } = body
     if (!id || !mySlot) return res.status(400).json({ error: 'id and mySlot are required' })
 
-    const { data: existing } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).single()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).maybeSingle()
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
 
     const myField = `player${mySlot}_confirmed`
@@ -154,7 +168,8 @@ export default async function handler(req, res) {
     const { id, slot } = body
     if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
 
-    const { data: existing } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).single()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).maybeSingle()
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
 
     const { data: record, error: updateErr } = await supabaseAdmin
@@ -173,12 +188,13 @@ export default async function handler(req, res) {
     const { id } = body
     if (!id) return res.status(400).json({ error: 'id is required' })
 
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingErr } = await supabaseAdmin
       .from('triples_teams')
       .select('player1_id, player2_id, player3_id')
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
 
     const isParty = [existing.player1_id, existing.player2_id, existing.player3_id].includes(user.id)

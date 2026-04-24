@@ -1,9 +1,9 @@
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifyCommittee } from '../_lib/auth.js'
+import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
 
 export default async function handler(req, res) {
   const { error } = await verifyCommittee(req)
-  if (error) return res.status(error === 'Unauthorized' ? 401 : 403).json({ error })
+  if (error) return res.status(statusForAuthError(error)).json({ error })
 
   if (req.method === 'GET') {
     const year = parseInt(req.query.year)

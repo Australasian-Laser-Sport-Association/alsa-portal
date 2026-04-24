@@ -12,11 +12,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'score and passed are required' })
   }
 
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingErr } = await supabaseAdmin
     .from('referee_test_results')
     .select('id')
     .eq('user_id', user.id)
     .maybeSingle()
+
+  if (existingErr) return res.status(500).json({ error: existingErr.message })
 
   const payload = { score, passed, taken_at: taken_at ?? new Date().toISOString() }
 

@@ -10,7 +10,8 @@ export function useCurrentEvent() {
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => setEvent(data ?? null))
+      .then(({ data, error }) => setEvent(error ? null : (data ?? null)))
+      .catch(() => setEvent(null))
   }, [])
   const eventName = event ? `${event.name} ${event.year}` : 'ZLTAC'
   return { event, eventName, loading: event === undefined }

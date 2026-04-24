@@ -1,5 +1,5 @@
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifyCommittee, verifySuperAdmin } from '../_lib/auth.js'
+import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 
 export default async function handler(req, res) {
   const { id } = req.query
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (id) {
     if (req.method === 'GET') {
       const { error } = await verifyCommittee(req)
-      if (error) return res.status(error === 'Unauthorized' ? 401 : 403).json({ error })
+      if (error) return res.status(statusForAuthError(error)).json({ error })
 
       const [
         { data: registrations, error: e1 },
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'PATCH') {
       const { error } = await verifyCommittee(req)
-      if (error) return res.status(error === 'Unauthorized' ? 401 : 403).json({ error })
+      if (error) return res.status(statusForAuthError(error)).json({ error })
 
       const body = req.body ?? {}
       let update = {}
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       const { error } = await verifySuperAdmin(req)
-      if (error) return res.status(error === 'Unauthorized' ? 401 : 403).json({ error })
+      if (error) return res.status(statusForAuthError(error)).json({ error })
 
       const { error: delErr } = await supabaseAdmin.from('profiles').delete().eq('id', id)
       if (delErr) return res.status(500).json({ error: delErr.message })
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
 
   // Bulk GET — no ?id
   const { error } = await verifyCommittee(req)
-  if (error) return res.status(error === 'Unauthorized' ? 401 : 403).json({ error })
+  if (error) return res.status(statusForAuthError(error)).json({ error })
 
   if (req.method === 'GET') {
     const [

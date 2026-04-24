@@ -13,7 +13,8 @@ export default async function handler(req, res) {
     const { playerId, teamId, year } = body
     if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
 
-    const { data: team } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).single()
+    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()
+    if (teamErr) return res.status(500).json({ error: teamErr.message })
     if (!team || team.captain_id !== user.id) {
       return res.status(403).json({ error: 'Only the team captain can add players' })
     }
@@ -36,11 +37,11 @@ export default async function handler(req, res) {
     }
 
     const [
-      { data: coc_sigs },
-      { data: payments },
-      { data: ref_results },
-      { data: u18_subs },
-      { data: media_subs },
+      { data: coc_sigs, error: e1 },
+      { data: payments, error: e2 },
+      { data: ref_results, error: e3 },
+      { data: u18_subs, error: e4 },
+      { data: media_subs, error: e5 },
     ] = await Promise.all([
       supabaseAdmin.from('code_of_conduct_signatures').select('user_id').in('user_id', playerIds),
       supabaseAdmin.from('payments').select('user_id, status').in('user_id', playerIds).eq('event_year', eventYear),
@@ -48,6 +49,9 @@ export default async function handler(req, res) {
       supabaseAdmin.from('under18_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
       supabaseAdmin.from('media_release_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
     ])
+
+    const errs = [e1, e2, e3, e4, e5].filter(Boolean)
+    if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
 
     return res.json({
       coc_sigs: coc_sigs ?? [],

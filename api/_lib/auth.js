@@ -2,6 +2,12 @@ import supabaseAdmin from './supabase.js'
 
 const COMMITTEE_ROLES = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor']
 
+export function statusForAuthError(error) {
+  if (error === 'Unauthorized') return 401
+  if (error === 'Forbidden') return 403
+  return 500
+}
+
 export async function verifyUser(req) {
   const token = req.headers.authorization?.replace('Bearer ', '')
   if (!token) return { user: null, error: 'Unauthorized' }
@@ -13,11 +19,12 @@ export async function verifyUser(req) {
 export async function verifyCommittee(req) {
   const { user, error } = await verifyUser(req)
   if (error) return { user: null, roles: null, error }
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileErr } = await supabaseAdmin
     .from('profiles')
     .select('roles')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
+  if (profileErr) return { user: null, roles: null, error: 'Internal error' }
   const roles = profile?.roles ?? []
   if (!roles.some(r => COMMITTEE_ROLES.includes(r))) {
     return { user: null, roles: null, error: 'Forbidden' }
