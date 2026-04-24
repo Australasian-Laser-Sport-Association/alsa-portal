@@ -46,13 +46,24 @@ function PreviewOverlay({ allQuestions, settings, onClose }) {
     setPhase('running')
   }, []) // eslint-disable-line
 
+  function finishTest() {
+    clearTimeout(timerRef.current)
+    setPhase('results')
+  }
+
+  // Mirror the RefereeTest pattern: ref to the latest finishTest so the
+  // timer effect can call it without taking finishTest as a dep (previously
+  // masked with eslint-disable, which hid an access-before-declared error).
+  const finishTestRef = useRef(finishTest)
+  useEffect(() => { finishTestRef.current = finishTest })
+
   // Timer
   useEffect(() => {
     if (phase !== 'running' || timeLeft === null) return
-    if (timeLeft <= 0) { finishTest(); return }
+    if (timeLeft <= 0) { finishTestRef.current(); return }
     timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000)
     return () => clearTimeout(timerRef.current)
-  }, [timeLeft, phase]) // eslint-disable-line
+  }, [timeLeft, phase])
 
   function selectAnswer(opt) {
     if (answered) return
@@ -67,11 +78,6 @@ function PreviewOverlay({ allQuestions, settings, onClose }) {
     setIdx(i => i + 1)
     setSelected(null)
     setAnswered(false)
-  }
-
-  function finishTest() {
-    clearTimeout(timerRef.current)
-    setPhase('results')
   }
 
   function restart() {

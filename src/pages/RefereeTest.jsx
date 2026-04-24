@@ -84,29 +84,6 @@ export default function RefereeTest() {
     setPhase('running')
   }
 
-  // Timer
-  useEffect(() => {
-    if (phase !== 'running' || timeLeft === null) return
-    if (timeLeft <= 0) { finishTest(); return }
-    timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000)
-    return () => clearTimeout(timerRef.current)
-  }, [timeLeft, phase]) // eslint-disable-line
-
-  function selectAnswer(opt) {
-    if (answered) return
-    const q = questions[idx]
-    setSelected(opt)
-    setAnswered(true)
-    setAnswers(prev => [...prev, { q, selected: opt, isCorrect: opt === q.correct_answer }])
-  }
-
-  function next() {
-    if (idx + 1 >= questions.length) { finishTest(); return }
-    setIdx(i => i + 1)
-    setSelected(null)
-    setAnswered(false)
-  }
-
   async function finishTest() {
     clearTimeout(timerRef.current)
     setPhase('results')
@@ -128,6 +105,38 @@ export default function RefereeTest() {
       setSaving(false)
       setExistingResult({ passed, score: pct })
     }
+  }
+
+  // Ref tracks the latest finishTest so the timer effect invokes the current
+  // closure (with up-to-date answers) at fire time. Adding finishTest to the
+  // timer's deps would restart the countdown on every recorded answer; the
+  // previous code masked this with an eslint-disable and relied on
+  // per-tick re-runs to refresh the closure — brittle under React Compiler
+  // or any future deps change.
+  const finishTestRef = useRef(finishTest)
+  useEffect(() => { finishTestRef.current = finishTest })
+
+  // Timer
+  useEffect(() => {
+    if (phase !== 'running' || timeLeft === null) return
+    if (timeLeft <= 0) { finishTestRef.current(); return }
+    timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000)
+    return () => clearTimeout(timerRef.current)
+  }, [timeLeft, phase])
+
+  function selectAnswer(opt) {
+    if (answered) return
+    const q = questions[idx]
+    setSelected(opt)
+    setAnswered(true)
+    setAnswers(prev => [...prev, { q, selected: opt, isCorrect: opt === q.correct_answer }])
+  }
+
+  function next() {
+    if (idx + 1 >= questions.length) { finishTest(); return }
+    setIdx(i => i + 1)
+    setSelected(null)
+    setAnswered(false)
   }
 
   function fmtTime(s) {
