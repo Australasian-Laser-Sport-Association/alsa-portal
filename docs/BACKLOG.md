@@ -65,6 +65,10 @@
 * **P2 — Code-quality sweep: unused vars, stale eslint-disables, ESLint config gaps.** Ten `no-unused-vars` errors across `EventPage.jsx`, `Home.jsx`, `PlayerDashboard.jsx`, `PlayerHub.jsx`, `PlayerRegister.jsx`, `RefereeTest.jsx`, `admin/AdminEvent.jsx`, `admin/AdminHome.jsx` — delete or justify each. Two stale `// eslint-disable` directives in `admin/AdminRefereeTest.jsx` and `admin/AdminTeams.jsx` that no longer suppress anything. ESLint config is missing Node globals: `api/_lib/supabase.js` flags `process is not defined`; `vite.config.js` flags `__dirname is not defined` — add an override with `env: node` or the equivalent `globals` entry for those paths. **Eyeball before deleting:** the unused `role`/`user` destructures at `src/pages/admin/AdminEvent.jsx:98-99` and `src/pages/admin/AdminHome.jsx:35` may be clues about incomplete admin auth-guard code, not dead variables. Reference: lint audit run 2026-04-25 against `86a6a64`.
 * **P3 — Restore Fast Refresh for `AuthContext.jsx`.** ESLint flags `src/context/AuthContext.jsx:96` with `react-refresh/only-export-components` — a non-component export is co-located with `AuthProvider`, which breaks HMR for the file (every edit triggers a full remount). Move the non-component export into `src/lib/`.
 
+### Governance
+
+* **P3 — Committee role differentiation.** `AdminEvent` has sensitive actions (`handleArchiveAndCreate`, status transitions, event-config writes) with no differentiated authorization — any committee member can do any of them. Server-side `verifyCommittee()` in `api/_lib/auth.js` treats all four committee roles (`superadmin`, `alsa_committee`, `zltac_committee`, `advisor`) equivalently; only the `DELETE` in `api/admin/users.js` uses the stricter `verifySuperAdmin()`. No policy currently exists for "only superadmin can archive an event," "advisor is read-only," or similar. This is a real committee decision + an ADR + API route changes, not a cleanup — surface for committee discussion when the portal reaches review. Context: investigated at commit `1f37874` while removing the dead `role` destructure that anticipated this work.
+
 
 Community \& Profiles
 ===
