@@ -6,7 +6,7 @@ export function useCurrentEvent() {
   useEffect(() => {
     supabase
       .from('zltac_events')
-      .select('id, name, year, location, logo_url, reg_open_date, reg_close_date')
+      .select('id, name, year, location, logo_url, reg_open_date, reg_close_date, start_date, end_date')
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
