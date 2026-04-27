@@ -3,39 +3,6 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
-async function ensureProfile(user) {
-  const { id: userId } = user
-
-  // Guarantee a profile row exists with base player role
-  await supabase
-    .from('profiles')
-    .upsert({ id: userId, roles: ['player'] }, { onConflict: 'id', ignoreDuplicates: true })
-
-  // Retry any pending profile data from registration
-  const pendingRaw = localStorage.getItem('pending_profile')
-  if (pendingRaw) {
-    try {
-      const pending = JSON.parse(pendingRaw)
-      if (pending.userId === userId) {
-        if (import.meta.env.DEV) console.log('[AuthContext] Retrying pending profile save for', userId)
-        const { userId: _uid, ...profileData } = pending
-        const { error } = await supabase
-          .from('profiles')
-          .upsert(profileData, { onConflict: 'id' })
-        if (!error) {
-          localStorage.removeItem('pending_profile')
-          if (import.meta.env.DEV) console.log('[AuthContext] Pending profile data saved and cleared')
-        } else {
-          console.error('[AuthContext] Pending profile retry failed:', error.message)
-        }
-      }
-    } catch (e) {
-      console.error('[AuthContext] Could not parse pending_profile from localStorage:', e)
-      localStorage.removeItem('pending_profile')
-    }
-  }
-}
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -54,7 +21,6 @@ export function AuthProvider({ children }) {
       setUser(u)
       setLoading(false)
       if (u) {
-        ensureProfile(u)
         fetchProfile(u.id)
       } else {
         setProfileLoading(false)
@@ -65,7 +31,6 @@ export function AuthProvider({ children }) {
       const u = session?.user ?? null
       setUser(u)
       if (event === 'SIGNED_IN' && u) {
-        ensureProfile(u)
         fetchProfile(u.id)
       }
       if (event === 'SIGNED_OUT') {
