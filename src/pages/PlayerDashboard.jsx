@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../lib/dateFormat'
-import { COMMITTEE_ROLES, ROLE_ORDER } from '../lib/roles'
+import { isCommittee, ROLE_ORDER } from '../lib/roles'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -331,8 +331,8 @@ export default function PlayerDashboard() {
   const alsaId = `ALSA #${user.id.split('-')[0].toUpperCase()}`
 
   const showPlayerHub = !!registration
-  const showTeamHub   = userRoles.includes('captain') || userRoles.some(r => ['alsa_committee', 'zltac_committee', 'superadmin'].includes(r))
-  const showAdminHub  = userRoles.some(r => COMMITTEE_ROLES.includes(r))
+  const showTeamHub   = userRoles.includes('captain') || isCommittee(profile)
+  const showAdminHub  = isCommittee(profile)
   const showAnyHub    = showPlayerHub || showTeamHub || showAdminHub
 
   return (

@@ -2,7 +2,7 @@
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
-import { COMMITTEE_ROLES, ROLE_ORDER } from '../../lib/roles'
+import { COMMITTEE_ROLES, ROLE_ORDER, isCommittee } from '../../lib/roles'
 
 const ALL_ROLES = ['player', 'captain', 'zltac_committee', 'alsa_committee', 'advisor', 'superadmin']
 
@@ -24,7 +24,7 @@ const AVATAR_COLORS = {
   player: 'bg-brand/20 text-brand',
 }
 
-function getRoles(u) { return u.roles?.length > 0 ? u.roles : [u.role || 'player'] }
+function getRoles(u) { return u.roles?.length > 0 ? u.roles : ['player'] }
 
 function avatarColor(roles) {
   for (const r of ROLE_ORDER) {
@@ -159,10 +159,13 @@ export default function AdminUsers() {
   const filtered = users.filter(u => {
     const name = `${u.first_name ?? ''} ${u.last_name ?? ''} ${u.alias ?? ''}`.toLowerCase()
     if (search && !name.includes(search.toLowerCase())) return false
-    if (filterRole !== 'all') {
-      if (filterRole === 'player') return true // everyone has player
-      if (filterRole === 'committee') return u._roles.some(r => ['alsa_committee', 'zltac_committee'].includes(r))
-      if (!u._roles.includes(filterRole)) return false
+    if (filterRole !== 'all' && filterRole !== 'player') {
+      // 'player' is implicit for every user — no role filter needed; fall through to state filter
+      if (filterRole === 'committee') {
+        if (!isCommittee(u)) return false
+      } else if (!u._roles.includes(filterRole)) {
+        return false
+      }
     }
     if (filterState !== 'all' && u.state !== filterState) return false
     return true
@@ -398,15 +401,26 @@ export default function AdminUsers() {
                 <p className="text-[10px] text-red-400/60 font-bold uppercase tracking-wider mb-3">Danger Zone</p>
                 {confirmDelete === selected.id ? (
                   <div>
-                    <p className="text-xs text-[#e5e5e5]/60 mb-3">Are you sure? This cannot be undone.</p>
+                    <p className="text-xs text-[#e5e5e5]/80 mb-2">
+                      Reset profile data for{' '}
+                      <span className="font-semibold text-white">
+                        {[selected.first_name, selected.last_name].filter(Boolean).join(' ') || 'this user'}
+                      </span>?
+                    </p>
+                    <p className="text-[11px] text-[#e5e5e5]/40 leading-relaxed mb-3">
+                      This clears their profile fields and resets their role to player. Their login account remains active. To permanently remove the account, use Delete account (coming soon).
+                    </p>
                     <div className="flex gap-2">
                       <button onClick={async () => {
-                        await apiFetch(`/api/admin/users?id=${selected.id}`, { method: 'DELETE' })
-                        setUsers(us => us.filter(u => u.id !== selected.id))
+                        await apiFetch(`/api/admin/users?id=${selected.id}`, {
+                          method: 'PATCH',
+                          body: JSON.stringify({ action: 'reset' }),
+                        })
                         setSelected(null)
                         setConfirmDelete(null)
+                        await loadUsers()
                       }} className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">
-                        Yes, Remove
+                        Yes, Reset
                       </button>
                       <button onClick={() => setConfirmDelete(null)} className="border border-line text-[#e5e5e5]/50 text-xs font-semibold px-4 py-2 rounded-lg hover:text-white transition-colors">
                         Cancel
@@ -415,7 +429,7 @@ export default function AdminUsers() {
                   </div>
                 ) : (
                   <button onClick={() => setConfirmDelete(selected.id)} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
-                    Remove from platform →
+                    Reset member data →
                   </button>
                 )}
               </div>

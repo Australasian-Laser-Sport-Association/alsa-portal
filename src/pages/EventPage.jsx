@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { formatDate } from '../lib/dateFormat'
+import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 
 function initials(name = '') {
@@ -391,12 +392,11 @@ export default function EventPage() {
           .eq('year', parseInt(year))
           .maybeSingle(),
         user
-          ? supabase.from('profiles').select('role').eq('id', user.id).single()
+          ? supabase.from('profiles').select('roles').eq('id', user.id).single()
           : Promise.resolve({ data: null }),
       ])
       setEvent(ev)
-      const admin = (profileResult?.data?.roles ?? []).some(r => ['alsa_committee', 'zltac_committee', 'superadmin'].includes(r))
-      setIsAdmin(admin)
+      setIsAdmin(isCommittee(profileResult?.data))
 
       // Load registration data for non-draft events
       if (ev && ev.status !== 'draft') {

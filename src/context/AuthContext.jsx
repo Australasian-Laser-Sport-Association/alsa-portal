@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { isCommittee } from '../lib/roles'
 
 const AuthContext = createContext(null)
 
@@ -46,7 +47,7 @@ export function AuthProvider({ children }) {
   }
 
   const userRoles = profile?.roles ?? ['player']
-  const isAdmin = userRoles.some(r => ['superadmin', 'zltac_committee', 'alsa_committee'].includes(r))
+  const isAdmin = isCommittee(profile)
   const isCaptain = userRoles.includes('captain')
   function hasRole(role) { return userRoles.includes(role) }
   function refreshProfile() { if (user) fetchProfile(user.id) }

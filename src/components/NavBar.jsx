@@ -2,7 +2,7 @@
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { COMMITTEE_ROLES } from '../lib/roles'
+import { isCommittee } from '../lib/roles'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -22,7 +22,7 @@ const HUB_PILLS = [
 ]
 
 export default function NavBar() {
-  const { user, signOut, userRoles } = useAuth()
+  const { user, signOut, userRoles, profile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -59,10 +59,10 @@ export default function NavBar() {
     setVisiblePills({
       player: false, // loaded async below
       team: userRoles.includes('captain'),
-      admin: userRoles.some(r => COMMITTEE_ROLES.includes(r)),
+      admin: isCommittee(profile),
     })
     loadPlayerPill()
-  }, [user, userRoles, activeEvent])
+  }, [user, userRoles, profile, activeEvent])
 
   async function handleSignOut() {
     await signOut()
