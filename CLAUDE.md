@@ -115,12 +115,8 @@ These rules exist to keep changes focused, reviewable, and to save tokens.
 
 ## Scope and Ownership
 
-This is the ALSA organisational portal. Tournament scheduling algorithms
-(cascade generators, round robin, finals brackets) live in a separate
-private project owned by Adam Crouch and are not part of this repo.
-If schedule generation features are requested in the future, the committee
-should discuss whether to license or integrate the external tool rather
-than rebuilding here.
+This is the ALSA organisational portal. Tournament scheduling and bracket
+generation are out of scope for this portal.
 
 ## Brand
 

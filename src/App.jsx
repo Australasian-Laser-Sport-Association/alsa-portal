@@ -15,9 +15,6 @@ import Register from './pages/Register'
 
 // Authenticated pages
 import PlayerDashboard from './pages/PlayerDashboard'
-import ZLTACRegister from './pages/ZLTACRegister'
-import CaptainPortal from './pages/CaptainPortal'
-import ResultsArchive from './pages/ResultsArchive'
 
 // Dynamic event registration flows
 import CaptainRegister from './pages/CaptainRegister'
@@ -38,7 +35,6 @@ import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminUnder18Form from './pages/admin/AdminUnder18Form'
 import AdminMediaRelease from './pages/admin/AdminMediaRelease'
-import AdminTeams from './pages/admin/AdminTeams'
 // ZLTAC history
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
@@ -81,9 +77,6 @@ function App() {
 
           {/* Authenticated */}
           <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
-          <Route path="/zltac/register" element={<ProtectedRoute><ZLTACRegister /></ProtectedRoute>} />
-          <Route path="/captain" element={<ProtectedRoute><CaptainPortal /></ProtectedRoute>} />
-          <Route path="/results" element={<ProtectedRoute><ResultsArchive /></ProtectedRoute>} />
 
           {/* Admin panel */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
@@ -96,7 +89,6 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="under18-form" element={<AdminUnder18Form />} />
             <Route path="media-release" element={<AdminMediaRelease />} />
-            <Route path="teams" element={<AdminTeams />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
