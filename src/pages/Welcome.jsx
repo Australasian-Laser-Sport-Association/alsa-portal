@@ -43,7 +43,7 @@ export default function Welcome() {
           <p className="text-brand text-sm font-bold uppercase tracking-[0.15em] mb-4">
             You're now a registered ALSA Portal Member.
           </p>
-          <p className="text-[#e5e5e5]/70 text-base leading-relaxed">
+          <p className="text-[#e5e5e5]/85 text-base leading-relaxed">
             Register for ZLTAC, complete required forms, manage your details, and handle event payments — all from the dashboard.
           </p>
         </div>
