@@ -22,6 +22,9 @@
 * **P2 — Enable "Prevent use of leaked passwords"** (Have I Been Pwned integration). Single highest-value auth hardening toggle Supabase offers. **Blocked by:** Pro plan upgrade ($25/month/project).
 * **P3 — Consider adding OAuth providers** (Google and/or Discord). Would reduce signup friction for some members. If pursued, write an ADR weighing the tradeoff (convenience vs. third-party dependency + additional privacy implications). Discord specifically could make sense given the laser tag community's existing use of Discord.
 * **P3 — Consider magic-link auth as an option alongside password.** Would reduce password-management burden for infrequent users.
+* **P3 — Custom expired-link page for email confirmation.** Supabase confirmation links expire after 24h. Currently the user lands on a generic Supabase error. Build a friendly `/auth/expired` route that explains "this link has expired" and offers a "send me a new one" button.
+* **P2 — Verify production Supabase auth settings match ADR-0003.** Several auth policy settings (password complexity, OTP length, secure password change, require current password on change, secure email change) live in the Supabase dashboard rather than in config.toml or migrations. Committee should open the production project → Authentication → Settings and confirm each matches the ADR. Document the verified state in the runbook.
+* **P3 — Show password complexity hints inline.** Production Supabase enforces letters + uppercase + digits server-side; the frontend doesn't show this upfront, so users hit a confusing rejection. Add a hint line and live validation feedback below the password field in Register.jsx.
 
 ### Database \& Backend
 
