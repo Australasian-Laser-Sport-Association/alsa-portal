@@ -22,8 +22,6 @@ export default function Register() {
     dateOfBirth: '',
     state: '',
     homeArena: '',
-    emergencyName: '',
-    emergencyPhone: '',
   })
 
   function set(field) {
@@ -39,6 +37,7 @@ export default function Register() {
       email: form.email,
       password: form.password,
       options: {
+        emailRedirectTo: `${window.location.origin}/dashboard`,
         data: {
           first_name: form.firstName,
           last_name: form.lastName,
@@ -47,8 +46,6 @@ export default function Register() {
           phone: form.phone || null,
           state: form.state || null,
           home_arena: form.homeArena || null,
-          emergency_contact_name: form.emergencyName || null,
-          emergency_contact_phone: form.emergencyPhone || null,
         },
       },
     })
@@ -140,21 +137,6 @@ export default function Register() {
               <div>
                 <label className={labelClass}>Home Arena</label>
                 <input type="text" value={form.homeArena} onChange={set('homeArena')} placeholder="e.g. Zone Laser Force Sydney" className={inputClass} />
-              </div>
-
-              {/* Emergency contact */}
-              <div className="pt-2 border-t border-line">
-                <p className="text-[#e5e5e5]/50 text-xs mb-3 uppercase tracking-wider">Emergency Contact</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Name</label>
-                    <input type="text" value={form.emergencyName} onChange={set('emergencyName')} placeholder="Contact name" className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Phone</label>
-                    <input type="tel" value={form.emergencyPhone} onChange={set('emergencyPhone')} placeholder="+61 400 000 000" className={inputClass} />
-                  </div>
-                </div>
               </div>
 
               {error && (
