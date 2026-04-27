@@ -15,6 +15,7 @@ import Register from './pages/Register'
 
 // Authenticated pages
 import PlayerDashboard from './pages/PlayerDashboard'
+import Welcome from './pages/Welcome'
 
 // Dynamic event registration flows
 import CaptainRegister from './pages/CaptainRegister'
@@ -77,6 +78,7 @@ function App() {
 
           {/* Authenticated */}
           <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
+          <Route path="/welcome" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
 
           {/* Admin panel */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>

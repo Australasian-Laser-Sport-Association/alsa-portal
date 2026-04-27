@@ -8,6 +8,12 @@ team management, referee testing, code of conduct forms, media release forms,
 under-18 forms, a lightweight CMS for public site content, and admin tooling
 for the committee.
 
+## Domain Concepts
+
+**Members:** Two tiers, only one currently implemented in code.
+- *ALSA Portal Member* — free, gained by signing up via the portal. Lets users register for ZLTAC events, complete required forms, manage profiles, and pay event fees. Currently represented as `profiles.roles=['player']`. The /welcome page acknowledges this status.
+- *ALSA Member* — paid annual membership of the incorporated association (Australasian Laser Sport Association Inc.). Confers voting rights at AGMs and other formal member privileges. Not yet implemented; ADR-0006 proposes `membership_status` and `membership_expires_at` fields on profiles to model this.
+
 ## Critical Patterns
 
 ### Supabase clients
