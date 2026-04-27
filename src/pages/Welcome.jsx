@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { Target, ClipboardList, User, CreditCard } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
@@ -43,9 +44,24 @@ export default function Welcome() {
           <p className="text-brand text-sm font-bold uppercase tracking-[0.15em] mb-4">
             You're now a registered ALSA Portal Member.
           </p>
-          <p className="text-[#e5e5e5]/85 text-base leading-relaxed">
-            Register for ZLTAC, complete required forms, manage your details, and handle event payments — all from the dashboard.
-          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 mb-10">
+            <div className="flex items-center gap-3">
+              <Target className="w-5 h-5 text-brand shrink-0" />
+              <span className="text-white/90 text-sm">Register for ZLTAC</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <ClipboardList className="w-5 h-5 text-brand shrink-0" />
+              <span className="text-white/90 text-sm">Complete required forms</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <User className="w-5 h-5 text-brand shrink-0" />
+              <span className="text-white/90 text-sm">Manage your details</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <CreditCard className="w-5 h-5 text-brand shrink-0" />
+              <span className="text-white/90 text-sm">Handle event payments</span>
+            </div>
+          </div>
         </div>
 
         {/* Cards */}
