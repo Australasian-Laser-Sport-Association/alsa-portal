@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function useCurrentEvent() {
-  const [event, setEvent] = useState(undefined) // undefined = loading, null = none
+  const [event, setEvent] = useState(null)
+  const [loading, setLoading] = useState(true)
   useEffect(() => {
     supabase
       .from('zltac_events')
@@ -10,9 +11,15 @@ export function useCurrentEvent() {
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
-      .then(({ data, error }) => setEvent(error ? null : (data ?? null)))
-      .catch(() => setEvent(null))
+      .then(({ data, error }) => {
+        setEvent(error ? null : (data ?? null))
+        setLoading(false)
+      })
+      .catch(() => {
+        setEvent(null)
+        setLoading(false)
+      })
   }, [])
   const eventName = event ? `${event.name} ${event.year}` : 'ZLTAC'
-  return { event, eventName, loading: event === undefined }
+  return { event, eventName, loading }
 }
