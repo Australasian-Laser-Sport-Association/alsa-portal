@@ -26,25 +26,25 @@ function shuffle(arr) {
 
 // ── Preview Overlay ──────────────────────────────────────────────────────────
 function PreviewOverlay({ allQuestions, settings, onClose }) {
-  const [phase, setPhase]       = useState('init') // init | empty | running | results
-  const [testQs, setTestQs]     = useState([])
+  const [phase, setPhase] = useState(() => {
+    return allQuestions.filter(q => q.active).length === 0 ? 'empty' : 'running'
+  }) // empty | running | results
+  const [testQs, setTestQs] = useState(() => {
+    const active = allQuestions.filter(q => q.active)
+    if (active.length === 0) return []
+    const count = Math.min(parseInt(settings.questions_per_test) || 20, active.length)
+    return shuffle(active).slice(0, count)
+  })
   const [idx, setIdx]           = useState(0)
   const [selected, setSelected] = useState(null)
   const [answered, setAnswered] = useState(false)
   const [answers, setAnswers]   = useState([])
-  const [timeLeft, setTimeLeft] = useState(null)
-  const timerRef = useRef(null)
-
-  // Initialise test
-  useEffect(() => {
-    const active = allQuestions.filter(q => q.active)
-    if (active.length === 0) { setPhase('empty'); return }
-    const count = Math.min(parseInt(settings.questions_per_test) || 20, active.length)
-    setTestQs(shuffle(active).slice(0, count))
+  const [timeLeft, setTimeLeft] = useState(() => {
+    if (allQuestions.filter(q => q.active).length === 0) return null
     const tl = parseInt(settings.time_limit)
-    if (tl > 0) setTimeLeft(tl * 60)
-    setPhase('running')
-  }, []) // eslint-disable-line
+    return tl > 0 ? tl * 60 : null
+  })
+  const timerRef = useRef(null)
 
   function finishTest() {
     clearTimeout(timerRef.current)

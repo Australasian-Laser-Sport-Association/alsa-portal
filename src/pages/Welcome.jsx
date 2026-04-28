@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Target, ClipboardList, User, CreditCard } from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../lib/useAuth'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
 function formatDateRange(start, end) {
