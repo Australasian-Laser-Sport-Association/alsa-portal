@@ -93,16 +93,33 @@ export default function AdminUnder18Form() {
 
   async function publishVersion() {
     setPublishing(true); setMsg(null)
-    await supabase.from('under18_form_versions').update({ is_published: false }).eq('is_published', true)
-    const { error } = await supabase.from('under18_form_versions').insert({
-      content: draftText,
-      is_published: true,
-      created_by: user.id,
-      version_note: `Published ${formatDate(new Date(), 'numeric')}`,
-    })
+    const { data: newRow, error: insertErr } = await supabase
+      .from('under18_form_versions')
+      .insert({
+        content: draftText,
+        is_published: true,
+        created_by: user.id,
+        version_note: `Published ${formatDate(new Date(), 'numeric')}`,
+      })
+      .select('id')
+      .single()
+    if (insertErr) {
+      setPublishing(false)
+      setMsg({ type: 'error', text: insertErr.message })
+      return
+    }
+    const { error: unpublishErr } = await supabase
+      .from('under18_form_versions')
+      .update({ is_published: false })
+      .eq('is_published', true)
+      .neq('id', newRow.id)
     setPublishing(false)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else { setMsg({ type: 'ok', text: 'Published. Players will see the updated form.' }); loadVersions() }
+    if (unpublishErr) {
+      setMsg({ type: 'error', text: `Published, but couldn't unpublish older rows: ${unpublishErr.message}` })
+      return
+    }
+    setMsg({ type: 'ok', text: 'Published. Players will see the updated form.' })
+    loadVersions()
   }
 
   return (

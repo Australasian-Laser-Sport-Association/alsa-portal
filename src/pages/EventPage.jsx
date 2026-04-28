@@ -385,75 +385,88 @@ export default function EventPage() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: ev }, profileResult] = await Promise.all([
-        supabase
-          .from('zltac_events')
-          .select('*')
-          .eq('year', parseInt(year))
-          .maybeSingle(),
-        user
-          ? supabase.from('profiles').select('roles').eq('id', user.id).single()
-          : Promise.resolve({ data: null }),
-      ])
-      setEvent(ev)
-      setIsAdmin(isCommittee(profileResult?.data))
-
-      // Load registration data for non-draft events
-      if (ev && ev.status !== 'draft') {
-        // Fetch teams and registrations without profile joins (RLS blocks other users' profiles)
-        const [{ data: teamsData }, { data: regsData }] = await Promise.all([
+      try {
+        const [{ data: ev }, profileResult] = await Promise.all([
           supabase
-            .from('teams')
-            .select('id, name, status, logo_url, captain_id')
-            .eq('status', 'approved')
-            .order('name'),
-          supabase
-            .from('zltac_registrations')
-            .select('id, user_id, team_id, side_events, status')
-            .eq('year', parseInt(year)),
+            .from('zltac_events')
+            .select('*')
+            .eq('year', parseInt(year))
+            .maybeSingle(),
+          user
+            ? supabase.from('profiles').select('roles').eq('id', user.id).single()
+            : Promise.resolve({ data: null }),
         ])
-        const rawTeams = teamsData ?? []
-        const rawRegs = regsData ?? []
+        setEvent(ev)
+        setIsAdmin(isCommittee(profileResult?.data))
 
-        // Collect all user IDs (players + captains) and fetch profiles via API
-        const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
-        const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
-        const allIds = [...new Set([...playerIds, ...captainIds])]
+        // Load registration data for non-draft events
+        if (ev && ev.status !== 'draft') {
+          // Fetch teams and registrations without profile joins (RLS blocks other users' profiles)
+          const [{ data: teamsData }, { data: regsData }] = await Promise.all([
+            supabase
+              .from('teams')
+              .select('id, name, status, logo_url, captain_id')
+              .eq('status', 'approved')
+              .order('name'),
+            supabase
+              .from('zltac_registrations')
+              .select('id, user_id, team_id, side_events, status')
+              .eq('year', parseInt(year)),
+          ])
+          const rawTeams = teamsData ?? []
+          const rawRegs = regsData ?? []
 
-        let profileMap = {}
-        if (allIds.length > 0) {
-          const { profiles: profileData } = await apiFetch('/api/profiles', {
-            method: 'POST',
-            body: JSON.stringify({ ids: allIds }),
-          })
-          profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
+          // Collect all user IDs (players + captains) and fetch profiles via API
+          const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
+          const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
+          const allIds = [...new Set([...playerIds, ...captainIds])]
+
+          let profileMap = {}
+          if (allIds.length > 0) {
+            const { profiles: profileData } = await apiFetch('/api/profiles', {
+              method: 'POST',
+              body: JSON.stringify({ ids: allIds }),
+            })
+            profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
+          }
+
+          setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
+          setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
+
+          // /api/event (confirmed doubles/triples) is non-critical for page render —
+          // if it 500s, fall back to empty arrays so the rest of the page still renders.
+          let doublesData = []
+          let triplesData = []
+          try {
+            const result = await apiFetch(`/api/event?year=${parseInt(year)}`)
+            doublesData = result.doubles ?? []
+            triplesData = result.triples ?? []
+          } catch (err) {
+            console.error('EventPage: /api/event failed, falling back to empty doubles/triples:', err)
+          }
+          setDoublesPairs(doublesData)
+          setTriplesTeams(triplesData)
+
+          // Collect all pair/team player IDs and fetch any missing profiles
+          const pairIds = new Set()
+          doublesData.forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
+          triplesData.forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
+          const missingIds = [...pairIds].filter(id => !profileMap[id])
+          let fullPairMap = { ...profileMap }
+          if (missingIds.length > 0) {
+            const { profiles: extraProfs } = await apiFetch('/api/profiles', {
+              method: 'POST',
+              body: JSON.stringify({ ids: missingIds }),
+            })
+            ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
+          }
+          setPairProfileMap(fullPairMap)
         }
-
-        setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
-        setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
-
-        // Fetch confirmed doubles/triples for public display
-        const { doubles: doublesData, triples: triplesData } = await apiFetch(`/api/event?year=${parseInt(year)}`)
-        setDoublesPairs(doublesData ?? [])
-        setTriplesTeams(triplesData ?? [])
-
-        // Collect all pair/team player IDs and fetch any missing profiles
-        const pairIds = new Set()
-        ;(doublesData ?? []).forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
-        ;(triplesData ?? []).forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
-        const missingIds = [...pairIds].filter(id => !profileMap[id])
-        let fullPairMap = { ...profileMap }
-        if (missingIds.length > 0) {
-          const { profiles: extraProfs } = await apiFetch('/api/profiles', {
-            method: 'POST',
-            body: JSON.stringify({ ids: missingIds }),
-          })
-          ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
-        }
-        setPairProfileMap(fullPairMap)
+      } catch (err) {
+        console.error('EventPage load failed:', err)
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
     load()
   }, [year, user])

@@ -74,24 +74,37 @@ export default function AdminCoC() {
   async function publishVersion() {
     setPublishing(true)
     setMsg(null)
-    // Unpublish all previous versions
-    await supabase.from('code_of_conduct_versions').update({ is_published: false }).eq('is_published', true)
-    const { error } = await supabase.from('code_of_conduct_versions').insert({
-      content: draftText,
-      is_published: true,
-      created_by: user.id,
-      version_note: `Published ${formatDate(new Date(), 'numeric')}`,
-    })
-    if (!error) {
-      // Flag players who need to re-sign
-      await supabase.rpc('flag_coc_resign_required').catch(() => {})
+    // INSERT the new published row first; capture id so we can leave it alone when unpublishing the rest.
+    // Avoids the previous flow's UPDATE-then-INSERT race that could leave 0 published rows on partial failure.
+    const { data: newRow, error: insertErr } = await supabase
+      .from('code_of_conduct_versions')
+      .insert({
+        content: draftText,
+        is_published: true,
+        created_by: user.id,
+        version_note: `Published ${formatDate(new Date(), 'numeric')}`,
+      })
+      .select('id')
+      .single()
+    if (insertErr) {
+      setPublishing(false)
+      setMsg({ type: 'error', text: insertErr.message })
+      return
+    }
+    // Unpublish all OTHER previously-published rows.
+    const { error: unpublishErr } = await supabase
+      .from('code_of_conduct_versions')
+      .update({ is_published: false })
+      .eq('is_published', true)
+      .neq('id', newRow.id)
+    if (unpublishErr) {
+      setPublishing(false)
+      setMsg({ type: 'error', text: `Published, but couldn't unpublish older rows: ${unpublishErr.message}` })
+      return
     }
     setPublishing(false)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else {
-      setMsg({ type: 'ok', text: 'Published. Players will be prompted to re-sign.' })
-      loadVersions()
-    }
+    setMsg({ type: 'ok', text: 'Published. Players will be prompted to re-sign.' })
+    loadVersions()
   }
 
   function simpleMarkdown(md) {

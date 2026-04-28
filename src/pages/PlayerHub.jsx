@@ -91,7 +91,11 @@ function CoCPanel({ userId, eventYear, content, onSigned }) {
   return (
     <div>
       <div className="bg-base border border-line rounded-xl p-4 h-48 overflow-y-auto mb-4">
-        <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{content || 'Loading…'}</pre>
+        {content ? (
+          <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{content}</pre>
+        ) : (
+          <p className="text-[#e5e5e5]/60 italic text-xs">Code of Conduct content is not yet available — contact the committee.</p>
+        )}
       </div>
       <label className="flex items-start gap-3 cursor-pointer mb-3">
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
@@ -139,11 +143,13 @@ function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted 
 
   return (
     <div>
-      {formContent && (
-        <div className="bg-base border border-line rounded-xl p-4 h-40 overflow-y-auto mb-4">
+      <div className="bg-base border border-line rounded-xl p-4 h-40 overflow-y-auto mb-4">
+        {formContent ? (
           <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{formContent}</pre>
-        </div>
-      )}
+        ) : (
+          <p className="text-[#e5e5e5]/60 italic text-xs">Under-18 form is not yet available — contact the committee.</p>
+        )}
+      </div>
       <div className="space-y-3 mb-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -208,11 +214,13 @@ function MediaReleasePanel({ userId, eventYear, formContent, onSubmitted }) {
 
   return (
     <div>
-      {formContent && (
-        <div className="bg-base border border-line rounded-xl p-4 h-36 overflow-y-auto mb-4">
+      <div className="bg-base border border-line rounded-xl p-4 h-36 overflow-y-auto mb-4">
+        {formContent ? (
           <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{formContent}</pre>
-        </div>
-      )}
+        ) : (
+          <p className="text-[#e5e5e5]/60 italic text-xs">Media release form is not yet available — contact the committee.</p>
+        )}
+      </div>
       <div className="space-y-2 mb-4">
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="media" checked={consents === true} onChange={() => setConsents(true)} className="accent-[#00FF41]" />
@@ -626,14 +634,14 @@ export default function PlayerHub() {
     const [
       { data: prof },
       { data: reg },
-      { data: cocVersion },
+      { data: cocVersion, error: cocVersionErr },
       { data: cocSigData },
       { data: testData },
       { data: payData },
       { data: u18Data },
-      { data: u18Version },
+      { data: u18Version, error: under18VersionErr },
       { data: mediaData },
-      { data: mediaVersion },
+      { data: mediaVersion, error: mediaVersionErr },
     ] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('zltac_registrations')
@@ -648,6 +656,10 @@ export default function PlayerHub() {
       supabase.from('media_release_submissions').select('consents, submitted_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
       supabase.from('media_release_versions').select('content').eq('is_published', true).maybeSingle(),
     ])
+
+    if (cocVersionErr) console.error('PlayerHub: code_of_conduct_versions query failed:', cocVersionErr)
+    if (under18VersionErr) console.error('PlayerHub: under18_form_versions query failed:', under18VersionErr)
+    if (mediaVersionErr) console.error('PlayerHub: media_release_versions query failed:', mediaVersionErr)
 
     setProfile(prof)
     setRegistration(reg)
@@ -1076,21 +1088,11 @@ export default function PlayerHub() {
 
             <ChecklistItem
               status={!isRegistered || !paymentStatus ? 'pending' : paymentStatus === 'paid' ? 'done' : 'error'}
-              label={
-                paymentStatus === 'paid'
-                  ? `Payment — Paid in full ${dollars(amountPaid)}`
-                  : paymentStatus === 'partial'
-                    ? `Payment — Partial (${dollars(amountPaid)} of ${dollars(total)} paid)`
-                    : isRegistered
-                      ? `Payment — ${dollars(total)} owing`
-                      : 'Payment — pending registration'
-              }
+              label="Payment — Payment Info Released Soon"
             >
-              {isRegistered && paymentStatus !== 'paid' && (
-                <button disabled className="mt-1 bg-brand/20 border border-brand/30 text-brand/60 text-xs font-semibold px-4 py-1.5 rounded-lg cursor-not-allowed">
-                  Pay Now (coming soon)
-                </button>
-              )}
+              <p className="text-[#e5e5e5]/60 text-sm">
+                Payment details and instructions will be released closer to the event.
+              </p>
             </ChecklistItem>
           </div>
 
