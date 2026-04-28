@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import Footer from '../components/Footer'
 import StatsStrip from '../components/zltac/StatsStrip'
 import FormatEvolutionTimeline from '../components/zltac/FormatEvolutionTimeline'
@@ -7,8 +6,6 @@ import YearExplorer from '../components/zltac/YearExplorer'
 import HostingGrid from '../components/zltac/HostingGrid'
 import LegendsAndDynasties from '../components/zltac/LegendsAndDynasties'
 import HallOfFame from '../components/zltac/HallOfFame'
-import { supabase } from '../lib/supabase'
-import { formatDate } from '../lib/dateFormat'
 
 const ZLTAC_COMMITTEE = [
   { initials: 'PH', name: 'Paige Horrigan',  role: 'Committee Member', alias: 'Shifter' },
@@ -18,73 +15,9 @@ const ZLTAC_COMMITTEE = [
   { initials: 'MN', name: 'Max Newman',       role: 'Committee Member', alias: 'Rizzler' },
 ]
 
-function formatDateRange(start, end) {
-  if (!start && !end) return ''
-  if (!end) return formatDate(start)
-  if (!start) return formatDate(end)
-  const s = new Date(start)
-  const e = new Date(end)
-  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
-    return `${s.getDate()}-${e.getDate()} ${e.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}`
-  }
-  return `${formatDate(start, 'short')} - ${formatDate(end, 'short')}`
-}
-
-function ActiveEventBanner({ event }) {
-  if (!event) return null
-  const dateRange = formatDateRange(event.start_date, event.end_date)
-  const title = event.location
-    ? `${event.name} ${event.year}, ${event.location}`
-    : `${event.name} ${event.year}`
-  return (
-    <section className="bg-brand/5 border-b border-brand/30">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-brand animate-pulse flex-shrink-0" aria-hidden />
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-brand mb-0.5">Registration Open</p>
-            <p className="text-white font-bold text-sm md:text-base truncate">{title}</p>
-            {dateRange && (
-              <p className="text-white/60 text-xs mt-0.5">{dateRange}</p>
-            )}
-          </div>
-        </div>
-        <Link
-          to={`/events/${event.year}`}
-          className="bg-brand hover:bg-brand-hover text-black font-bold px-5 py-2 rounded-lg text-sm transition-all hover:shadow-[0_0_16px_rgba(0,255,65,0.35)] whitespace-nowrap text-center w-full sm:w-auto sm:flex-shrink-0"
-        >
-          Register Now
-        </Link>
-      </div>
-    </section>
-  )
-}
-
-function useActiveEvent() {
-  const [event, setEvent] = useState(null)
-  useEffect(() => {
-    let cancelled = false
-    supabase
-      .from('zltac_events')
-      .select('id, name, year, location, start_date, end_date, status')
-      .in('status', ['open', 'upcoming'])
-      .order('year', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return
-        setEvent(error ? null : (data ?? null))
-      })
-      .catch(() => { if (!cancelled) setEvent(null) })
-    return () => { cancelled = true }
-  }, [])
-  return event
-}
-
 export default function ZLTACLanding() {
   // State filter is lifted up so HostingGrid can drive YearExplorer.
   const [stateFilter, setStateFilter] = useState('all')
-  const activeEvent = useActiveEvent()
 
   function handleSelectRegion(region) {
     // Toggle off if already selected, otherwise apply the filter and scroll up.
@@ -131,7 +64,6 @@ export default function ZLTACLanding() {
         </div>
       </section>
 
-      <ActiveEventBanner event={activeEvent} />
       <StatsStrip />
       <FormatEvolutionTimeline />
 
@@ -156,7 +88,7 @@ export default function ZLTACLanding() {
                 <p className="text-white font-bold text-lg mb-2">{name}</p>
                 <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{role}</p>
                 <p className="text-white/80 text-base md:text-lg">
-                  <span className="font-bold">ALIAS</span> – {alias}
+                  <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{alias}</span>
                 </p>
               </div>
             ))}

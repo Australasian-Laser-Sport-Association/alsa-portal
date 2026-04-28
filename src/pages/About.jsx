@@ -14,17 +14,19 @@ const TIMELINE = [
   {
     period: '1999',
     title: 'ZLTAC begins',
-    body: 'The first Zone Laser Tag Australasian Championship is held. A handful of teams, one division, the start of a tradition.',
+    note: 'Originally known as the Australian Zone 3 Nationals.',
+    body: 'The first Zone Laser Tag Australasian Championship is held. A handful of teams, one format, the start of a tradition.',
     Icon: Flag,
   },
   {
-    period: '2000s–2010s',
+    period: '2000s – 2010s',
     title: 'Two decades of growth',
-    body: 'ZLTAC expands across Australia, hosted in rotation by every state. The format grows from one division to eight, spanning Teams, Doubles, Triples, Solos and specialty events.',
+    note: 'Renamed ZLTAC in 2012 to include New Zealand.',
+    body: 'ZLTAC expands across Australia, hosted in rotation by every state. The format grows from one to eight, spanning Teams, Doubles, Triples, Solos and specialty events.',
     Icon: TrendingUp,
   },
   {
-    period: 'Late 2010s–2024',
+    period: 'Late 2010s – 2024',
     title: 'The largest in the world',
     body: 'ZLTAC becomes the largest laser tag championship globally, drawing 25+ teams a year and a permanent community of competitors.',
     Icon: Trophy,
@@ -36,7 +38,7 @@ const TIMELINE = [
     Icon: Award,
   },
   {
-    period: '2025–onward',
+    period: '2025 – onward',
     title: 'ZLTAC under ALSA',
     body: 'The original ZLTAC committee continues as a sub-committee under ALSA, with new authority around governance, the player registry, and standards across the sport.',
     Icon: Network,
@@ -96,7 +98,7 @@ export default function About() {
 
           {/* Horizontal — md and up */}
           <div className="hidden md:grid grid-cols-5 gap-4 md:gap-6">
-            {TIMELINE.map(({ period, title, body, Icon }, i) => (
+            {TIMELINE.map(({ period, title, note, body, Icon }, i) => (
               <div key={period} className="flex flex-col items-center text-center">
                 <p className="text-brand font-black text-lg md:text-xl mb-3">{period}</p>
                 <div className="relative w-full flex justify-center mb-4">
@@ -111,6 +113,7 @@ export default function About() {
                   </div>
                 </div>
                 <h3 className="text-white font-bold text-base md:text-lg mb-2">{title}</h3>
+                {note && <p className="text-white/60 italic text-sm mb-2">{note}</p>}
                 <p className="text-white/70 text-sm leading-relaxed">{body}</p>
               </div>
             ))}
@@ -118,7 +121,7 @@ export default function About() {
 
           {/* Vertical fallback — sm and below */}
           <div className="md:hidden space-y-10">
-            {TIMELINE.map(({ period, title, body, Icon }) => (
+            {TIMELINE.map(({ period, title, note, body, Icon }) => (
               <div key={period} className="flex gap-4">
                 <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand bg-base flex items-center justify-center">
                   <Icon className="w-5 h-5 text-brand" />
@@ -126,6 +129,7 @@ export default function About() {
                 <div>
                   <p className="text-brand font-black text-lg mb-1">{period}</p>
                   <h3 className="text-white font-bold text-base mb-1">{title}</h3>
+                  {note && <p className="text-white/60 italic text-sm mb-1">{note}</p>}
                   <p className="text-white/70 text-sm leading-relaxed">{body}</p>
                 </div>
               </div>
@@ -221,7 +225,7 @@ export default function About() {
                 <p className="text-white font-bold text-lg mb-2">{name}</p>
                 <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{role}</p>
                 <p className="text-white/80 text-base md:text-lg">
-                  <span className="font-bold">ALIAS</span> – {alias}
+                  <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{alias}</span>
                 </p>
               </div>
             ))}

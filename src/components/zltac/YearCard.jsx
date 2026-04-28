@@ -117,6 +117,9 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
           <span className="text-brand font-black text-2xl tabular-nums">{event.year}</span>
           <span className="text-[#e5e5e5]/30 text-xs">{totalFormats} format{totalFormats !== 1 ? 's' : ''}</span>
         </div>
+        {event.historicNote && (
+          <p className="text-white/60 italic text-sm mb-1">{event.historicNote}</p>
+        )}
         <p className="text-white text-sm font-bold leading-tight mb-1 truncate">{locationLabel}</p>
         {teamWinner && (
           <p className="text-[#e5e5e5]/55 text-xs leading-snug">

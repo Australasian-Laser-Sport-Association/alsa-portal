@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import NavBar from './components/NavBar'
+import ActiveEventBanner from './components/ActiveEventBanner'
 
 // Public pages
 import Home from './pages/Home'
@@ -43,12 +44,22 @@ import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
 import NotFound from './pages/NotFound'
 
+const BANNER_PATHS = new Set(['/', '/about', '/contact', '/zltac'])
+
+function PinnedActiveEventBanner() {
+  const { pathname } = useLocation()
+  const allowed = BANNER_PATHS.has(pathname) || pathname.startsWith('/zltac/')
+  if (!allowed) return null
+  return <ActiveEventBanner />
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <ScrollToTop />
         <NavBar />
+        <PinnedActiveEventBanner />
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />

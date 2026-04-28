@@ -13,7 +13,11 @@ function LegendCard({ alias, titles, summary }) {
         </span>
         <h4 className="text-white font-black text-lg leading-tight">{alias}</h4>
       </div>
-      <p className="text-brand text-xs leading-relaxed font-medium mb-2">{titles}</p>
+      <div className="space-y-1 mb-2">
+        {titles.split(' · ').map((line, i) => (
+          <p key={i} className="text-brand text-xs leading-relaxed font-medium">{line}</p>
+        ))}
+      </div>
       {summary && (
         <p className="text-[#e5e5e5]/45 text-xs leading-relaxed">{summary}</p>
       )}

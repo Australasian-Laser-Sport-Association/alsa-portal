@@ -7,6 +7,7 @@ export const zltacHistory = {
       city: "Melbourne",
       state: "VIC",
       country: "AU",
+      historicNote: "Originally known as the Australian Zone 3 Nationals",
       divisions: {
         team: [
           { rank: 1, name: "Sunshine", subtitle: "Arizing Knights" },

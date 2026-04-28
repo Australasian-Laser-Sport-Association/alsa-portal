@@ -86,7 +86,7 @@ export default function Welcome() {
             <div className="bg-surface border border-line rounded-2xl p-6 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : event ? (
+          ) : event && event.status === 'open' ? (
             <div className="bg-brand/10 border border-brand/40 rounded-2xl p-6 flex flex-col">
               {event.logo_url && (
                 <img src={event.logo_url} alt="" style={{ height: 80 }} className="mb-4 self-start" />

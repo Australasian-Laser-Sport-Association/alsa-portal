@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { isCommittee } from '../lib/roles'
+import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -10,6 +11,8 @@ const DEFAULT_NAV_LINKS = [
   { label: 'ZLTAC', href: '/zltac', visible: true },
   { label: 'Contact', href: '/contact', visible: true },
 ]
+
+const PILL_STATUS_LABEL = { open: 'Event Open', upcoming: 'Coming Soon' }
 
 function navLinkClass({ isActive }) {
   return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'text-brand' : 'text-[#e5e5e5]/70 hover:text-white'}`
@@ -26,31 +29,21 @@ export default function NavBar() {
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [activeEvent, setActiveEvent] = useState(null)
+  const { event } = useCurrentEvent()
+  const pillStatusLabel = event ? PILL_STATUS_LABEL[event.status] : null
   const [hasPlayerReg, setHasPlayerReg] = useState(false)
   const navLinks = DEFAULT_NAV_LINKS
   const isAdmin = location.pathname.startsWith('/admin')
 
-  // Load active event
-  useEffect(() => {
-    supabase
-      .from('zltac_events')
-      .select('name, year')
-      .eq('status', 'open')
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setActiveEvent(data))
-  }, [])
-
   // Look up player registration for the current event whenever user or event changes
   useEffect(() => {
-    if (!user || !activeEvent?.year) return
+    if (!user || !event?.year) return
     let cancelled = false
     supabase
-      .from('zltac_registrations').select('id').eq('user_id', user.id).eq('year', activeEvent.year).maybeSingle()
+      .from('zltac_registrations').select('id').eq('user_id', user.id).eq('year', event.year).maybeSingle()
       .then(({ data }) => { if (!cancelled) setHasPlayerReg(!!data) })
     return () => { cancelled = true }
-  }, [user, activeEvent])
+  }, [user, event])
 
   const visiblePills = user
     ? {
@@ -99,20 +92,19 @@ export default function NavBar() {
               {link.label}
             </NavLink>
           ))}
+          {event && pillStatusLabel && (
+            <Link
+              to={`/events/${event.year}`}
+              className="ml-2 flex items-center gap-1.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold px-3 py-1 rounded-full transition-colors whitespace-nowrap"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+              {event.name} — {pillStatusLabel}
+            </Link>
+          )}
         </nav>
 
         {/* Pills + auth controls */}
         <div className="ml-auto hidden md:flex items-center gap-2">
-          {activeEvent && (
-            <Link
-              to={`/events/${activeEvent.year}`}
-              className="flex items-center gap-1.5 bg-brand/10 hover:bg-brand/20 border border-brand/30 text-brand text-xs font-bold px-3.5 py-1.5 rounded-full transition-all hover:shadow-[0_0_12px_rgba(0,255,65,0.2)]"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse flex-shrink-0" />
-              {activeEvent.name}
-            </Link>
-          )}
-
           {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
             <Link
               key={p.key}
@@ -170,17 +162,6 @@ export default function NavBar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden bg-[#191919] border-t border-line px-6 py-4 flex flex-col gap-1">
-          {activeEvent && (
-            <Link
-              to={`/events/${activeEvent.year}`}
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-2 py-2.5 px-3 text-sm font-bold text-brand rounded-lg hover:bg-line transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-              {activeEvent.name}
-            </Link>
-          )}
-
           {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
             <Link
               key={p.key}
@@ -193,13 +174,33 @@ export default function NavBar() {
             </Link>
           ))}
 
-          {[
-            ...navLinks.map(l => ({ label: l.label, to: l.href })),
-            ...(user
-              ? [{ label: 'Dashboard', to: '/dashboard' }]
-              : [{ label: 'Login', to: '/login' }, { label: 'Register', to: '/register' }]
-            ),
-          ].map(({ label, to }) => (
+          {navLinks.map(({ label, href }) => (
+            <Link
+              key={href}
+              to={href}
+              onClick={() => setMobileOpen(false)}
+              className="py-2.5 px-3 text-sm text-[#e5e5e5]/70 hover:text-brand rounded-lg hover:bg-line transition-colors"
+            >
+              {label}
+            </Link>
+          ))}
+
+          {/* Current-event pill — sits in the link list, below Contact */}
+          {event && pillStatusLabel && (
+            <Link
+              to={`/events/${event.year}`}
+              onClick={() => setMobileOpen(false)}
+              className="flex items-center justify-center gap-2 mt-1 py-2.5 px-3 rounded-full bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              {event.name} — {pillStatusLabel}
+            </Link>
+          )}
+
+          {(user
+            ? [{ label: 'Dashboard', to: '/dashboard' }]
+            : [{ label: 'Login', to: '/login' }, { label: 'Register', to: '/register' }]
+          ).map(({ label, to }) => (
             <Link
               key={to}
               to={to}

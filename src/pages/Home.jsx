@@ -5,8 +5,8 @@ import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 
-const CrosshairIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+const CrosshairIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="32" cy="32" r="20" stroke="#00FF41" strokeWidth="2.5"/>
     <circle cx="32" cy="32" r="8" stroke="#00FF41" strokeWidth="2.5"/>
     <line x1="32" y1="4" x2="32" y2="18" stroke="#00FF41" strokeWidth="2.5" strokeLinecap="round"/>
@@ -17,8 +17,8 @@ const CrosshairIcon = () => (
   </svg>
 )
 
-const VestIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+const VestIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M12 14 L20 8 L32 16 L44 8 L52 14 L48 40 H16 Z" stroke="#00FF41" strokeWidth="2.5" strokeLinejoin="round" fill="none"/>
     <path d="M16 40 L14 56 H50 L48 40" stroke="#00FF41" strokeWidth="2.5" strokeLinejoin="round" fill="none"/>
     <rect x="24" y="22" width="16" height="10" rx="2" stroke="#00FF41" strokeWidth="2" fill="none"/>
@@ -31,8 +31,8 @@ const VestIcon = () => (
   </svg>
 )
 
-const TrophyIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+const TrophyIcon = ({ className }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M20 8 H44 V30 C44 41 32 46 32 46 C32 46 20 41 20 30 Z" stroke="#00FF41" strokeWidth="2.5" strokeLinejoin="round" fill="none"/>
     <path d="M20 14 H10 C10 14 8 26 20 30" stroke="#00FF41" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
     <path d="M44 14 H54 C54 14 56 26 44 30" stroke="#00FF41" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
@@ -130,7 +130,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-6xl mx-auto">
             {[
               {
                 Icon: Trophy,
@@ -150,11 +150,13 @@ export default function Home() {
             ].map(({ Icon, title, body }) => (
               <div
                 key={title}
-                className="bg-surface border border-white/10 rounded-xl p-6 md:p-8 hover:border-brand/30 transition-colors flex flex-col items-center"
+                className="bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-green-400/30 hover:bg-white/[0.04] transition"
               >
-                <Icon className="w-10 h-10 text-brand mb-4 mx-auto" />
-                <h3 className="text-xl md:text-2xl font-bold text-white mb-3 text-center">{title}</h3>
-                <p className="text-white/70 text-base leading-relaxed text-center">{body}</p>
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon className="h-8 w-8 text-brand" />
+                  <h3 className="text-lg font-semibold text-white leading-tight">{title}</h3>
+                </div>
+                <p className="text-sm text-white/60 leading-relaxed">{body}</p>
               </div>
             ))}
           </div>
@@ -186,10 +188,10 @@ export default function Home() {
           <div className="mt-12 text-center">
             <Link
               to="/about"
-              className="inline-flex items-center text-brand font-semibold hover:underline"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-brand-hover text-black font-bold px-8 py-3.5 rounded-xl transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.4)]"
             >
               Learn More About ALSA
-              <ArrowRight className="w-4 h-4 ml-1" />
+              <ArrowRight size={18} />
             </Link>
           </div>
         </div>
@@ -294,29 +296,17 @@ export default function Home() {
           <p className="text-[#e5e5e5]/45 text-center max-w-2xl mx-auto mb-14 text-sm leading-relaxed">
             Laser Sport is the competitive evolution of the popular recreational activity Laser Tag. While using the same equipment and arenas, it is a vastly different experience to a casual game. Laser Sport is a fast-paced, strategic 15-player, 3-team format that embraces the current era of hybrid wearable technology — pushing players to coordinate, communicate and compete at the highest level.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {FEATURES.map(({ Icon, title, desc }) => (
               <div
                 key={title}
-                className="rounded-2xl p-10 transition-all text-center"
-                style={{
-                  background: '#191919',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderTopColor: '#00FF41',
-                  borderTopWidth: '3px',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.boxShadow = '0 0 24px rgba(0,255,65,0.2), inset 0 0 0 1px rgba(0,255,65,0.15)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
+                className="bg-white/[0.02] border border-white/10 rounded-xl p-6 hover:border-green-400/30 hover:bg-white/[0.04] transition"
               >
-                <div className="mb-6 flex justify-center">
-                  <Icon />
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon className="h-8 w-8" />
+                  <h3 className="text-lg font-semibold text-white leading-tight">{title}</h3>
                 </div>
-                <h3 className="text-white font-black text-xl mb-4 leading-tight">{title}</h3>
-                <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">{desc}</p>
+                <p className="text-sm text-white/60 leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>

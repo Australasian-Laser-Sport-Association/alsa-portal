@@ -7,8 +7,9 @@ export function useCurrentEvent() {
   useEffect(() => {
     supabase
       .from('zltac_events')
-      .select('id, name, year, location, logo_url, reg_open_date, reg_close_date, start_date, end_date')
-      .eq('status', 'open')
+      .select('id, name, year, location, status, logo_url, reg_open_date, reg_close_date, start_date, end_date')
+      .in('status', ['open', 'upcoming'])
+      .order('status', { ascending: true })
       .limit(1)
       .maybeSingle()
       .then(({ data, error }) => {
