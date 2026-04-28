@@ -25,7 +25,6 @@
 ### Database \& Backend
 
 * **P2 — Code splitting for bundle size.** Current bundle is \~747KB, above Vite's recommended threshold. Vite warning present. Use `React.lazy()` + route-based splitting on admin routes (biggest wins) and dialog/modal components.
-* **P2 — Rate-limit `/api/contact`.** The contact-form endpoint has no rate limiting — a single attacker can drain the Resend free-tier quota or fill the committee inbox. Add a basic per-IP limit (e.g. 5/hour, 20/day) using Upstash Redis or Vercel KV. The honeypot field handles naive bots but won't stop a determined sender. Pre-launch hardening — not blocking, but should land before the public domain cutover.
 * **P2 — Fix "Multiple GoTrueClient instances" console warning.** Cosmetic. Usually caused by `createClient()` being called multiple times instead of exported from a single module.
 * **P2 — Consolidate duplicate queries on the ZLTAC page.** Currently firing multiple overlapping `zltac\\\\\\\_events` and `zltac\\\\\\\_event\\\\\\\_history` queries on page load. Consolidate or memoise with React Query / SWR.
 * **P2 — Seed production with real ZLTAC event data.** Once registration is tested end-to-end, seed 2018-2025 historical events into `zltac\\\\\\\_event\\\\\\\_history` and create the 2026 event in `zltac\\\\\\\_events`.
@@ -114,4 +113,6 @@ P3 — Profile picture upload. Prerequisite for committee page photos and genera
 * **2026-04-28 — Granted service_role privileges on all public tables.** Migration leftover: service_role had no GRANTs on profiles/teams/zltac_registrations, causing 42501 permission errors on /admin/users. Fixed with schema-wide grant + default privileges for future tables.
 * **2026-04-28 — Verified production Supabase auth settings match ADR-0003.** All password, email, OTP, signup, and provider settings confirmed via dashboard inspection on project `atwutsywnlnzqkqudxdv`. Closes the P2 verification item.
 * **2026-04-28 — ADR-0005 written.** Documents Resend SMTP provider choice, two-key separation pattern, domain verification, and Supabase Auth rate-limit tuning.
+* **2026-04-28 — Rate-limited `/api/contact` endpoint.** Per-IP sliding window: 3 requests per 24 hours via Upstash Redis. Frontend shows a specific rate-limit message instead of generic error. PR #6.
+* **2026-04-28 — Added `.vercel/` to .gitignore.** Auto-created by Vercel CLI; not useful for other contributors. Removed from tracking and ignored going forward.
 
