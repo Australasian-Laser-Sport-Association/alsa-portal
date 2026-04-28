@@ -33,3 +33,4 @@ dist-ssr
 
 .vercel
 lint-output.txt
+.env*.local
