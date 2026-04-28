@@ -20,7 +20,6 @@
 * **P3 — Consider adding OAuth providers** (Google and/or Discord). Would reduce signup friction for some members. If pursued, write an ADR weighing the tradeoff (convenience vs. third-party dependency + additional privacy implications). Discord specifically could make sense given the laser tag community's existing use of Discord.
 * **P3 — Consider magic-link auth as an option alongside password.** Would reduce password-management burden for infrequent users.
 * **P3 — Custom expired-link page for email confirmation.** Supabase confirmation links expire after 24h. Currently the user lands on a generic Supabase error. Build a friendly `/auth/expired` route that explains "this link has expired" and offers a "send me a new one" button.
-* **P2 — Verify production Supabase auth settings match ADR-0003.** Several auth policy settings (password complexity, OTP length, secure password change, require current password on change, secure email change) live in the Supabase dashboard rather than in config.toml or migrations. Committee should open the production project → Authentication → Settings and confirm each matches the ADR. Document the verified state in the runbook.
 * **P3 — Show password complexity hints inline.** Production Supabase enforces letters + uppercase + digits server-side; the frontend doesn't show this upfront, so users hit a confusing rejection. Add a hint line and live validation feedback below the password field in Register.jsx.
 
 ### Database \& Backend
@@ -114,4 +113,5 @@ P3 — Profile picture upload. Prerequisite for committee page photos and genera
 * **2026-04-27 — Branded email templates via Resend.** Auth emails sent through Resend using verified `lasersport.org.au` domain.
 * **2026-04-28 — supabaseAdmin migration to API routes complete.** All six pages (AdminRegistrations, AdminUsers, CaptainHub, EventPage, PlayerHub, RefereeTest) now use proper Vercel API routes with service role key.
 * **2026-04-28 — Granted service_role privileges on all public tables.** Migration leftover: service_role had no GRANTs on profiles/teams/zltac_registrations, causing 42501 permission errors on /admin/users. Fixed with schema-wide grant + default privileges for future tables.
+* **2026-04-28 — Verified production Supabase auth settings match ADR-0003.** All password, email, OTP, signup, and provider settings confirmed via dashboard inspection on project `atwutsywnlnzqkqudxdv`. Closes the P2 verification item.
 
