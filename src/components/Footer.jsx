@@ -33,6 +33,7 @@ export default function Footer() {
 
   return (
     <footer className="bg-navy-deep border-t border-line mt-auto">
+      <div className="h-px w-full bg-brand" />
       <div className="max-w-7xl mx-auto px-6 py-14">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
 

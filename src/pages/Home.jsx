@@ -1,14 +1,9 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { ArrowRight, Trophy, Users, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
-
-const DEFAULT_STATS = [
-  { value: '20+ Years', label: 'of Competition' },
-  { value: '200+', label: 'Players' },
-  { value: '30+', label: 'Teams' },
-]
 
 const CrosshairIcon = () => (
   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -68,8 +63,6 @@ const FEATURES = [
 export default function Home() {
   const [activeEvent, setActiveEvent] = useState(undefined) // undefined = loading, null = none found
 
-  const STATS = DEFAULT_STATS
-
   useEffect(() => {
     supabase
       .from('zltac_events')
@@ -121,80 +114,113 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Stats Bar ── */}
+      {/* ── About the Association ── */}
       <section className="bg-surface border-y border-line">
-        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-          {STATS.map(({ value, label }) => (
-            <div key={label}>
-              <p
-                className="text-4xl md:text-5xl font-black text-brand mb-1"
-                style={{ textShadow: '0 0 30px rgba(0,255,65,0.3)' }}
+        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28">
+          <div className="text-center">
+            <p className="text-brand uppercase tracking-widest text-sm mb-4">About the Association</p>
+            <h2 className="text-4xl md:text-5xl font-black text-white mb-6">What is ALSA?</h2>
+            <p className="text-white/80 text-lg md:text-xl leading-relaxed max-w-3xl mx-auto mb-16">
+              ALSA, the Australasian Laser Sport Association, was formally established in 2025 to
+              govern competitive laser tag across the region. It grew out of ZLTAC, the
+              championship that has been running since 1999 and has become the largest laser tag
+              tournament in the world. With ALSA now in place, the original ZLTAC committee
+              continues as a sub-committee under the association. Built by players, run by
+              players, for the sport we love.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
+            {[
+              {
+                Icon: Trophy,
+                title: 'Run the Championship',
+                body: "ZLTAC is Australasia's premier laser tag tournament and the heart of competitive laser sport in the region. Eight formats, every state hosting in rotation, decades of history.",
+              },
+              {
+                Icon: Users,
+                title: 'Build the Player Community',
+                body: 'A central place for players to register, manage their championship entries, and connect with the wider laser sport community across Australasia.',
+              },
+              {
+                Icon: Shield,
+                title: 'Govern the Sport',
+                body: 'Standards, rules, and a representative committee structure. ALSA exists so laser sport in Australasia has a real association behind it — not just an annual event, but a sport with a future.',
+              },
+            ].map(({ Icon, title, body }) => (
+              <div
+                key={title}
+                className="bg-surface border border-white/10 rounded-xl p-6 md:p-8 hover:border-brand/30 transition-colors flex flex-col items-center"
               >
-                {value}
-              </p>
-              <p className="text-[#e5e5e5]/45 text-xs uppercase tracking-widest">{label}</p>
-            </div>
-          ))}
+                <Icon className="w-10 h-10 text-brand mb-4 mx-auto" />
+                <h3 className="text-xl md:text-2xl font-bold text-white mb-3 text-center">{title}</h3>
+                <p className="text-white/70 text-base leading-relaxed text-center">{body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            {[
+              {
+                year: '1999',
+                label: 'ZLTAC First Run',
+                body: 'First Australasian championship, Box Hill, VIC',
+              },
+              {
+                year: '2025',
+                label: 'ALSA Founded',
+                body: 'Association formalised after 26 years of championship history',
+              },
+            ].map(({ year, label, body }) => (
+              <div
+                key={year}
+                className="bg-surface border-l-2 border-brand/40 rounded-r-md p-4"
+              >
+                <p className="text-3xl font-black text-brand">{year}</p>
+                <p className="text-xs uppercase tracking-widest text-white/50 mt-1">{label}</p>
+                <p className="text-sm text-white/70 mt-2">{body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-12 text-center">
+            <Link
+              to="/about"
+              className="inline-flex items-center text-brand font-semibold hover:underline"
+            >
+              Learn More About ALSA
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* ── About the Association ── */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-          <div>
-            <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-4">About the Association</p>
-            <h2 className="text-4xl font-black text-white mb-6 leading-tight">What is ALSA?</h2>
-            <p className="text-[#e5e5e5]/60 leading-relaxed mb-5">
-              The Australasian Laser Sport Association (ALSA) is the governing body for competitive laser tag across
-              Australia and New Zealand. Built by a passionate group of players who believed laser sport deserved
-              a structured, professional competition platform, ALSA has grown to become the definitive authority for
-              high-level laser tag competition in the region.
-            </p>
-            <p className="text-[#e5e5e5]/60 leading-relaxed mb-8">
-              Through the annual Zone Laser Tag Australasian Championship (ZLTAC), ALSA brings together the best
-              teams and individual players from across Australasia to compete for the most prestigious title in
-              the sport. Our permanent player registry ensures every competitor has a verifiable record and a
-              stake in the ongoing development of the game.
-            </p>
-            <Link to="/about" className="text-brand hover:underline font-semibold text-sm">
-              Learn More About ALSA →
+      {/* ── ZLTAC Teaser ── */}
+      <section className="bg-base">
+        <div className="max-w-7xl mx-auto px-6 py-16 md:py-24 text-center">
+          <p className="text-brand uppercase tracking-widest text-sm mb-4">The Flagship Event</p>
+          <img
+            src="/images/zltac-logo.png"
+            alt="ZLTAC"
+            className="h-20 md:h-28 w-auto mx-auto mb-4"
+          />
+          <h2 className="text-white font-black text-4xl md:text-6xl mb-2">ZLTAC</h2>
+          <p className="text-brand text-lg md:text-xl font-semibold mb-6">
+            Zone Laser Tag Australasian Championship
+          </p>
+          <p className="text-white/80 text-base md:text-lg max-w-3xl mx-auto">
+            Australasia&apos;s premier laser tag championship since 1999. ZLTAC brings together the
+            region&apos;s top players each year for the main Teams event plus seven side events
+            spanning solos, doubles, triples, and specialty formats.
+          </p>
+          <div className="mt-10">
+            <Link
+              to="/zltac"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-brand-hover text-black font-bold px-8 py-3.5 rounded-xl transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.4)]"
+            >
+              Explore ZLTAC History
+              <ArrowRight size={18} />
             </Link>
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Founded', value: '2025' },
-                { label: 'Annual Events', value: 'ZLTAC' },
-                { label: 'Governing Region', value: 'AU & NZ' },
-                { label: 'Next Event', value: activeEvent === undefined ? '...' : activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'Coming Soon' },
-              ].map(({ label, value }) => (
-                <div key={label} className="bg-surface border border-line rounded-2xl p-6">
-                  <p className="text-brand font-black text-2xl mb-1">{value}</p>
-                  <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider">{label}</p>
-                </div>
-              ))}
-            </div>
-            {/* Est. badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {[
-                { name: 'ALSA (Governing Body)', est: 'Est. 2025' },
-                { name: 'ZLTAC (Competitive Event)', est: 'Est. 1999' },
-              ].map(({ name, est }) => (
-                <div
-                  key={name}
-                  className="rounded-xl p-4"
-                  style={{
-                    background: '#191919',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    borderLeftColor: '#00FF41',
-                    borderLeftWidth: '3px',
-                  }}
-                >
-                  <p className="text-white font-bold text-sm leading-tight">{name}</p>
-                  <p className="text-brand text-xs mt-1 font-semibold">{est}</p>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
@@ -261,54 +287,38 @@ export default function Home() {
       )}
 
       {/* ── What Is Laser Sport? ── */}
-      <section className="max-w-7xl mx-auto px-6 py-24">
-        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">The Sport</p>
-        <h2 className="text-3xl font-black text-white text-center mb-3">What Is Laser Sport?</h2>
-        <p className="text-[#e5e5e5]/45 text-center max-w-2xl mx-auto mb-14 text-sm leading-relaxed">
-          Laser Sport is the competitive evolution of the popular recreational activity Laser Tag. While using the same equipment and arenas, it is a vastly different experience to a casual game. Laser Sport is a fast-paced, strategic 15-player, 3-team format that embraces the current era of hybrid wearable technology — pushing players to coordinate, communicate and compete at the highest level.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {FEATURES.map(({ Icon, title, desc }) => (
-            <div
-              key={title}
-              className="rounded-2xl p-10 transition-all text-center"
-              style={{
-                background: '#191919',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderTopColor: '#00FF41',
-                borderTopWidth: '3px',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.boxShadow = '0 0 24px rgba(0,255,65,0.2), inset 0 0 0 1px rgba(0,255,65,0.15)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.boxShadow = 'none'
-              }}
-            >
-              <div className="mb-6 flex justify-center">
-                <Icon />
-              </div>
-              <h3 className="text-white font-black text-xl mb-4 leading-tight">{title}</h3>
-              <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">{desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── CTA Banner ── */}
-      <section className="border-t border-line bg-surface">
-        <div className="max-w-7xl mx-auto px-6 py-16 text-center">
-          <h2 className="text-3xl font-black text-white mb-4">Interested In Giving Competitive Laser Tag A Go?</h2>
-          <p className="text-[#e5e5e5]/50 mb-8 max-w-md mx-auto text-sm">
-            Find a local competitive laser tag community and experience the sport for yourself.
+      <section className="bg-surface border-y border-line">
+        <div className="max-w-7xl mx-auto px-6 py-24">
+          <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">The Sport</p>
+          <h2 className="text-3xl font-black text-white text-center mb-3">What Is Laser Sport?</h2>
+          <p className="text-[#e5e5e5]/45 text-center max-w-2xl mx-auto mb-14 text-sm leading-relaxed">
+            Laser Sport is the competitive evolution of the popular recreational activity Laser Tag. While using the same equipment and arenas, it is a vastly different experience to a casual game. Laser Sport is a fast-paced, strategic 15-player, 3-team format that embraces the current era of hybrid wearable technology — pushing players to coordinate, communicate and compete at the highest level.
           </p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <Link
-              to="/register"
-              className="bg-brand hover:bg-brand-hover text-black font-bold px-8 py-4 rounded-xl transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.4)]"
-            >
-              Start Playing Today
-            </Link>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {FEATURES.map(({ Icon, title, desc }) => (
+              <div
+                key={title}
+                className="rounded-2xl p-10 transition-all text-center"
+                style={{
+                  background: '#191919',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderTopColor: '#00FF41',
+                  borderTopWidth: '3px',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.boxShadow = '0 0 24px rgba(0,255,65,0.2), inset 0 0 0 1px rgba(0,255,65,0.15)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              >
+                <div className="mb-6 flex justify-center">
+                  <Icon />
+                </div>
+                <h3 className="text-white font-black text-xl mb-4 leading-tight">{title}</h3>
+                <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">{desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

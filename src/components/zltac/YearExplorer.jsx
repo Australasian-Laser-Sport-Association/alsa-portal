@@ -139,8 +139,8 @@ export default function YearExplorer({ stateFilter, onStateFilterChange }) {
 
         {/* Decade chips */}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2">Decade</p>
-          <div className="flex flex-wrap gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2 text-center">Decade</p>
+          <div className="flex flex-wrap justify-center gap-2">
             {DECADES.map(d => (
               <Chip key={d.key} active={decadeFilter === d.key} onClick={() => setDecadeFilter(d.key)}>
                 {d.label}
@@ -151,8 +151,8 @@ export default function YearExplorer({ stateFilter, onStateFilterChange }) {
 
         {/* State chips */}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2">Host region</p>
-          <div className="flex flex-wrap gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2 text-center">Host region</p>
+          <div className="flex flex-wrap justify-center gap-2">
             {STATES.map(s => (
               <Chip key={s} active={stateFilter === s} onClick={() => onStateFilterChange(s)}>
                 {s === 'all' ? 'All' : s}

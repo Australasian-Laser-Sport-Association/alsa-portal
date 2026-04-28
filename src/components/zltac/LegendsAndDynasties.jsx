@@ -59,7 +59,7 @@ export default function LegendsAndDynasties() {
         <Star className="w-10 h-10 text-brand mx-auto mb-4" aria-hidden />
         <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Stand Out Players &amp; Teams</h2>
         <p
-          className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-left md:text-center"
+          className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-center"
           style={{ color: 'rgba(255, 255, 255, 0.8)' }}
         >
           Special mention for players whose unparalleled contribution has helped shape and grow the competition and laser sporting in Australasia.
@@ -70,7 +70,7 @@ export default function LegendsAndDynasties() {
 
         {/* Team Dynasties — compact responsive grid, three-peats first */}
         <div>
-          <h3 className="text-white font-black text-lg mb-4 flex items-center gap-2">
+          <h3 className="text-white font-black text-lg mb-4 flex items-center justify-center gap-2">
             <span className="text-brand">◆</span> Team Dynasties
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -85,7 +85,7 @@ export default function LegendsAndDynasties() {
 
         {/* Stand Out Players — responsive grid spanning full section width */}
         <div>
-          <h3 className="text-white font-black text-lg mb-4 flex items-center gap-2">
+          <h3 className="text-white font-black text-lg mb-4 flex items-center justify-center gap-2">
             <span className="text-brand">◆</span> Stand Out Players (Legends)
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

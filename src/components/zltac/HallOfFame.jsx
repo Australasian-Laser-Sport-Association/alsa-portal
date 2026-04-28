@@ -58,7 +58,7 @@ export default function HallOfFame() {
           <Award className="w-10 h-10 text-amber-400 mx-auto mb-4" aria-hidden />
           <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Hall of Fame</h2>
           <p
-            className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-left md:text-center"
+            className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-center"
             style={{ color: 'rgba(255, 255, 255, 0.8)' }}
           >
             Recognising those whose unparalleled contribution to the competition and to laser sporting in Australasia has shaped what ZLTAC is today. This list reflects publicly recorded inductees and is not exhaustive.

@@ -40,8 +40,8 @@ export default function StatsStrip() {
           {/* Tile 3 — Average team / player counts */}
           <Tile icon={Users}>
             <p className={HEADLINE_GREEN} style={HEADLINE_GREEN_STYLE}>AVERAGE</p>
-            <p className={`${SUBLINE_WHITE} mt-3`}>~25 TEAMS</p>
-            <p className={`${SUBLINE_WHITE} mt-1`}>~140 PLAYERS</p>
+            <p className={`${SUBLINE_WHITE} mt-3`}>25 TEAMS</p>
+            <p className={`${SUBLINE_WHITE} mt-1`}>140 PLAYERS</p>
           </Tile>
 
           {/* Tile 4 — 8 Formats */}

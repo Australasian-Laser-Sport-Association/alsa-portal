@@ -343,7 +343,7 @@ export default function FormatEvolutionTimeline() {
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Format Evolution</p>
         <h2 className="text-3xl md:text-4xl font-black text-white mb-3">From One Format to Eight</h2>
         <p
-          className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-left md:text-center"
+          className="text-white/80 text-sm md:text-base leading-relaxed max-w-3xl mx-auto text-center"
           style={{ color: 'rgba(255, 255, 255, 0.8)' }}
         >
           The championship has grown from a single event in Box Hill, VIC in 1999, then known as the Australian Zone 3 Nationals, with just 7 teams and ~40 players competing solely in the Teams event, to ZLTAC as it's known today: every state competing, consistently 25+ teams each year, with the highest recorded attendance in Albury, NSW in 2018 at 37 teams and ~200 players. ZLTAC now spans 8 formats: the premier Teams event and 7 side events, Solos, Doubles, Triples, Masters, Womens, Juniors, and Lord of the Rings.

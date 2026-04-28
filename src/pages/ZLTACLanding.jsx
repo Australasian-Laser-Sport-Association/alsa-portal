@@ -10,6 +10,14 @@ import HallOfFame from '../components/zltac/HallOfFame'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 
+const ZLTAC_COMMITTEE = [
+  { initials: 'PH', name: 'Paige Horrigan',  role: 'Committee Member', alias: 'Shifter' },
+  { initials: 'AC', name: 'Adam Crouch',      role: 'Committee Member', alias: 'Crouchy' },
+  { initials: 'NR', name: 'Nick Risk',        role: 'Committee Member', alias: 'Wax'     },
+  { initials: 'MH', name: 'Matthew Hogan',    role: 'Committee Member', alias: 'Taipan'  },
+  { initials: 'MN', name: 'Max Newman',       role: 'Committee Member', alias: 'Rizzler' },
+]
+
 function formatDateRange(start, end) {
   if (!start && !end) return ''
   if (!end) return formatDate(start)
@@ -126,6 +134,36 @@ export default function ZLTACLanding() {
       <ActiveEventBanner event={activeEvent} />
       <StatsStrip />
       <FormatEvolutionTimeline />
+
+      {/* ── ZLTAC Committee ── */}
+      <section className="bg-surface">
+        <div className="max-w-7xl mx-auto px-6 py-24">
+          <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Governance</p>
+          <h2 className="text-3xl font-black text-white text-center mb-2">ZLTAC Committee</h2>
+          <p className="text-brand text-sm uppercase tracking-widest text-center mb-2">ALSA Sub-Committee</p>
+          <p className="text-[#e5e5e5]/40 text-sm text-center mb-14 max-w-md mx-auto">
+            The ZLTAC committee runs the championship year-round under the ALSA umbrella — formats, scheduling, host coordination, and the rules of play.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            {ZLTAC_COMMITTEE.map(({ initials, name, role, alias }) => (
+              <div
+                key={name}
+                className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
+              >
+                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto">
+                  <span className="text-brand font-bold text-2xl">{initials}</span>
+                </div>
+                <p className="text-white font-bold text-lg mb-2">{name}</p>
+                <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{role}</p>
+                <p className="text-white/80 text-base md:text-lg">
+                  <span className="font-bold">ALIAS</span> – {alias}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <YearExplorer
         stateFilter={stateFilter}
         onStateFilterChange={setStateFilter}
