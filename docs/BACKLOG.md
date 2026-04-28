@@ -16,9 +16,6 @@
 
 ### Authentication \& Email
 
-* **P1 — Post-signup "Check your email" screen.** Current post-signup flow is too vague — users may close the tab thinking registration completed. Build a dedicated confirmation screen showing the email address used, instructions to check inbox + spam, and a resend button with rate limiting (uses `supabase.auth.resend()`).
-* **P1 — Custom SMTP provider for auth emails.** Replace Supabase's default `noreply@mail.supabase.io` sender with a branded address like `noreply@alsport.com.au`. Reasons: 4/hour rate limit on default sender will break at launch, branded sender looks professional, better deliverability. Recommended provider: **Resend** (3,000/month free, modern DX). Requires SPF, DKIM, and DMARC DNS records on the domain. Write ADR-0005 documenting the choice. **Blocked by:** domain purchase.
-* **P1 — Branded email templates.** Once custom SMTP is in place, customise the HTML of all Supabase auth emails (Confirm Email, Reset Password, Magic Link, Invite) with ALSA logo, brand colours, proper signature, and footer with incorporated association details.
 * **P2 — Enable "Prevent use of leaked passwords"** (Have I Been Pwned integration). Single highest-value auth hardening toggle Supabase offers. **Blocked by:** Pro plan upgrade ($25/month/project).
 * **P3 — Consider adding OAuth providers** (Google and/or Discord). Would reduce signup friction for some members. If pursued, write an ADR weighing the tradeoff (convenience vs. third-party dependency + additional privacy implications). Discord specifically could make sense given the laser tag community's existing use of Discord.
 * **P3 — Consider magic-link auth as an option alongside password.** Would reduce password-management burden for infrequent users.
@@ -28,7 +25,6 @@
 
 ### Database \& Backend
 
-* **P0 — Migrate `supabaseAdmin.js` from anon-client shim to proper Vercel API routes using service role key.** Affects 6 files: AdminRegistrations, AdminUsers, CaptainHub, EventPage, PlayerHub, RefereeTest. Currently admin cross-user queries are silently broken. Should be done before building any more admin features to avoid compounding migration surface area.
 * **P2 — Code splitting for bundle size.** Current bundle is \~747KB, above Vite's recommended threshold. Vite warning present. Use `React.lazy()` + route-based splitting on admin routes (biggest wins) and dialog/modal components.
 * **P2 — Rate-limit `/api/contact`.** The contact-form endpoint has no rate limiting — a single attacker can drain the Resend free-tier quota or fill the committee inbox. Add a basic per-IP limit (e.g. 5/hour, 20/day) using Upstash Redis or Vercel KV. The honeypot field handles naive bots but won't stop a determined sender. Pre-launch hardening — not blocking, but should land before the public domain cutover.
 * **P2 — Fix "Multiple GoTrueClient instances" console warning.** Cosmetic. Usually caused by `createClient()` being called multiple times instead of exported from a single module.
@@ -54,8 +50,6 @@
 
 ### Domain \& Infrastructure
 
-* **P1 — Purchase `alsport.com.au` domain.** Blocks custom SMTP, branded emails, and final production URL. Unblocks a cascade of P1 items above.
-* **P1 — Cut over to custom domain.** Once purchased: add to Vercel, update Supabase Site URL and redirect URLs, update environment variables, test thoroughly in preview before switching DNS.
 * **P2 — Set up status page or uptime monitoring.** Something basic like UptimeRobot (free) pinging the homepage every 5 minutes and alerting on failure.
 * **P2 — Set up error tracking.** Sentry free tier would catch frontend crashes in production that otherwise go unreported. Useful once real users start using the portal.
 
@@ -114,4 +108,10 @@ P3 — Profile picture upload. Prerequisite for committee page photos and genera
 * **2026-04-22 — Dropped CMS tables** (`cms\\\\\\\_global`, `cms\\\\\\\_pages`, `cms\\\\\\\_sections`) in favour of static content managed through code. ADR-0004 still to be written.
 * **2026-04-22 — Fixed Supabase URL configuration.** Site URL changed from `localhost:3000` to production URL. Added redirect URLs for production, local dev, and Vercel previews.
 * **2026-04-22 — Hardened password policy.** Min 10 chars, mixed case + digits required, secure password change + require-current-password both on. Documented in ADR-0003.
+* **2026-04-26 — Custom SMTP provider configured (Resend).** `lasersport.org.au` domain verified with SPF/DKIM/DMARC. Two separate API keys: one for Supabase auth emails, one for `/api/contact`. ADR-0005 to be written.
+* **2026-04-26 — Domain `lasersport.org.au` purchased and live.** Cutover complete: Vercel custom domain, Supabase Site URL + redirect URLs, env vars all updated. Note: domain is `lasersport.org.au`, not the previously planned `alsport.com.au`.
+* **2026-04-27 — Post-signup "Check your email" screen.** Phase 2A added the post-signup messaging; Phase 2B added the `/welcome` page reached after email confirmation.
+* **2026-04-27 — Branded email templates via Resend.** Auth emails sent through Resend using verified `lasersport.org.au` domain.
+* **2026-04-28 — supabaseAdmin migration to API routes complete.** All six pages (AdminRegistrations, AdminUsers, CaptainHub, EventPage, PlayerHub, RefereeTest) now use proper Vercel API routes with service role key.
+* **2026-04-28 — Granted service_role privileges on all public tables.** Migration leftover: service_role had no GRANTs on profiles/teams/zltac_registrations, causing 42501 permission errors on /admin/users. Fixed with schema-wide grant + default privileges for future tables.
 
