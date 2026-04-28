@@ -1,4 +1,6 @@
 import { Resend } from 'resend'
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
 
 const ALLOWED_SUBJECTS = new Set([
   'General Enquiry',
@@ -10,9 +12,30 @@ const ALLOWED_SUBJECTS = new Set([
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(3, '24 h'),
+  prefix: 'ratelimit:contact',
+  analytics: true,
+})
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  const forwarded = req.headers['x-forwarded-for']
+  const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null)
+    ?? req.socket?.remoteAddress
+    ?? 'unknown'
+
+  const { success, limit, remaining, reset } = await ratelimit.limit(ip)
+  res.setHeader('X-RateLimit-Limit', limit)
+  res.setHeader('X-RateLimit-Remaining', remaining)
+  res.setHeader('X-RateLimit-Reset', reset)
+
+  if (!success) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' })
   }
 
   const { name, email, subject, message, website } = req.body ?? {}

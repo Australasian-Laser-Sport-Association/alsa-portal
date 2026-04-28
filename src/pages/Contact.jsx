@@ -37,6 +37,9 @@ export default function Contact() {
       } else if (res.status === 400) {
         setStatus('error')
         setErrorMsg(data.error || 'Please check your details and try again.')
+      } else if (res.status === 429) {
+        setStatus('error')
+        setErrorMsg('rate-limit')
       } else {
         setStatus('error')
         setErrorMsg(null)
@@ -152,7 +155,15 @@ export default function Contact() {
                 </button>
                 {status === 'error' && (
                   <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-sm">
-                    {errorMsg ? (
+                    {errorMsg === 'rate-limit' ? (
+                      <p className="text-red-400">
+                        You've reached the daily message limit (3 per day). Please try again tomorrow or email{' '}
+                        <a href="mailto:committee@lasersport.org.au" className="underline hover:text-red-300">
+                          committee@lasersport.org.au
+                        </a>
+                        {' '}directly.
+                      </p>
+                    ) : errorMsg ? (
                       <p className="text-red-400">{errorMsg}</p>
                     ) : (
                       <p className="text-red-400">
