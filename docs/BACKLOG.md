@@ -45,7 +45,6 @@
 * **P2 — Write `docs/contributing/coding-standards.md`** — conventions, linting, commit format.
 * **P2 — Write `ADR-0001: Supabase over custom backend.`** Captures why we chose Supabase.
 * **P2 — Write `ADR-0004: CMS removed in favour of static content.`** Captures today's decision to drop the three `cms\\\\\\\_\\\\\\\*` tables.
-* **P2 — Write `ADR-0005: Custom SMTP provider choice.`** To be written when SMTP is configured (see above).
 
 ### Domain \& Infrastructure
 
@@ -114,4 +113,5 @@ P3 — Profile picture upload. Prerequisite for committee page photos and genera
 * **2026-04-28 — supabaseAdmin migration to API routes complete.** All six pages (AdminRegistrations, AdminUsers, CaptainHub, EventPage, PlayerHub, RefereeTest) now use proper Vercel API routes with service role key.
 * **2026-04-28 — Granted service_role privileges on all public tables.** Migration leftover: service_role had no GRANTs on profiles/teams/zltac_registrations, causing 42501 permission errors on /admin/users. Fixed with schema-wide grant + default privileges for future tables.
 * **2026-04-28 — Verified production Supabase auth settings match ADR-0003.** All password, email, OTP, signup, and provider settings confirmed via dashboard inspection on project `atwutsywnlnzqkqudxdv`. Closes the P2 verification item.
+* **2026-04-28 — ADR-0005 written.** Documents Resend SMTP provider choice, two-key separation pattern, domain verification, and Supabase Auth rate-limit tuning.
 
