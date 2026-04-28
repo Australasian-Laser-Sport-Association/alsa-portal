@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { isCommittee } from '../lib/roles'
 
@@ -27,7 +27,7 @@ export default function NavBar() {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeEvent, setActiveEvent] = useState(null)
-  const [visiblePills, setVisiblePills] = useState({ player: false, team: false, admin: false })
+  const [hasPlayerReg, setHasPlayerReg] = useState(false)
   const navLinks = DEFAULT_NAV_LINKS
   const isAdmin = location.pathname.startsWith('/admin')
 
@@ -42,27 +42,23 @@ export default function NavBar() {
       .then(({ data }) => setActiveEvent(data))
   }, [])
 
-  // Load hub pill visibility whenever user, roles or active event changes
+  // Look up player registration for the current event whenever user or event changes
   useEffect(() => {
-    if (!user) {
-      setVisiblePills({ player: false, team: false, admin: false })
-      return
-    }
+    if (!user || !activeEvent?.year) return
+    let cancelled = false
+    supabase
+      .from('zltac_registrations').select('id').eq('user_id', user.id).eq('year', activeEvent.year).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setHasPlayerReg(!!data) })
+    return () => { cancelled = true }
+  }, [user, activeEvent])
 
-    async function loadPlayerPill() {
-      if (!activeEvent?.year) return
-      const { data: reg } = await supabase
-        .from('zltac_registrations').select('id').eq('user_id', user.id).eq('year', activeEvent.year).maybeSingle()
-      setVisiblePills(prev => ({ ...prev, player: !!reg }))
-    }
-
-    setVisiblePills({
-      player: false, // loaded async below
-      team: userRoles.includes('captain'),
-      admin: isCommittee(profile),
-    })
-    loadPlayerPill()
-  }, [user, userRoles, profile, activeEvent])
+  const visiblePills = user
+    ? {
+        player: hasPlayerReg,
+        team: userRoles.includes('captain'),
+        admin: isCommittee(profile),
+      }
+    : { player: false, team: false, admin: false }
 
   async function handleSignOut() {
     await signOut()

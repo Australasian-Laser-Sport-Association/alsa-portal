@@ -32,3 +32,4 @@ dist-ssr
 .claude/
 
 .vercel
+lint-output.txt
