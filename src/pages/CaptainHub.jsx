@@ -225,6 +225,20 @@ export default function CaptainHub() {
 
     if (error) { showToast(`Error: ${error.message}`); setRemoveConfirm(null); return }
 
+    // Phase B.3a dual-write: mirror removal into team_members.
+    try {
+      if (team?.id && removeConfirm.userId) {
+        const { error: memberErr } = await supabase
+          .from('team_members')
+          .delete()
+          .eq('team_id', team.id)
+          .eq('user_id', removeConfirm.userId)
+        if (memberErr) console.error('[CaptainHub confirmRemove] dual-write team_members delete failed:', memberErr.message)
+      }
+    } catch (err) {
+      console.error('[CaptainHub confirmRemove] dual-write threw:', err)
+    }
+
     setRoster(r => r.filter(p => p.id !== removeConfirm.regId))
     showToast(`${removeConfirm.alias} removed from your team`)
     setRemoveConfirm(null)
@@ -545,7 +559,7 @@ export default function CaptainHub() {
                         {/* Remove button */}
                         {!isMe && (
                           <button
-                            onClick={() => setRemoveConfirm({ regId: r.id, alias: alias || name })}
+                            onClick={() => setRemoveConfirm({ regId: r.id, userId: r.user_id, alias: alias || name })}
                             className="flex-shrink-0 text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
                           >
                             Remove

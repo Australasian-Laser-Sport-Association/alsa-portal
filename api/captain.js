@@ -27,6 +27,21 @@ export default async function handler(req, res) {
       .select()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
+
+    // Phase B.3a dual-write: mirror membership into team_members.
+    try {
+      const { error: memberErr } = await supabaseAdmin.from('team_members').upsert({
+        team_id: teamId,
+        user_id: playerId,
+        roles: ['player'],
+        invite_status: 'accepted',
+        responded_at: new Date().toISOString(),
+      }, { onConflict: 'team_id,user_id' })
+      if (memberErr) console.error('[api/captain add-player] dual-write team_members upsert failed:', memberErr.message)
+    } catch (err) {
+      console.error('[api/captain add-player] dual-write threw:', err)
+    }
+
     return res.json({ data })
   }
 

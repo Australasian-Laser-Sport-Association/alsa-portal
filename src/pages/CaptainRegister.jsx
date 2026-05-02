@@ -104,6 +104,28 @@ export default function CaptainRegister() {
       status: 'pending',
     }, { onConflict: 'user_id,year' })
 
+    // Phase B.3a dual-write: populate unified teams schema alongside legacy.
+    try {
+      if (event?.id) {
+        const { error: teamUpdateErr } = await supabase.from('teams').update({
+          manager_id: user.id,
+          format: 'team',
+          event_id: event.id,
+        }).eq('id', newTeam.id)
+        if (teamUpdateErr) console.error('[CaptainRegister] dual-write teams update failed:', teamUpdateErr.message)
+      }
+      const { error: memberErr } = await supabase.from('team_members').insert({
+        team_id: newTeam.id,
+        user_id: user.id,
+        roles: ['manager', 'captain', 'player'],
+        invite_status: 'accepted',
+        responded_at: new Date().toISOString(),
+      })
+      if (memberErr) console.error('[CaptainRegister] dual-write team_members insert failed:', memberErr.message)
+    } catch (err) {
+      console.error('[CaptainRegister] dual-write threw:', err)
+    }
+
     setSaving(false)
     setSubmittedTeam(newTeam)
     setStep(2)
