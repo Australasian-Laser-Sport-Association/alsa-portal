@@ -248,7 +248,11 @@ export default function AdminEvent() {
     }
     setSaving(false)
     if (err) setMsg({ type: 'error', text: err.message })
-    else { setMsg({ type: 'ok', text: 'Saved.' }); loadCurrentEvent() }
+    else {
+      setMsg({ type: 'ok', text: 'Saved.' })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      loadCurrentEvent()
+    }
   }
 
   async function handleChangeStatus(newStatus) {
@@ -256,7 +260,11 @@ export default function AdminEvent() {
     setSaving(true)
     const { error } = await supabase.from('zltac_events').update({ status: newStatus }).eq('id', event.id)
     setSaving(false)
-    if (!error) { setEvent(e => ({ ...e, status: newStatus })); setForm(f => ({ ...f, status: newStatus })) }
+    if (!error) {
+      setEvent(e => ({ ...e, status: newStatus }))
+      setForm(f => ({ ...f, status: newStatus }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+    }
   }
 
   async function openArchiveModal() {

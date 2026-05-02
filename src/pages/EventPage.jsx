@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
@@ -14,16 +14,6 @@ function initials(name = '') {
 const SIDE_EVENT_SLUG_ORDER = ['lord-of-the-rings', 'solos', 'doubles', 'triples']
 
 // ── Hero Card Icons ──────────────────────────────────────────────────────────
-const ShieldCrownIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M32 6 L54 16 L54 34 C54 47 44 56 32 60 C20 56 10 47 10 34 L10 16 Z" stroke="#00FF41" strokeWidth="2.5" strokeLinejoin="round" fill="none"/>
-    <path d="M20 40 L20 28 L25.5 34 L32 22 L38.5 34 L44 28 L44 40 Z" stroke="#00FF41" strokeWidth="2" strokeLinejoin="round" fill="none"/>
-    <circle cx="20" cy="26" r="2" fill="#00FF41"/>
-    <circle cx="32" cy="20" r="2" fill="#00FF41"/>
-    <circle cx="44" cy="26" r="2" fill="#00FF41"/>
-  </svg>
-)
-
 const PlayerPersonIcon = () => (
   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="32" cy="20" r="10" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
@@ -373,6 +363,7 @@ function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function EventPage() {
   const { year } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -382,6 +373,10 @@ export default function EventPage() {
   const [doublesPairs, setDoublesPairs] = useState([])
   const [triplesTeams, setTriplesTeams] = useState([])
   const [pairProfileMap, setPairProfileMap] = useState({})
+
+  // Join Team modal
+  const [joinOpen, setJoinOpen] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -405,7 +400,7 @@ export default function EventPage() {
           const [{ data: teamsData }, { data: regsData }] = await Promise.all([
             supabase
               .from('teams')
-              .select('id, name, status, logo_url, captain_id')
+              .select('id, name, status, logo_url, captain_id, manager_id')
               .eq('status', 'approved')
               .order('name'),
             supabase
@@ -577,6 +572,51 @@ export default function EventPage() {
   // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
   return (
     <div className="bg-base text-white">
+      {/* Join Team modal */}
+      {joinOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Join a team</p>
+            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+              Enter the invite code your captain shared with you.
+            </p>
+            <input
+              type="text"
+              value={joinCode}
+              onChange={e => setJoinCode(e.target.value.toUpperCase())}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && joinCode.trim()) {
+                  navigate(`/join/${joinCode.trim().toUpperCase()}`)
+                }
+              }}
+              placeholder="e.g. ABC123"
+              autoFocus
+              maxLength={12}
+              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors mb-4 font-mono uppercase tracking-widest"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  const code = joinCode.trim().toUpperCase()
+                  if (!code) return
+                  navigate(`/join/${code}`)
+                }}
+                disabled={!joinCode.trim()}
+                className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Join team
+              </button>
+              <button
+                onClick={() => { setJoinOpen(false); setJoinCode('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero */}
       <section
         className="relative py-24 border-b border-line overflow-hidden"
@@ -628,9 +668,12 @@ export default function EventPage() {
         </section>
       )}
 
-      {/* CTA cards (open events only) */}
+      {/* CTA cards (open events only) — state-aware */}
       {event.status === 'open' && (() => {
-        const isRegistered = user && regs.some(r => r.user_id === user.id)
+        const myReg = user ? regs.find(r => r.user_id === user.id) : null
+        const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
+        const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
+
         const cardStyle = {
           background: '#191919',
           border: '1px solid rgba(255,255,255,0.06)',
@@ -643,70 +686,100 @@ export default function EventPage() {
         const onHoverLeave = e => {
           e.currentTarget.style.boxShadow = 'none'
         }
-        return (
-          <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Captain */}
-              <div
-                className="rounded-2xl p-10 transition-all text-center flex flex-col"
-                style={cardStyle}
-                onMouseEnter={onHoverEnter}
-                onMouseLeave={onHoverLeave}
-              >
-                <div className="mb-6 flex justify-center"><ShieldCrownIcon /></div>
-                <h2 className="text-white font-black text-xl mb-4 leading-tight">Register as Captain</h2>
-                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                  Create a team, generate invite codes, and lead your squad to victory.
-                </p>
-                <Link
-                  to={`/events/${year}/captain-register`}
-                  className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
-                >
-                  Register as Captain
-                </Link>
-              </div>
+        const cardClass = 'rounded-2xl p-10 transition-all text-center flex flex-col'
+        const primaryButton = 'block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]'
 
-              {/* Player */}
-              <div
-                className="rounded-2xl p-10 transition-all text-center flex flex-col"
-                style={cardStyle}
-                onMouseEnter={onHoverEnter}
-                onMouseLeave={onHoverLeave}
-              >
+        // ── States A + B: not registered for this event ──────────────────────
+        if (!myReg) {
+          return (
+            <section className="max-w-md mx-auto px-6 pt-16 pb-12">
+              <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
                 <div className="mb-6 flex justify-center"><PlayerPersonIcon /></div>
-                <h2 className="text-white font-black text-xl mb-4 leading-tight">Register as Player</h2>
+                <h2 className="text-white font-black text-xl mb-4 leading-tight">Register for {event.name}</h2>
                 <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                  Join a team using your captain's invite code and pick your side events.
+                  Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one.
                 </p>
-                <Link
-                  to={`/events/${year}/player-register`}
-                  className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
-                >
-                  Register as Player
+                <Link to={`/events/${year}/player-register`} className={primaryButton}>
+                  Register for {event.name}
                 </Link>
               </div>
+            </section>
+          )
+        }
 
-              {/* Player Hub — only for logged-in registered players */}
-              {isRegistered && (
-                <div
-                  className="rounded-2xl p-10 transition-all text-center flex flex-col"
-                  style={cardStyle}
-                  onMouseEnter={onHoverEnter}
-                  onMouseLeave={onHoverLeave}
-                >
+        // ── State C: registered, not on a team ───────────────────────────────
+        if (!myReg.team_id) {
+          return (
+            <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
+              <div className="text-center mb-8">
+                <span className="inline-block bg-brand/10 text-brand border border-brand/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
+                  ✓ Registered as Player
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Create Team</h2>
+                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
+                    Start a new team and share your invite code with players.
+                  </p>
+                  <Link to={`/events/${year}/captain-register`} className={primaryButton}>
+                    Create Team
+                  </Link>
+                </div>
+                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Join Team with Code</h2>
+                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
+                    Got an invite code from a captain? Enter it to join their team.
+                  </p>
+                  <button onClick={() => { setJoinCode(''); setJoinOpen(true) }} className={primaryButton}>
+                    Enter Invite Code
+                  </button>
+                </div>
+                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
                   <div className="mb-6 flex justify-center"><DashboardGridIcon /></div>
                   <h2 className="text-white font-black text-xl mb-4 leading-tight">Player Hub</h2>
                   <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
                     View your checklist, pay your fees and sign the Code of Conduct.
                   </p>
-                  <Link
-                    to={`/events/${year}/player-hub`}
-                    className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
-                  >
+                  <Link to="/player-hub" className={primaryButton}>
                     Go to Player Hub
                   </Link>
                 </div>
+              </div>
+            </section>
+          )
+        }
+
+        // ── State D: registered and on a team ────────────────────────────────
+        return (
+          <section className="max-w-3xl mx-auto px-6 pt-16 pb-12">
+            <div className="text-center mb-8">
+              <span className="inline-block bg-brand/10 text-brand border border-brand/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
+                ✓ Registered as Player{myTeam ? ` · ${myTeam.name}` : ''}
+              </span>
+            </div>
+            <div className={`grid grid-cols-1 ${isCaptainOrManager ? 'md:grid-cols-2' : ''} gap-6`}>
+              {isCaptainOrManager && (
+                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Captain Hub</h2>
+                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
+                    Manage your team roster, approve players, and track readiness.
+                  </p>
+                  <Link to="/captain-hub" className={primaryButton}>
+                    Go to Captain Hub
+                  </Link>
+                </div>
               )}
+              <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
+                <div className="mb-6 flex justify-center"><DashboardGridIcon /></div>
+                <h2 className="text-white font-black text-xl mb-4 leading-tight">Player Hub</h2>
+                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
+                  View your checklist, pay your fees and sign the Code of Conduct.
+                </p>
+                <Link to="/player-hub" className={primaryButton}>
+                  Go to Player Hub
+                </Link>
+              </div>
             </div>
           </section>
         )
