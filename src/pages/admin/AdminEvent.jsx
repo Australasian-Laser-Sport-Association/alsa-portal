@@ -2,7 +2,7 @@
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 
-const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings']
+const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
 
 const DEFAULT_SIDE_EVENTS = [
   { slug: 'lord-of-the-rings', name: 'Lord of the Rings', description: 'Epic multi-round format — only the finest warriors survive each ring to claim the ultimate title.', enabled: true, price: '25.00', max_participants: '', custom: false },
@@ -120,6 +120,10 @@ export default function AdminEvent() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const logoRef = useRef()
 
+  // Photos
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoRef = useRef()
+
   // Custom side event
   const [showAddCustom, setShowAddCustom] = useState(false)
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM)
@@ -151,6 +155,8 @@ export default function AdminEvent() {
       venue: ev.venue ?? '',
       description: ev.description ?? '',
       logo_url: ev.logo_url ?? '',
+      hero_text: ev.hero_text ?? '',
+      photo_urls: ev.photo_urls ?? [],
     })
     const rawSides = ev.side_events
     setSideEvents(rawSides
@@ -202,6 +208,38 @@ export default function AdminEvent() {
     return supabase.storage.from('event-logos').getPublicUrl(data.path).data.publicUrl
   }
 
+  async function uploadPhoto(file) {
+    if (!file) return
+    if (!event?.id) { setMsg({ type: 'error', text: 'Save the event first before adding photos.' }); return }
+    if (file.size > 5 * 1024 * 1024) { setMsg({ type: 'error', text: 'Photo must be under 5MB.' }); return }
+    setPhotoUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `events/${event.id}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
+    if (error) {
+      setMsg({ type: 'error', text: `Photo upload failed: ${error.message}` })
+      setPhotoUploading(false)
+      return
+    }
+    const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
+    setForm(f => ({ ...f, photo_urls: [...(f.photo_urls ?? []), publicUrl] }))
+    setPhotoUploading(false)
+  }
+
+  function removePhoto(idx) {
+    setForm(f => ({ ...f, photo_urls: (f.photo_urls ?? []).filter((_, i) => i !== idx) }))
+  }
+
+  function movePhoto(idx, direction) {
+    setForm(f => {
+      const arr = [...(f.photo_urls ?? [])]
+      const target = idx + direction
+      if (target < 0 || target >= arr.length) return f
+      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
+      return { ...f, photo_urls: arr }
+    })
+  }
+
   async function handleSave() {
     setSaving(true)
     setMsg(null)
@@ -218,6 +256,8 @@ export default function AdminEvent() {
       venue: form.venue || null,
       description: form.description || null,
       logo_url: logo_url || null,
+      hero_text: form.hero_text || null,
+      photo_urls: form.photo_urls ?? [],
       main_fee: displayToCents(pricing.player_fee),
       team_fee: displayToCents(pricing.team_fee),
       dinner_guest_price: displayToCents(pricing.dinner_guest_fee),
@@ -540,7 +580,8 @@ export default function AdminEvent() {
 
           <div>
             <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Description</label>
-            <textarea rows={4} value={form.description ?? ''} disabled={isArchived}
+            <p className="text-xs text-[#e5e5e5]/30 mb-2">Short summary (1-2 sentences). Used in event history records when archived.</p>
+            <textarea rows={3} value={form.description ?? ''} disabled={isArchived}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors resize-none disabled:opacity-40"
             />
@@ -777,6 +818,94 @@ export default function AdminEvent() {
                 </div>
               </label>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 4: Hero & Photos ─────────────────────────────────────────── */}
+      {activeTab === 4 && (
+        <div className="space-y-8 max-w-2xl">
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Hero Text</label>
+            <p className="text-xs text-[#e5e5e5]/30 mb-2">Longer marketing block shown on the public event page below the title.</p>
+            <textarea rows={8} value={form.hero_text ?? ''} disabled={isArchived}
+              onChange={e => setForm(f => ({ ...f, hero_text: e.target.value }))}
+              placeholder="Tell players what makes this event special, what to expect, and why they should register…"
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors resize-y disabled:opacity-40"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Photo Gallery</label>
+            <p className="text-xs text-[#e5e5e5]/30 mb-3">PNG, JPG, or WebP. Max 5MB per photo. Use ↑ / ↓ to reorder, × to remove.</p>
+
+            <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+              onChange={e => { const file = e.target.files?.[0]; if (file) uploadPhoto(file); e.target.value = '' }}
+            />
+
+            {!event?.id && (
+              <p className="text-xs text-yellow-400/70 mb-3">Save the event first before adding photos.</p>
+            )}
+
+            {(form.photo_urls ?? []).length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                {(form.photo_urls ?? []).map((url, i) => (
+                  <div key={url + i} className="relative group rounded-xl overflow-hidden border border-line bg-base aspect-square">
+                    <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    {!isArchived && (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, -1)}
+                          disabled={i === 0}
+                          title="Move up"
+                          className="bg-black/80 text-white text-xs w-8 h-8 rounded-full flex items-center justify-center hover:bg-brand hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, 1)}
+                          disabled={i === (form.photo_urls ?? []).length - 1}
+                          title="Move down"
+                          className="bg-black/80 text-white text-xs w-8 h-8 rounded-full flex items-center justify-center hover:bg-brand hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          title="Remove"
+                          className="bg-black/80 text-red-400 text-base w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    <span className="absolute top-2 left-2 bg-black/70 text-[#e5e5e5]/70 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      {i + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isArchived && (
+              <button
+                type="button"
+                onClick={() => photoRef.current?.click()}
+                disabled={!event?.id || photoUploading}
+                className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="text-xs text-[#e5e5e5]/40 group-hover:text-brand transition-colors">
+                  {photoUploading ? 'Uploading…' : '+ Add Photo'}
+                </span>
+              </button>
+            )}
+
+            {(form.photo_urls ?? []).length === 0 && !isArchived && (
+              <p className="text-xs text-[#e5e5e5]/30 mt-3">No photos yet. Add a few to bring your event page to life.</p>
+            )}
           </div>
         </div>
       )}

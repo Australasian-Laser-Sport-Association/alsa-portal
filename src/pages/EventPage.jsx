@@ -6,6 +6,17 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { formatDate } from '../lib/dateFormat'
 import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
+import RegistrationTimeline from '../components/RegistrationTimeline'
+
+// Mirror of PlayerHub.jsx isUnder18 — kept inline so the timeline U18 step
+// uses the same cutoff logic (eventYear July 1).
+function isUnder18(dob, eventYear) {
+  if (!dob || !eventYear) return false
+  const cutoff = new Date(`${eventYear}-07-01`)
+  const eighteenth = new Date(dob)
+  eighteenth.setFullYear(eighteenth.getFullYear() + 18)
+  return eighteenth > cutoff
+}
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -378,21 +389,60 @@ export default function EventPage() {
   const [joinOpen, setJoinOpen] = useState(false)
   const [joinCode, setJoinCode] = useState('')
 
+  // Personalized timeline / completion data (only loaded when user is logged in)
+  const [myProfile, setMyProfile] = useState(null)
+  const [myCocSig, setMyCocSig] = useState(null)
+  const [myPayment, setMyPayment] = useState(null)
+  const [myMediaSub, setMyMediaSub] = useState(null)
+  const [myU18Sub, setMyU18Sub] = useState(null)
+
+  // Photo lightbox
+  const [lightboxUrl, setLightboxUrl] = useState(null)
+
   useEffect(() => {
     async function load() {
       try {
-        const [{ data: ev }, profileResult] = await Promise.all([
+        const yearInt = parseInt(year)
+        const [
+          { data: ev },
+          profileResult,
+          fullProfileResult,
+          cocResult,
+          payResult,
+          mediaResult,
+          u18Result,
+        ] = await Promise.all([
           supabase
             .from('zltac_events')
             .select('*')
-            .eq('year', parseInt(year))
+            .eq('year', yearInt)
             .maybeSingle(),
           user
             ? supabase.from('profiles').select('roles').eq('id', user.id).single()
             : Promise.resolve({ data: null }),
+          user
+            ? supabase.from('profiles').select('first_name, last_name, dob').eq('id', user.id).maybeSingle()
+            : Promise.resolve({ data: null }),
+          user
+            ? supabase.from('code_of_conduct_signatures').select('signed_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
+            : Promise.resolve({ data: null }),
+          user
+            ? supabase.from('payments').select('status, amount').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
+            : Promise.resolve({ data: null }),
+          user
+            ? supabase.from('media_release_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
+            : Promise.resolve({ data: null }),
+          user
+            ? supabase.from('under18_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
+            : Promise.resolve({ data: null }),
         ])
         setEvent(ev)
         setIsAdmin(isCommittee(profileResult?.data))
+        setMyProfile(fullProfileResult?.data ?? null)
+        setMyCocSig(cocResult?.data ?? null)
+        setMyPayment(payResult?.data ?? null)
+        setMyMediaSub(mediaResult?.data ?? null)
+        setMyU18Sub(u18Result?.data ?? null)
 
         // Load registration data for non-draft events
         if (ev && ev.status !== 'draft') {
@@ -572,6 +622,28 @@ export default function EventPage() {
   // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
   return (
     <div className="bg-base text-white">
+      {/* Photo lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl transition-colors"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Join Team modal */}
       {joinOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
@@ -661,12 +733,55 @@ export default function EventPage() {
         </div>
       </section>
 
-      {/* Description */}
-      {event.description && (
+      {/* Hero text — shows hero_text if set, otherwise falls back to description */}
+      {(event.hero_text || event.description) && (
         <section className="max-w-3xl mx-auto px-6 py-12 text-center">
-          <p className="text-[#e5e5e5]/60 text-lg leading-relaxed">{event.description}</p>
+          <p className="text-[#e5e5e5]/60 text-lg leading-relaxed whitespace-pre-wrap">
+            {event.hero_text || event.description}
+          </p>
         </section>
       )}
+
+      {/* Photo gallery — hidden when empty */}
+      {Array.isArray(event.photo_urls) && event.photo_urls.length > 0 && (
+        <section className="max-w-5xl mx-auto px-6 pb-12">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {event.photo_urls.map((url, i) => (
+              <button
+                key={url + i}
+                onClick={() => setLightboxUrl(url)}
+                className="aspect-square rounded-xl overflow-hidden border border-line bg-base hover:border-brand/40 transition-colors group"
+              >
+                <img
+                  src={url}
+                  alt={`${event.name} photo ${i + 1}`}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Registration timeline — educational for anon/not-registered, personalized for registered */}
+      {(() => {
+        const myReg = user ? regs.find(r => r.user_id === user.id) : null
+        if (!myReg) {
+          return <RegistrationTimeline mode="educational" eventName={event.name} />
+        }
+        const yearInt = parseInt(year)
+        const u18Required = isUnder18(myProfile?.dob, yearInt)
+        const steps = [
+          { label: 'Register as a player', description: 'Create your ALSA account and sign up for the event.', done: true },
+          { label: 'Join or create a team', description: 'Use a captain\'s invite code, or start a new team and invite others.', done: !!myReg.team_id, href: `/events/${year}` },
+          { label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct before the event.', done: myCocSig != null, href: '/player-hub' },
+          { label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.', done: myMediaSub != null, href: '/player-hub' },
+          { label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).', done: myReg.has_confirmed_side_events === true, href: '/player-hub' },
+          ...(u18Required ? [{ label: 'Submit Under-18 form', description: 'Required for players under 18 on event date.', done: myU18Sub != null, optional: true, href: '/player-hub' }] : []),
+          { label: 'Pay your fees', description: 'Settle your registration and side event fees.', done: myPayment?.status === 'paid', href: '/player-hub' },
+        ]
+        return <RegistrationTimeline mode="personalized" eventName={event.name} steps={steps} />
+      })()}
 
       {/* CTA cards (open events only) — state-aware */}
       {event.status === 'open' && (() => {
