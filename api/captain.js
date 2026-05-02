@@ -45,6 +45,39 @@ export default async function handler(req, res) {
     return res.json({ data })
   }
 
+  if (action === 'disband-team') {
+    const { teamId, year } = body
+    if (!teamId || !year) return res.status(400).json({ error: 'teamId and year are required' })
+
+    // Validate caller is captain
+    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()
+    if (teamErr) return res.status(500).json({ error: teamErr.message })
+    if (!team) return res.status(404).json({ error: 'Team not found' })
+    if (team.captain_id !== user.id) return res.status(403).json({ error: 'Only the team captain can disband the team' })
+
+    // 1. Kick all members off the team but keep their registrations
+    const { error: regErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .update({ team_id: null })
+      .eq('team_id', teamId)
+      .eq('year', year)
+    if (regErr) return res.status(500).json({ error: regErr.message })
+
+    // 2. Phase B.3a dual-write: clear team_members rows for this team
+    try {
+      const { error: memberErr } = await supabaseAdmin.from('team_members').delete().eq('team_id', teamId)
+      if (memberErr) console.error('[api/captain disband-team] dual-write team_members delete failed:', memberErr.message)
+    } catch (err) {
+      console.error('[api/captain disband-team] dual-write threw:', err)
+    }
+
+    // 3. Delete the team itself
+    const { error: delErr } = await supabaseAdmin.from('teams').delete().eq('id', teamId)
+    if (delErr) return res.status(500).json({ error: delErr.message })
+
+    return res.json({ ok: true })
+  }
+
   if (action === 'team-completions') {
     const { playerIds, eventYear } = body
     if (!Array.isArray(playerIds) || playerIds.length === 0 || !eventYear) {

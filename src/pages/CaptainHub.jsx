@@ -60,6 +60,11 @@ export default function CaptainHub() {
   // Remove confirmation
   const [removeConfirm, setRemoveConfirm] = useState(null) // { regId, alias }
 
+  // Disband confirmation
+  const [disbandOpen, setDisbandOpen] = useState(false)
+  const [disbanding, setDisbanding] = useState(false)
+  const [disbandError, setDisbandError] = useState('')
+
   // Toast
   const [toast, setToast] = useState(null)
 
@@ -244,6 +249,24 @@ export default function CaptainHub() {
     setRemoveConfirm(null)
   }
 
+  // ── Disband team ──────────────────────────────────────────────────────────
+  async function disbandTeam() {
+    if (!team?.id || !event?.year) return
+    setDisbanding(true)
+    setDisbandError('')
+    try {
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'disband-team', teamId: team.id, year: event.year }),
+      })
+      navigate('/player-hub')
+    } catch (err) {
+      console.error('[CaptainHub] disbandTeam threw:', err)
+      setDisbandError(err?.message || 'Failed to disband team. Please try again.')
+      setDisbanding(false)
+    }
+  }
+
   // ── Copy invite link ──────────────────────────────────────────────────────
   function copyInviteLink() {
     if (!team || !event?.year) return
@@ -340,6 +363,39 @@ export default function CaptainHub() {
             <div className="flex gap-3">
               <button onClick={confirmRemove} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove</button>
               <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disband team confirmation modal */}
+      {disbandOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Disband team?</p>
+            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+              This permanently deletes <span className="text-white font-semibold">{team?.name}</span> and removes all <span className="text-white font-semibold">{roster.length}</span> member{roster.length !== 1 ? 's' : ''} from the team.
+              They will remain registered for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${event?.year ?? ''}`}</span> but will need to create or join another team. This cannot be undone. Continue?
+            </p>
+            {disbandError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{disbandError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={disbandTeam}
+                disabled={disbanding}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {disbanding ? 'Disbanding…' : 'Disband team'}
+              </button>
+              <button
+                onClick={() => { setDisbandOpen(false); setDisbandError('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -619,6 +675,17 @@ export default function CaptainHub() {
                 <div className="flex justify-between"><span className="text-[#e5e5e5]/40">Team Name</span><span className="text-white font-semibold">{team.name}</span></div>
                 <div className="flex justify-between"><span className="text-[#e5e5e5]/40">State</span><span className="text-white">{team.state ?? '—'}</span></div>
                 <div className="flex justify-between"><span className="text-[#e5e5e5]/40">Home Venue</span><span className="text-white">{team.home_venue ?? '—'}</span></div>
+              </div>
+            )}
+
+            {!editingSettings && (
+              <div className="mt-5 pt-4 border-t border-line">
+                <button
+                  onClick={() => { setDisbandError(''); setDisbandOpen(true) }}
+                  className="text-red-400 hover:text-red-300 text-xs font-semibold transition-colors"
+                >
+                  Disband team
+                </button>
               </div>
             )}
           </div>

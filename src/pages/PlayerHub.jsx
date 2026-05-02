@@ -612,6 +612,11 @@ export default function PlayerHub() {
   const [savingConfirm, setSavingConfirm] = useState(false)
   const [savingExtrasConfirm, setSavingExtrasConfirm] = useState(false)
 
+  // Cancel registration modal
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState(null) // string | { message, captainBlocker: true }
+
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user) return
@@ -770,6 +775,40 @@ export default function PlayerHub() {
     setSavingExtrasConfirm(false)
   }
 
+  // ── Cancel registration ───────────────────────────────────────────────────
+  async function cancelRegistration() {
+    if (!event?.year) return
+    setCancelling(true)
+    setCancelError(null)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/player/cancel-registration', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ year: event.year }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.status === 409 && body.code === 'CAPTAIN_BLOCKED') {
+        setCancelError({ message: body.error || 'You are the team captain. Disband your team first.', captainBlocker: true })
+        setCancelling(false)
+        return
+      }
+      if (!res.ok) {
+        setCancelError(body.error || 'Failed to cancel registration. Please try again.')
+        setCancelling(false)
+        return
+      }
+      navigate('/dashboard')
+    } catch (err) {
+      console.error('[PlayerHub] cancelRegistration threw:', err)
+      setCancelError(err?.message || 'Failed to cancel registration.')
+      setCancelling(false)
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
@@ -847,6 +886,47 @@ export default function PlayerHub() {
 
   return (
     <div className="min-h-screen bg-base text-white">
+
+      {/* Cancel registration confirmation modal */}
+      {cancelOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Cancel your registration?</p>
+            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+              This permanently deletes your registration for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${eventYear}`}</span>.
+              You'll lose your team membership and side event selections. Continue?
+            </p>
+            {cancelError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">
+                  {typeof cancelError === 'string' ? cancelError : cancelError.message}
+                </p>
+                {typeof cancelError === 'object' && cancelError.captainBlocker && (
+                  <Link to="/captain-hub" className="text-brand text-xs font-semibold hover:underline mt-1 inline-block">
+                    Go to Captain Hub →
+                  </Link>
+                )}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={cancelRegistration}
+                disabled={cancelling || (typeof cancelError === 'object' && cancelError?.captainBlocker)}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {cancelling ? 'Cancelling…' : 'Cancel registration'}
+              </button>
+              <button
+                onClick={() => { setCancelOpen(false); setCancelError(null) }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep registration
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-3xl mx-auto px-6 py-10">
 
         {/* Back */}
@@ -1387,6 +1467,18 @@ export default function PlayerHub() {
           )}
 
         </div>
+
+        {/* ── Cancel registration ── */}
+        {isRegistered && (
+          <div className="mt-10 pt-6 border-t border-line text-center">
+            <button
+              onClick={() => { setCancelError(null); setCancelOpen(true) }}
+              className="text-red-400/40 hover:text-red-400 text-xs transition-colors"
+            >
+              Cancel my registration for {event?.name ?? `ZLTAC ${eventYear}`}
+            </button>
+          </div>
+        )}
       </div>
       <Footer />
     </div>
