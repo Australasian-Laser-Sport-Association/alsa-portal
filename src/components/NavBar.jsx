@@ -12,7 +12,7 @@ const DEFAULT_NAV_LINKS = [
   { label: 'Contact', href: '/contact', visible: true },
 ]
 
-const PILL_STATUS_LABEL = { open: 'Event Open', upcoming: 'Coming Soon' }
+const PILL_STATUS_LABEL = { open: 'EVENT OPEN' }
 
 function navLinkClass({ isActive }) {
   return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'text-brand' : 'text-[#e5e5e5]/70 hover:text-white'}`
@@ -98,7 +98,7 @@ export default function NavBar() {
               className="ml-2 flex items-center gap-1.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold px-3 py-1 rounded-full transition-colors whitespace-nowrap"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
-              {event.name} — {pillStatusLabel}
+              {pillStatusLabel} — {event.name}
             </Link>
           )}
         </nav>
@@ -193,7 +193,7 @@ export default function NavBar() {
               className="flex items-center justify-center gap-2 mt-1 py-2.5 px-3 rounded-full bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold transition-colors"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              {event.name} — {pillStatusLabel}
+              {pillStatusLabel} — {event.name}
             </Link>
           )}
 

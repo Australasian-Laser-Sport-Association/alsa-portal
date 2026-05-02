@@ -281,6 +281,7 @@ export default function AdminEvent() {
           ? `Event archived. A history record for ${event.year} already exists and was preserved — edit it on the Event History page.`
           : 'Event archived.',
       })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
       setActiveTab(0)
       loadCurrentEvent()
     } catch (err) {
@@ -320,6 +321,7 @@ export default function AdminEvent() {
       setDeleting(false)
       setDeleteOpen(false)
       setMsg({ type: 'ok', text: 'Event deleted.' })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
       setActiveTab(0)
       loadCurrentEvent()
     } catch (err) {
