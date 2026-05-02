@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings']
 
@@ -76,16 +77,12 @@ function StatusBanner({ status, onChangeStatus, saving, archived }) {
               Close Registration
             </button>
           )}
-          {status === 'closed' && (<>
+          {status === 'closed' && (
             <button onClick={() => onChangeStatus('open')} disabled={saving}
               className="text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-4 py-2 rounded-lg transition-all">
               Reopen
             </button>
-            <button onClick={() => onChangeStatus('archived')} disabled={saving}
-              className="text-xs bg-[#374056] hover:bg-[#444] text-[#e5e5e5]/50 hover:text-white font-bold px-4 py-2 rounded-lg transition-colors">
-              Archive Event
-            </button>
-          </>)}
+          )}
         </div>
       )}
     </div>
@@ -99,6 +96,17 @@ export default function AdminEvent() {
   const [saving, setSaving] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [msg, setMsg] = useState(null)
+
+  // Archive modal
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+
+  // Delete modal
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
+  const [deleteCounts, setDeleteCounts] = useState({ regs: null, teams: null })
 
   // Form state
   const [form, setForm] = useState({})
@@ -251,26 +259,74 @@ export default function AdminEvent() {
     if (!error) { setEvent(e => ({ ...e, status: newStatus })); setForm(f => ({ ...f, status: newStatus })) }
   }
 
-  async function handleArchiveAndCreate() {
+  async function openArchiveModal() {
+    setArchiveError('')
+    setArchiveOpen(true)
+  }
+
+  async function handleArchive() {
     if (!event) return
-    if (!window.confirm(`Archive ${event.name} ${event.year} and create a new event for ${event.year + 1}?`)) return
     setArchiving(true)
-    await supabase.from('zltac_events').update({ status: 'archived' }).eq('id', event.id)
-    await supabase.from('zltac_events').insert({
-      name: event.name,
-      year: event.year + 1,
-      status: 'draft',
-      main_fee: event.main_fee,
-      team_fee: event.team_fee,
-      dinner_guest_price: event.dinner_guest_price,
-      processing_fee_pct: event.processing_fee_pct,
-      side_events: event.side_events,
-      require_coc: event.require_coc,
-      require_ref_test: event.require_ref_test,
-    })
-    setArchiving(false)
-    setActiveTab(0)
-    loadCurrentEvent()
+    setArchiveError('')
+    try {
+      const result = await apiFetch('/api/admin/event', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'archive', eventId: event.id, year: event.year }),
+      })
+      setArchiving(false)
+      setArchiveOpen(false)
+      setMsg({
+        type: 'ok',
+        text: result?.historySkipped
+          ? `Event archived. A history record for ${event.year} already exists and was preserved — edit it on the Event History page.`
+          : 'Event archived.',
+      })
+      setActiveTab(0)
+      loadCurrentEvent()
+    } catch (err) {
+      console.error('[AdminEvent] handleArchive threw:', err)
+      setArchiveError(err?.message || 'Failed to archive event.')
+      setArchiving(false)
+    }
+  }
+
+  async function openDeleteModal() {
+    if (!event) return
+    setDeleteError('')
+    setDeleteConfirmInput('')
+    setDeleteCounts({ regs: null, teams: null })
+    setDeleteOpen(true)
+    try {
+      const [{ count: regs }, { count: teams }] = await Promise.all([
+        supabase.from('zltac_registrations').select('id', { count: 'exact', head: true }).eq('year', event.year),
+        supabase.from('teams').select('id', { count: 'exact', head: true }).eq('event_id', event.id),
+      ])
+      setDeleteCounts({ regs: regs ?? 0, teams: teams ?? 0 })
+    } catch (err) {
+      console.error('[AdminEvent] openDeleteModal count fetch failed:', err)
+      setDeleteCounts({ regs: 0, teams: 0 })
+    }
+  }
+
+  async function handleDelete() {
+    if (!event || deleteConfirmInput !== 'DELETE') return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await apiFetch('/api/admin/event', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'delete', eventId: event.id, year: event.year }),
+      })
+      setDeleting(false)
+      setDeleteOpen(false)
+      setMsg({ type: 'ok', text: 'Event deleted.' })
+      setActiveTab(0)
+      loadCurrentEvent()
+    } catch (err) {
+      console.error('[AdminEvent] handleDelete threw:', err)
+      setDeleteError(err?.message || 'Failed to delete event.')
+      setDeleting(false)
+    }
   }
 
   function addCustomSideEvent() {
@@ -311,6 +367,87 @@ export default function AdminEvent() {
 
   return (
     <div>
+      {/* Archive confirmation modal */}
+      {archiveOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Archive {event?.name} {event?.year}?</p>
+            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+              This event will be moved to history and no longer appear on the current event page.
+              All registrations and team data are preserved for the record.
+              A history record will be created on the public ZLTAC page where you can later add champion, MVP, and photos.
+            </p>
+            {archiveError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{archiveError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleArchive}
+                disabled={archiving}
+                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {archiving ? 'Archiving…' : 'Archive event'}
+              </button>
+              <button
+                onClick={() => { setArchiveOpen(false); setArchiveError('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</p>
+            <p className="text-[#e5e5e5]/50 text-sm mb-3">
+              This permanently deletes the event and ALL associated data:{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.regs ?? '…'} registration{deleteCounts.regs === 1 ? '' : 's'}
+              </span>,{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.teams ?? '…'} team{deleteCounts.teams === 1 ? '' : 's'}
+              </span>, plus all payments, forms, and checklist items for this year.
+              This cannot be undone. Type <span className="text-white font-mono font-bold">DELETE</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmInput}
+              onChange={e => setDeleteConfirmInput(e.target.value)}
+              placeholder="Type DELETE"
+              autoFocus
+              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-red-400 transition-colors mb-4"
+            />
+            {deleteError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{deleteError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting || deleteConfirmInput !== 'DELETE'}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {deleting ? 'Deleting…' : 'Delete event permanently'}
+              </button>
+              <button
+                onClick={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
@@ -318,13 +455,20 @@ export default function AdminEvent() {
           <p className="text-[#e5e5e5]/40 text-sm mt-1">Current event configuration</p>
         </div>
         {!isArchived && (
-          <button
-            onClick={handleArchiveAndCreate}
-            disabled={archiving}
-            className="text-xs border border-line hover:border-[#374056] text-[#e5e5e5]/40 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
-          >
-            {archiving ? 'Archiving…' : 'Archive & Create New Event'}
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={openArchiveModal}
+              className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
+            >
+              Archive Event
+            </button>
+            <button
+              onClick={openDeleteModal}
+              className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"
+            >
+              Delete Event
+            </button>
+          </div>
         )}
       </div>
 
