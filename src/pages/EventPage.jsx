@@ -8,7 +8,7 @@ import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 import JoinTeamModal from '../components/JoinTeamModal'
-import { DashboardGridIcon } from '../components/icons.jsx'
+import { DashboardGridIcon, TargetIcon } from '../components/icons.jsx'
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -674,24 +674,24 @@ export default function EventPage() {
               />
               <div className="relative grid md:grid-cols-5 gap-6 md:gap-10 md:items-center">
                 <div className="md:col-span-3">
+                  <div className="mb-4">
+                    <TargetIcon size={56} />
+                  </div>
                   <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Register now</p>
                   <h2 className="text-2xl md:text-3xl font-black text-white mb-3 leading-tight">
                     Ready to compete in {event.name}?
                   </h2>
-                  <p className="text-[#a0a0a0] text-base leading-relaxed">
+                  <p className="text-white/90 text-base leading-relaxed">
                     Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one with an invite code. Side events, team management, and event progress all live in your Player Hub.
                   </p>
                 </div>
                 <div className="md:col-span-2 flex flex-col items-stretch md:items-end gap-3">
                   <Link
                     to={`/events/${year}/player-register`}
-                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-white font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
+                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-black font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
                   >
                     Register for {event.name}
                   </Link>
-                  <p className="text-[#e5e5e5]/40 text-xs text-center md:text-right">
-                    Free to register · Takes ~2 minutes
-                  </p>
                 </div>
               </div>
             </div>

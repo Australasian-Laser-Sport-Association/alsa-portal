@@ -36,7 +36,7 @@ export default function RegistrationTimeline({ eventName }) {
     { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.' },
     { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).' },
     { Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.' },
-    { Icon: TargetIcon, label: 'All done!', description: `Fully registered for ${safeName}. See you on the day.`, isFinal: true },
+    { Icon: TargetIcon, label: 'All done!', description: `Fully registered for ${safeName}.`, isFinal: true },
   ]
 
   return (
