@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
@@ -7,28 +7,14 @@ import { formatDate } from '../lib/dateFormat'
 import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
+import JoinTeamModal from '../components/JoinTeamModal'
+import { DashboardGridIcon } from '../components/icons.jsx'
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
 const SIDE_EVENT_SLUG_ORDER = ['lord-of-the-rings', 'solos', 'doubles', 'triples']
-
-// ── Hero Card Icons ──────────────────────────────────────────────────────────
-const DashboardGridIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="8" y="8" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="34" y="8" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="8" y="34" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="34" y="34" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <line x1="15" y1="19" x2="23" y2="19" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="15" x2="49" y2="15" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="19" x2="46" y2="19" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="23" x2="49" y2="23" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <circle cx="19" cy="45" r="5" stroke="#00FF41" strokeWidth="2" fill="none"/>
-    <path d="M41 45 L49 45 M41 41 L49 41 M41 49 L46 49" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-  </svg>
-)
 
 function sortSideEvents(events) {
   return [...events].sort((a, b) => {
@@ -355,7 +341,6 @@ function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function EventPage() {
   const { year } = useParams()
-  const navigate = useNavigate()
   const { user } = useAuth()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -368,7 +353,6 @@ export default function EventPage() {
 
   // Join Team modal
   const [joinOpen, setJoinOpen] = useState(false)
-  const [joinCode, setJoinCode] = useState('')
 
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState(null)
@@ -594,49 +578,7 @@ export default function EventPage() {
       )}
 
       {/* Join Team modal */}
-      {joinOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Join a team</p>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
-              Enter the invite code your captain shared with you.
-            </p>
-            <input
-              type="text"
-              value={joinCode}
-              onChange={e => setJoinCode(e.target.value.toUpperCase())}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && joinCode.trim()) {
-                  navigate(`/join/${joinCode.trim().toUpperCase()}`)
-                }
-              }}
-              placeholder="e.g. ABC123"
-              autoFocus
-              maxLength={12}
-              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors mb-4 font-mono uppercase tracking-widest"
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  const code = joinCode.trim().toUpperCase()
-                  if (!code) return
-                  navigate(`/join/${code}`)
-                }}
-                disabled={!joinCode.trim()}
-                className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-5 py-2 rounded-xl text-sm transition-colors"
-              >
-                Join team
-              </button>
-              <button
-                onClick={() => { setJoinOpen(false); setJoinCode('') }}
-                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <JoinTeamModal open={joinOpen} onClose={() => setJoinOpen(false)} />
 
       {/* Hero */}
       <section
@@ -805,7 +747,7 @@ export default function EventPage() {
                   <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
                     Got an invite code from a captain? Enter it to join their team.
                   </p>
-                  <button onClick={() => { setJoinCode(''); setJoinOpen(true) }} className={primaryButton}>
+                  <button onClick={() => setJoinOpen(true)} className={primaryButton}>
                     Enter Invite Code
                   </button>
                 </div>

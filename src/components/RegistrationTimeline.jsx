@@ -1,73 +1,15 @@
+import {
+  PersonIcon,
+  TeamShieldIcon,
+  CocDocumentIcon,
+  CameraIcon,
+  SideEventsIcon,
+  PaymentIcon,
+  TargetIcon,
+} from './icons.jsx'
+
 // Static "How it works" illustration shown to everyone on the EventPage.
 // No personalized progress state — purely educational.
-
-const ICON_PROPS = {
-  width: 28,
-  height: 28,
-  viewBox: '0 0 32 32',
-  fill: 'none',
-  stroke: '#00FF41',
-  strokeWidth: 2.5,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-}
-
-const PersonIcon = () => (
-  <svg {...ICON_PROPS}>
-    <circle cx="16" cy="11" r="5" />
-    <path d="M5 28 C5 20 9 17 16 17 C23 17 27 20 27 28" />
-  </svg>
-)
-
-const TeamShieldIcon = () => (
-  <svg {...ICON_PROPS}>
-    <path d="M16 4 L27 8 V16 C27 22 22 27 16 29 C10 27 5 22 5 16 V8 Z" />
-    <circle cx="12" cy="14" r="1.5" fill="#00FF41" stroke="none" />
-    <circle cx="20" cy="14" r="1.5" fill="#00FF41" stroke="none" />
-    <circle cx="16" cy="20" r="1.5" fill="#00FF41" stroke="none" />
-  </svg>
-)
-
-const CocDocumentIcon = () => (
-  <svg {...ICON_PROPS}>
-    <path d="M9 4 H20 L24 8 V28 H9 Z" />
-    <line x1="13" y1="13" x2="21" y2="13" />
-    <line x1="13" y1="18" x2="21" y2="18" />
-    <line x1="13" y1="23" x2="19" y2="23" />
-  </svg>
-)
-
-const CameraIcon = () => (
-  <svg {...ICON_PROPS}>
-    <path d="M11 9 L13 6 H19 L21 9" />
-    <rect x="4" y="9" width="24" height="17" rx="2" />
-    <circle cx="16" cy="17" r="5" />
-  </svg>
-)
-
-const SideEventsIcon = () => (
-  <svg {...ICON_PROPS}>
-    <circle cx="11" cy="11" r="5" />
-    <circle cx="21" cy="13" r="5" />
-    <circle cx="14" cy="22" r="5" />
-  </svg>
-)
-
-const PaymentIcon = () => (
-  <svg {...ICON_PROPS}>
-    <rect x="4" y="8" width="24" height="16" rx="2" />
-    <line x1="4" y1="13" x2="28" y2="13" />
-    <line x1="9" y1="19" x2="13" y2="19" />
-  </svg>
-)
-
-const TargetIcon = () => (
-  <svg {...ICON_PROPS}>
-    <circle cx="16" cy="16" r="11" />
-    <circle cx="16" cy="16" r="7" />
-    <circle cx="16" cy="16" r="3" fill="#00FF41" stroke="none" />
-  </svg>
-)
 
 function StepCircle({ Icon, isFinal }) {
   const base = 'relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0'

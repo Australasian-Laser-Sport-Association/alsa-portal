@@ -5,6 +5,9 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
+import PlayerHubProgress from '../components/PlayerHubProgress'
+import JoinTeamModal from '../components/JoinTeamModal'
+import { DashboardGridIcon } from '../components/icons.jsx'
 
 function dollars(cents) {
   return `$${((cents ?? 0) / 100).toFixed(2)}`
@@ -617,6 +620,9 @@ export default function PlayerHub() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState(null) // string | { message, captainBlocker: true }
 
+  // Join Team modal
+  const [joinOpen, setJoinOpen] = useState(false)
+
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user) return
@@ -927,12 +933,28 @@ export default function PlayerHub() {
         </div>
       )}
 
+      {/* Join Team modal */}
+      <JoinTeamModal open={joinOpen} onClose={() => setJoinOpen(false)} />
+
       <div className="max-w-3xl mx-auto px-6 py-10">
 
         {/* Back */}
         <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-5 inline-block">
           ← {event.name}
         </Link>
+
+        {/* Welcome */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-shrink-0">
+            <DashboardGridIcon />
+          </div>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Player Hub</h1>
+            <p className="text-[#e5e5e5]/40 text-sm mt-1">
+              Your hub for {event.name} registration, team status, and event-day prep.
+            </p>
+          </div>
+        </div>
 
         {/* Header */}
         <div className="mb-8">
@@ -1051,7 +1073,51 @@ export default function PlayerHub() {
           </div>
         )}
 
+        {/* Personalized progress timeline (registered only) */}
+        {isRegistered && (
+          <PlayerHubProgress
+            eventName={event.name}
+            hasTeam={hasTeam}
+            cocSigned={!!cocSig}
+            mediaSubmitted={!!mediaSub}
+            paid={paymentStatus === 'paid'}
+            sideEventsConfirmed={sideEventsConfirmed}
+            u18Required={u18Required}
+            u18Submitted={!!u18Sub}
+          />
+        )}
+
         <div className="space-y-5">
+
+          {/* ── Team CTA (registered, not yet on a team) ── */}
+          {isRegistered && !hasTeam && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="bg-surface border border-line rounded-2xl p-6 text-center flex flex-col" style={{ borderTopColor: '#00FF41', borderTopWidth: '3px' }}>
+                <h3 className="text-white font-black text-lg mb-2">Create Team</h3>
+                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-5">
+                  Start a new team and share your invite code with players.
+                </p>
+                <Link
+                  to={`/events/${eventYear}/captain-register`}
+                  className="block bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
+                >
+                  Create Team
+                </Link>
+              </div>
+              <div className="bg-surface border border-line rounded-2xl p-6 text-center flex flex-col" style={{ borderTopColor: '#00FF41', borderTopWidth: '3px' }}>
+                <h3 className="text-white font-black text-lg mb-2">Join Team with Code</h3>
+                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-5">
+                  Got an invite code from a captain? Enter it to join their team.
+                </p>
+                <button
+                  onClick={() => setJoinOpen(true)}
+                  className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
+                >
+                  Enter Invite Code
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── Registration Checklist ── */}
           <div className="bg-surface border border-line rounded-2xl overflow-hidden">
@@ -1444,25 +1510,6 @@ export default function PlayerHub() {
                   Pay Now (coming soon)
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* ── Team ── */}
-          {isRegistered && (
-            <div className="bg-surface border border-line rounded-2xl p-5">
-              <h2 className="text-white font-bold mb-3">Team</h2>
-              {team ? (
-                <div>
-                  <p className="text-white font-semibold">{team.name}</p>
-                  {team.profiles && (
-                    <p className="text-[#e5e5e5]/40 text-xs mt-0.5">
-                      Captain: {team.profiles.first_name} {team.profiles.last_name}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-[#e5e5e5]/40 text-sm">Entered as side events only — no team.</p>
-              )}
             </div>
           )}
 
