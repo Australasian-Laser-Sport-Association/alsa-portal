@@ -11,18 +11,37 @@ const EDUCATIONAL_STEPS = [
   { label: 'Pay your fees', description: 'Settle your registration and side event fees.' },
 ]
 
-function StepDot({ done }) {
-  if (done) {
+function StepCircle({ index, status }) {
+  const base = 'relative w-12 h-12 rounded-full flex items-center justify-center text-base flex-shrink-0'
+
+  if (status === 'done') {
     return (
-      <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-brand text-black text-sm font-black">
+      <div className={`${base} bg-brand border-2 border-brand text-black font-black`}>
         ✓
       </div>
     )
   }
+  if (status === 'current') {
+    return (
+      <div className={`${base} bg-base border-2 border-brand text-brand font-bold shadow-[0_0_20px_rgba(0,255,65,0.4)]`}>
+        {index + 1}
+      </div>
+    )
+  }
+  // 'future' (personalized) or 'educational'
+  const numberColor = status === 'future' ? 'text-[#e5e5e5]/30' : 'text-[#e5e5e5]/40'
   return (
-    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#191919] border-2 border-line text-[#e5e5e5]/40 text-xs font-bold">
-      ·
+    <div className={`${base} bg-base border-2 border-line ${numberColor} font-bold`}>
+      {index + 1}
     </div>
+  )
+}
+
+function OptionalPill() {
+  return (
+    <span className="mt-2 inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/30">
+      Optional
+    </span>
   )
 }
 
@@ -33,10 +52,33 @@ export default function RegistrationTimeline({ mode, steps, eventName }) {
   if (!renderSteps?.length) return null
 
   const doneCount = isPersonalized ? renderSteps.filter(s => s.done).length : 0
+  // First non-done step in personalized mode is "current".
+  const currentIdx = isPersonalized ? renderSteps.findIndex(s => !s.done) : -1
+
+  function statusFor(i, step) {
+    if (!isPersonalized) return 'educational'
+    if (step.done) return 'done'
+    if (i === currentIdx) return 'current'
+    return 'future'
+  }
+
+  // Segment N (between step N and step N+1) is brand-green when step N is done
+  // AND step N+1 has reached at least the current state (done or current).
+  function segmentDone(i) {
+    if (!isPersonalized) return false
+    const a = renderSteps[i]
+    const b = renderSteps[i + 1]
+    if (!a || !b) return false
+    return a.done && (b.done || i + 1 === currentIdx)
+  }
+
+  function labelColor(status) {
+    return status === 'done' || status === 'current' ? 'text-white' : 'text-[#e5e5e5]/60'
+  }
 
   return (
-    <section className="max-w-2xl mx-auto px-6 py-12">
-      <div className="text-center mb-8">
+    <section className="max-w-6xl mx-auto px-6 py-12">
+      <div className="text-center mb-10">
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">How it works</p>
         <h2 className="text-2xl md:text-3xl font-black text-white mb-2">
           {isPersonalized
@@ -44,39 +86,95 @@ export default function RegistrationTimeline({ mode, steps, eventName }) {
             : `Path to ${eventName ?? 'the event'}`}
         </h2>
         {isPersonalized && (
-          <p className="text-[#e5e5e5]/40 text-sm">
-            {doneCount} of {renderSteps.length} steps complete
+          <p className="text-brand text-sm font-semibold">
+            {doneCount} of {renderSteps.length} complete
           </p>
         )}
       </div>
 
-      <div className="bg-surface border border-line rounded-2xl divide-y divide-line">
+      {/* Desktop: horizontal numbered timeline */}
+      <div
+        className="hidden md:grid gap-2"
+        style={{ gridTemplateColumns: `repeat(${renderSteps.length}, minmax(0, 1fr))` }}
+      >
         {renderSteps.map((step, i) => {
-          const content = (
-            <div className={`flex items-start gap-4 px-5 py-4 ${step.href && !step.done ? 'hover:bg-line/30 transition-colors' : ''}`}>
-              <StepDot done={step.done} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className={`text-sm font-semibold ${step.done ? 'text-white' : 'text-[#e5e5e5]/70'}`}>
-                    {step.label}
-                  </p>
-                  {step.optional && (
-                    <span className="text-[10px] bg-[#191919] text-[#e5e5e5]/40 border border-line px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                      If applicable
-                    </span>
-                  )}
-                </div>
-                {step.description && (
-                  <p className="text-xs text-[#e5e5e5]/35 mt-0.5">{step.description}</p>
+          const status = statusFor(i, step)
+          const showLine = i < renderSteps.length - 1
+          const lineGreen = segmentDone(i)
+
+          const inner = (
+            <div className="relative flex flex-col items-center text-center px-2 h-full">
+              {showLine && (
+                <div
+                  aria-hidden
+                  className={`absolute h-0.5 ${lineGreen ? 'bg-brand' : 'bg-line'}`}
+                  style={{ top: '23px', left: 'calc(50% + 24px)', width: 'calc(100% - 48px)' }}
+                />
+              )}
+              <StepCircle index={i} status={status} />
+              <p className={`mt-3 text-sm font-bold leading-snug ${labelColor(status)}`}>
+                {step.label}
+              </p>
+              {step.description && (
+                <p className="mt-1 text-xs text-[#e5e5e5]/40 leading-snug">
+                  {step.description}
+                </p>
+              )}
+              {step.optional && <OptionalPill />}
+            </div>
+          )
+
+          if (isPersonalized && step.href && !step.done) {
+            return (
+              <Link key={i} to={step.href} className="hover:opacity-80 transition-opacity">
+                {inner}
+              </Link>
+            )
+          }
+          return <div key={i}>{inner}</div>
+        })}
+      </div>
+
+      {/* Mobile: vertical numbered timeline */}
+      <div className="md:hidden">
+        {renderSteps.map((step, i) => {
+          const status = statusFor(i, step)
+          const isLast = i === renderSteps.length - 1
+          const lineGreen = segmentDone(i)
+
+          const inner = (
+            <div className="flex items-stretch gap-4">
+              <div className="flex flex-col items-center">
+                <StepCircle index={i} status={status} />
+                {!isLast && (
+                  <div
+                    aria-hidden
+                    className={`w-0.5 flex-1 my-2 min-h-[24px] ${lineGreen ? 'bg-brand' : 'bg-line'}`}
+                  />
                 )}
+              </div>
+              <div className={`flex-1 min-w-0 pt-2.5 ${isLast ? '' : 'pb-6'}`}>
+                <p className={`text-sm font-bold leading-snug ${labelColor(status)}`}>
+                  {step.label}
+                </p>
+                {step.description && (
+                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5 leading-snug">
+                    {step.description}
+                  </p>
+                )}
+                {step.optional && <OptionalPill />}
               </div>
             </div>
           )
 
           if (isPersonalized && step.href && !step.done) {
-            return <Link key={i} to={step.href} className="block">{content}</Link>
+            return (
+              <Link key={i} to={step.href} className="block hover:opacity-80 transition-opacity">
+                {inner}
+              </Link>
+            )
           }
-          return <div key={i}>{content}</div>
+          return <div key={i}>{inner}</div>
         })}
       </div>
     </section>

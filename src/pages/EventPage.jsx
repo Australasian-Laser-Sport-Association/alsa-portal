@@ -25,15 +25,6 @@ function initials(name = '') {
 const SIDE_EVENT_SLUG_ORDER = ['lord-of-the-rings', 'solos', 'doubles', 'triples']
 
 // ── Hero Card Icons ──────────────────────────────────────────────────────────
-const PlayerPersonIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="32" cy="20" r="10" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <path d="M10 58 C10 44 20 36 32 36 C44 36 54 44 54 58" stroke="#00FF41" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-    <line x1="32" y1="36" x2="32" y2="48" stroke="#00FF41" strokeWidth="2" strokeLinecap="round"/>
-    <line x1="24" y1="42" x2="40" y2="42" stroke="#00FF41" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-)
-
 const DashboardGridIcon = () => (
   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="8" y="8" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
@@ -763,6 +754,48 @@ export default function EventPage() {
         </section>
       )}
 
+      {/* Register CTA banner — full-width, shown to non-registered users when registration is open */}
+      {event.status === 'open' && (() => {
+        const myReg = user ? regs.find(r => r.user_id === user.id) : null
+        if (myReg) return null
+        return (
+          <section className="max-w-7xl mx-auto px-6 py-8">
+            <div
+              className="relative overflow-hidden rounded-2xl border border-line border-l-4 border-l-brand p-8 md:p-12"
+              style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #131313 100%)' }}
+            >
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(0,255,65,0.06) 0%, transparent 60%)' }}
+                aria-hidden
+              />
+              <div className="relative grid md:grid-cols-5 gap-6 md:gap-10 md:items-center">
+                <div className="md:col-span-3">
+                  <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Register now</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-white mb-3 leading-tight">
+                    Ready to compete in {event.name}?
+                  </h2>
+                  <p className="text-[#a0a0a0] text-base leading-relaxed">
+                    Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one with an invite code. Side events, team management, and event progress all live in your Player Hub.
+                  </p>
+                </div>
+                <div className="md:col-span-2 flex flex-col items-stretch md:items-end gap-3">
+                  <Link
+                    to={`/events/${year}/player-register`}
+                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-black font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
+                  >
+                    Register for {event.name}
+                  </Link>
+                  <p className="text-[#e5e5e5]/40 text-xs text-center md:text-right">
+                    Free to register · Takes ~2 minutes
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )
+      })()}
+
       {/* Registration timeline — educational for anon/not-registered, personalized for registered */}
       {(() => {
         const myReg = user ? regs.find(r => r.user_id === user.id) : null
@@ -804,23 +837,8 @@ export default function EventPage() {
         const cardClass = 'rounded-2xl p-10 transition-all text-center flex flex-col'
         const primaryButton = 'block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]'
 
-        // ── States A + B: not registered for this event ──────────────────────
-        if (!myReg) {
-          return (
-            <section className="max-w-md mx-auto px-6 pt-16 pb-12">
-              <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                <div className="mb-6 flex justify-center"><PlayerPersonIcon /></div>
-                <h2 className="text-white font-black text-xl mb-4 leading-tight">Register for {event.name}</h2>
-                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                  Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one.
-                </p>
-                <Link to={`/events/${year}/player-register`} className={primaryButton}>
-                  Register for {event.name}
-                </Link>
-              </div>
-            </section>
-          )
-        }
+        // States A/B (not registered) are handled by the Register banner rendered above the timeline.
+        if (!myReg) return null
 
         // ── State C: registered, not on a team ───────────────────────────────
         if (!myReg.team_id) {
