@@ -201,7 +201,7 @@ export default function CaptainRegister() {
               to="/captain-hub"
               className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3.5 rounded-xl text-center transition-all"
             >
-              Go to Captain Hub →
+              Go to Team Hub →
             </Link>
           </div>
         </section>

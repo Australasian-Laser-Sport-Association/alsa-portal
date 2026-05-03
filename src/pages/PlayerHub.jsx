@@ -909,7 +909,7 @@ export default function PlayerHub() {
                 </p>
                 {typeof cancelError === 'object' && cancelError.captainBlocker && (
                   <Link to="/captain-hub" className="text-brand text-xs font-semibold hover:underline mt-1 inline-block">
-                    Go to Captain Hub →
+                    Go to Team Hub →
                   </Link>
                 )}
               </div>
@@ -1079,9 +1079,11 @@ export default function PlayerHub() {
             eventName={event.name}
             hasTeam={hasTeam}
             cocSigned={!!cocSig}
+            refPassed={!!testResult?.passed}
             mediaSubmitted={!!mediaSub}
             paid={paymentStatus === 'paid'}
             sideEventsConfirmed={sideEventsConfirmed}
+            extrasConfirmed={extrasConfirmed}
             u18Required={u18Required}
             u18Submitted={!!u18Sub}
           />
@@ -1138,28 +1140,6 @@ export default function PlayerHub() {
             </ChecklistItem>
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : sideEventsConfirmed ? 'done' : 'error'}
-              label={!isRegistered ? 'Side events — pending registration' : sideEventsConfirmed ? 'Side events — confirmed' : 'Side events — not yet confirmed'}
-            >
-              {isRegistered && !sideEventsConfirmed && (
-                <a href="#side-events" className="text-brand text-xs hover:underline">
-                  Select side events below →
-                </a>
-              )}
-            </ChecklistItem>
-
-            <ChecklistItem
-              status={!isRegistered ? 'pending' : extrasConfirmed ? 'done' : 'error'}
-              label={!isRegistered ? 'Extras — pending registration' : extrasConfirmed ? 'Extras — confirmed' : 'Extras — not yet confirmed'}
-            >
-              {isRegistered && !extrasConfirmed && (
-                <a href="#extras" className="text-brand text-xs hover:underline">
-                  Confirm extras below →
-                </a>
-              )}
-            </ChecklistItem>
-
-            <ChecklistItem
               status={!isRegistered ? 'pending' : cocSig ? 'done' : 'error'}
               label={cocSig ? `Code of Conduct — signed ${formatDate(cocSig.signed_at)}` : 'Code of Conduct — not yet signed'}
             >
@@ -1197,23 +1177,6 @@ export default function PlayerHub() {
               )}
             </ChecklistItem>
 
-            {u18Required && (
-              <ChecklistItem
-                status={!isRegistered ? 'pending' : u18Sub ? 'done' : 'error'}
-                label={u18Sub ? `Under 18 Parental Consent — submitted ${formatDate(u18Sub.submitted_at)}` : 'Under 18 Parental Consent — not yet submitted'}
-              >
-                {isRegistered && !u18Sub && (
-                  <Under18Panel
-                    userId={user.id}
-                    eventYear={eventYear}
-                    playerName={`${firstName} ${lastName}`}
-                    formContent={u18FormContent}
-                    onSubmitted={() => setU18Sub({ submitted_at: new Date().toISOString() })}
-                  />
-                )}
-              </ChecklistItem>
-            )}
-
             <ChecklistItem
               status={!isRegistered ? 'pending' : mediaSub ? 'done' : 'error'}
               label={
@@ -1231,6 +1194,45 @@ export default function PlayerHub() {
                 />
               )}
             </ChecklistItem>
+
+            <ChecklistItem
+              status={!isRegistered ? 'pending' : sideEventsConfirmed ? 'done' : 'error'}
+              label={!isRegistered ? 'Side events — pending registration' : sideEventsConfirmed ? 'Side events — confirmed' : 'Side events — not yet confirmed'}
+            >
+              {isRegistered && !sideEventsConfirmed && (
+                <a href="#side-events" className="text-brand text-xs hover:underline">
+                  Select side events below →
+                </a>
+              )}
+            </ChecklistItem>
+
+            <ChecklistItem
+              status={!isRegistered ? 'pending' : extrasConfirmed ? 'done' : 'error'}
+              label={!isRegistered ? 'Extras — pending registration' : extrasConfirmed ? 'Extras — confirmed' : 'Extras — not yet confirmed'}
+            >
+              {isRegistered && !extrasConfirmed && (
+                <a href="#extras" className="text-brand text-xs hover:underline">
+                  Confirm extras below →
+                </a>
+              )}
+            </ChecklistItem>
+
+            {u18Required && (
+              <ChecklistItem
+                status={!isRegistered ? 'pending' : u18Sub ? 'done' : 'error'}
+                label={u18Sub ? `Under 18 Parental Consent — submitted ${formatDate(u18Sub.submitted_at)}` : 'Under 18 Parental Consent — not yet submitted'}
+              >
+                {isRegistered && !u18Sub && (
+                  <Under18Panel
+                    userId={user.id}
+                    eventYear={eventYear}
+                    playerName={`${firstName} ${lastName}`}
+                    formContent={u18FormContent}
+                    onSubmitted={() => setU18Sub({ submitted_at: new Date().toISOString() })}
+                  />
+                )}
+              </ChecklistItem>
+            )}
 
             <ChecklistItem
               status={!isRegistered || !paymentStatus ? 'pending' : paymentStatus === 'paid' ? 'done' : 'error'}

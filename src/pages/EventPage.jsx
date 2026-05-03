@@ -674,13 +674,17 @@ export default function EventPage() {
               />
               <div className="relative grid md:grid-cols-5 gap-6 md:gap-10 md:items-center">
                 <div className="md:col-span-3">
-                  <div className="mb-4">
-                    <TargetIcon size={56} />
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="flex-shrink-0">
+                      <TargetIcon size={56} />
+                    </div>
+                    <div>
+                      <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">Register now</p>
+                      <h2 className="text-2xl md:text-3xl font-black text-white leading-tight">
+                        Ready to compete in {event.name}?
+                      </h2>
+                    </div>
                   </div>
-                  <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Register now</p>
-                  <h2 className="text-2xl md:text-3xl font-black text-white mb-3 leading-tight">
-                    Ready to compete in {event.name}?
-                  </h2>
                   <p className="text-white/90 text-base leading-relaxed">
                     Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one with an invite code. Side events, team management, and event progress all live in your Player Hub.
                   </p>
@@ -777,12 +781,12 @@ export default function EventPage() {
             <div className={`grid grid-cols-1 ${isCaptainOrManager ? 'md:grid-cols-2' : ''} gap-6`}>
               {isCaptainOrManager && (
                 <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Captain Hub</h2>
+                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Team Hub</h2>
                   <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
                     Manage your team roster, approve players, and track readiness.
                   </p>
                   <Link to="/captain-hub" className={primaryButton}>
-                    Go to Captain Hub
+                    Go to Team Hub
                   </Link>
                 </div>
               )}

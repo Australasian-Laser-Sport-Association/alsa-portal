@@ -37,6 +37,14 @@ export const CocDocumentIcon = ({ size = 28 }) => (
   </svg>
 )
 
+export const RefTestIcon = ({ size = 28 }) => (
+  <svg width={size} height={size} {...TIMELINE_ICON_PROPS}>
+    <rect x="7" y="6" width="18" height="22" rx="2" />
+    <rect x="12" y="3" width="8" height="5" rx="1" />
+    <path d="M11 17 L14 20 L21 13" />
+  </svg>
+)
+
 export const CameraIcon = ({ size = 28 }) => (
   <svg width={size} height={size} {...TIMELINE_ICON_PROPS}>
     <path d="M11 9 L13 6 H19 L21 9" />

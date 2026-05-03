@@ -25,13 +25,14 @@ const HUB_PILLS = [
 ]
 
 export default function NavBar() {
-  const { user, signOut, userRoles, profile } = useAuth()
+  const { user, signOut, profile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { event } = useCurrentEvent()
   const pillStatusLabel = event ? PILL_STATUS_LABEL[event.status] : null
   const [hasPlayerReg, setHasPlayerReg] = useState(false)
+  const [myTeamStatus, setMyTeamStatus] = useState(null)
   const navLinks = DEFAULT_NAV_LINKS
   const isAdmin = location.pathname.startsWith('/admin')
 
@@ -45,10 +46,30 @@ export default function NavBar() {
     return () => { cancelled = true }
   }, [user, event])
 
+  // Look up the user's most recent team (as captain or manager) so the Team Hub
+  // pill shows whenever they own a team — regardless of approval state.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    supabase
+      .from('teams')
+      .select('status')
+      .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error) { setMyTeamStatus(null); return }
+        setMyTeamStatus(data?.status ?? null)
+      })
+    return () => { cancelled = true }
+  }, [user])
+
   const visiblePills = user
     ? {
         player: hasPlayerReg,
-        team: userRoles.includes('captain'),
+        team: !!myTeamStatus,
         admin: isCommittee(profile),
       }
     : { player: false, team: false, admin: false }
@@ -114,6 +135,9 @@ export default function NavBar() {
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               {p.label}
+              {p.key === 'team' && myTeamStatus && myTeamStatus !== 'approved' && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" />
+              )}
             </Link>
           ))}
 
@@ -171,6 +195,9 @@ export default function NavBar() {
               style={{ backgroundColor: p.color, color: '#fff' }}
             >
               {p.label}
+              {p.key === 'team' && myTeamStatus && myTeamStatus !== 'approved' && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" />
+              )}
             </Link>
           ))}
 
