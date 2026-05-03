@@ -8,16 +8,6 @@ import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 
-// Mirror of PlayerHub.jsx isUnder18 — kept inline so the timeline U18 step
-// uses the same cutoff logic (eventYear July 1).
-function isUnder18(dob, eventYear) {
-  if (!dob || !eventYear) return false
-  const cutoff = new Date(`${eventYear}-07-01`)
-  const eighteenth = new Date(dob)
-  eighteenth.setFullYear(eighteenth.getFullYear() + 18)
-  return eighteenth > cutoff
-}
-
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
@@ -380,13 +370,6 @@ export default function EventPage() {
   const [joinOpen, setJoinOpen] = useState(false)
   const [joinCode, setJoinCode] = useState('')
 
-  // Personalized timeline / completion data (only loaded when user is logged in)
-  const [myProfile, setMyProfile] = useState(null)
-  const [myCocSig, setMyCocSig] = useState(null)
-  const [myPayment, setMyPayment] = useState(null)
-  const [myMediaSub, setMyMediaSub] = useState(null)
-  const [myU18Sub, setMyU18Sub] = useState(null)
-
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState(null)
 
@@ -397,11 +380,6 @@ export default function EventPage() {
         const [
           { data: ev },
           profileResult,
-          fullProfileResult,
-          cocResult,
-          payResult,
-          mediaResult,
-          u18Result,
         ] = await Promise.all([
           supabase
             .from('zltac_events')
@@ -411,29 +389,9 @@ export default function EventPage() {
           user
             ? supabase.from('profiles').select('roles').eq('id', user.id).single()
             : Promise.resolve({ data: null }),
-          user
-            ? supabase.from('profiles').select('first_name, last_name, dob').eq('id', user.id).maybeSingle()
-            : Promise.resolve({ data: null }),
-          user
-            ? supabase.from('code_of_conduct_signatures').select('signed_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
-            : Promise.resolve({ data: null }),
-          user
-            ? supabase.from('payments').select('status, amount').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
-            : Promise.resolve({ data: null }),
-          user
-            ? supabase.from('media_release_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
-            : Promise.resolve({ data: null }),
-          user
-            ? supabase.from('under18_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', yearInt).maybeSingle()
-            : Promise.resolve({ data: null }),
         ])
         setEvent(ev)
         setIsAdmin(isCommittee(profileResult?.data))
-        setMyProfile(fullProfileResult?.data ?? null)
-        setMyCocSig(cocResult?.data ?? null)
-        setMyPayment(payResult?.data ?? null)
-        setMyMediaSub(mediaResult?.data ?? null)
-        setMyU18Sub(u18Result?.data ?? null)
 
         // Load registration data for non-draft events
         if (ev && ev.status !== 'draft') {
@@ -754,6 +712,9 @@ export default function EventPage() {
         </section>
       )}
 
+      {/* Registration timeline — static "How it works" illustration, shown to everyone */}
+      <RegistrationTimeline eventName={event.name} />
+
       {/* Register CTA banner — full-width, shown to non-registered users when registration is open */}
       {event.status === 'open' && (() => {
         const myReg = user ? regs.find(r => r.user_id === user.id) : null
@@ -782,7 +743,7 @@ export default function EventPage() {
                 <div className="md:col-span-2 flex flex-col items-stretch md:items-end gap-3">
                   <Link
                     to={`/events/${year}/player-register`}
-                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-black font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
+                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-white font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
                   >
                     Register for {event.name}
                   </Link>
@@ -794,26 +755,6 @@ export default function EventPage() {
             </div>
           </section>
         )
-      })()}
-
-      {/* Registration timeline — educational for anon/not-registered, personalized for registered */}
-      {(() => {
-        const myReg = user ? regs.find(r => r.user_id === user.id) : null
-        if (!myReg) {
-          return <RegistrationTimeline mode="educational" eventName={event.name} />
-        }
-        const yearInt = parseInt(year)
-        const u18Required = isUnder18(myProfile?.dob, yearInt)
-        const steps = [
-          { label: 'Register as a player', description: 'Create your ALSA account and sign up for the event.', done: true },
-          { label: 'Join or create a team', description: 'Use a captain\'s invite code, or start a new team and invite others.', done: !!myReg.team_id, href: `/events/${year}` },
-          { label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct before the event.', done: myCocSig != null, href: '/player-hub' },
-          { label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.', done: myMediaSub != null, href: '/player-hub' },
-          { label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).', done: myReg.has_confirmed_side_events === true, href: '/player-hub' },
-          ...(u18Required ? [{ label: 'Submit Under-18 form', description: 'Required for players under 18 on event date.', done: myU18Sub != null, optional: true, href: '/player-hub' }] : []),
-          { label: 'Pay your fees', description: 'Settle your registration and side event fees.', done: myPayment?.status === 'paid', href: '/player-hub' },
-        ]
-        return <RegistrationTimeline mode="personalized" eventName={event.name} steps={steps} />
       })()}
 
       {/* CTA cards (open events only) — state-aware */}
