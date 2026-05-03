@@ -19,12 +19,12 @@ export const PersonIcon = ({ size = 28 }) => (
   </svg>
 )
 
-export const TeamShieldIcon = ({ size = 28 }) => (
-  <svg width={size} height={size} {...TIMELINE_ICON_PROPS}>
+export const TeamShieldIcon = ({ size = 28, stroke = '#00FF41' }) => (
+  <svg width={size} height={size} {...TIMELINE_ICON_PROPS} stroke={stroke}>
     <path d="M16 4 L27 8 V16 C27 22 22 27 16 29 C10 27 5 22 5 16 V8 Z" />
-    <circle cx="12" cy="14" r="1.5" fill="#00FF41" stroke="none" />
-    <circle cx="20" cy="14" r="1.5" fill="#00FF41" stroke="none" />
-    <circle cx="16" cy="20" r="1.5" fill="#00FF41" stroke="none" />
+    <circle cx="12" cy="14" r="1.5" fill={stroke} stroke="none" />
+    <circle cx="20" cy="14" r="1.5" fill={stroke} stroke="none" />
+    <circle cx="16" cy="20" r="1.5" fill={stroke} stroke="none" />
   </svg>
 )
 
@@ -77,17 +77,17 @@ export const TargetIcon = ({ size = 28 }) => (
   </svg>
 )
 
-export const DashboardGridIcon = ({ size = 64 }) => (
-  <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="8" y="8" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="34" y="8" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="8" y="34" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <rect x="34" y="34" width="22" height="22" rx="3" stroke="#00FF41" strokeWidth="2.5" fill="none"/>
-    <line x1="15" y1="19" x2="23" y2="19" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="15" x2="49" y2="15" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="19" x2="46" y2="19" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <line x1="41" y1="23" x2="49" y2="23" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
-    <circle cx="19" cy="45" r="5" stroke="#00FF41" strokeWidth="2" fill="none"/>
-    <path d="M41 45 L49 45 M41 41 L49 41 M41 49 L46 49" stroke="#00FF41" strokeWidth="1.5" strokeLinecap="round"/>
+export const DashboardGridIcon = ({ size = 64, stroke = '#00FF41' }) => (
+  <svg width={size} height={size} viewBox="0 0 64 64" fill="none" stroke={stroke} xmlns="http://www.w3.org/2000/svg">
+    <rect x="8" y="8" width="22" height="22" rx="3" strokeWidth="2.5" fill="none"/>
+    <rect x="34" y="8" width="22" height="22" rx="3" strokeWidth="2.5" fill="none"/>
+    <rect x="8" y="34" width="22" height="22" rx="3" strokeWidth="2.5" fill="none"/>
+    <rect x="34" y="34" width="22" height="22" rx="3" strokeWidth="2.5" fill="none"/>
+    <line x1="15" y1="19" x2="23" y2="19" strokeWidth="1.5" strokeLinecap="round"/>
+    <line x1="41" y1="15" x2="49" y2="15" strokeWidth="1.5" strokeLinecap="round"/>
+    <line x1="41" y1="19" x2="46" y2="19" strokeWidth="1.5" strokeLinecap="round"/>
+    <line x1="41" y1="23" x2="49" y2="23" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="19" cy="45" r="5" strokeWidth="2" fill="none"/>
+    <path d="M41 45 L49 45 M41 41 L49 41 M41 49 L46 49" strokeWidth="1.5" strokeLinecap="round"/>
   </svg>
 )

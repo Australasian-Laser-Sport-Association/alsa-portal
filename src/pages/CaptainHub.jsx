@@ -4,6 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
+import { TeamShieldIcon } from '../components/icons.jsx'
 
 function isUnder18(dob, eventYear) {
   if (!dob) return false
@@ -325,13 +326,30 @@ export default function CaptainHub() {
   }
   if (!team) {
     return (
-      <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
-        <div className="text-4xl mb-4">👑</div>
-        <h1 className="text-2xl font-black text-white mb-2">No Team Found</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">You haven't registered a team yet.</p>
-        <Link to={event ? `/events/${event.year}/captain-register` : '/'} className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
-          Register a Team →
-        </Link>
+      <div className="min-h-screen bg-base flex flex-col">
+        {/* Welcome */}
+        <div className="max-w-4xl mx-auto px-6 pt-10 w-full">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-shrink-0">
+              <TeamShieldIcon size={56} />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
+              <p className="text-[#e5e5e5]/40 text-sm mt-1">
+                Your hub for managing roster, tracking team readiness, and approving players.
+              </p>
+            </div>
+          </div>
+        </div>
+        {/* No-team placeholder */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+          <div className="text-4xl mb-4">👑</div>
+          <h2 className="text-2xl font-black text-white mb-2">No Team Found</h2>
+          <p className="text-[#e5e5e5]/40 text-sm mb-6">You haven't registered a team yet.</p>
+          <Link to={event ? `/events/${event.year}/captain-register` : '/'} className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
+            Register a Team →
+          </Link>
+        </div>
       </div>
     )
   }
@@ -407,6 +425,19 @@ export default function CaptainHub() {
             ← {event.name}
           </Link>
         )}
+
+        {/* Welcome */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-shrink-0">
+            <TeamShieldIcon size={56} />
+          </div>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
+            <p className="text-[#e5e5e5]/40 text-sm mt-1">
+              Your hub for managing roster, tracking team readiness, and approving players.
+            </p>
+          </div>
+        </div>
 
         {/* Header */}
         <div className="flex items-start gap-5 mb-6">

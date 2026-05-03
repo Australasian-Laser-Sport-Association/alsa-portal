@@ -2,6 +2,7 @@ import {
   PersonIcon,
   TeamShieldIcon,
   CocDocumentIcon,
+  RefTestIcon,
   CameraIcon,
   SideEventsIcon,
   PaymentIcon,
@@ -33,8 +34,10 @@ export default function RegistrationTimeline({ eventName }) {
     { Icon: PersonIcon, label: 'Register as a player', description: 'Create your ALSA account and sign up for the event.' },
     { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Use a captain\'s invite code, or start a new team and invite others.' },
     { Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct before the event.' },
+    { Icon: RefTestIcon, label: 'Pass the Ref Test', description: 'Complete the referee knowledge test.' },
     { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.' },
     { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).' },
+    { Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.' },
     { Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.' },
     { Icon: TargetIcon, label: 'All done!', description: `Fully registered for ${safeName}.`, isFinal: true },
   ]

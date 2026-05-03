@@ -8,7 +8,7 @@ import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 import JoinTeamModal from '../components/JoinTeamModal'
-import { DashboardGridIcon, TargetIcon } from '../components/icons.jsx'
+import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -338,6 +338,41 @@ function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
   )
 }
 
+// ── Hub Pill ────────────────────────────────────────────────────────────────
+// Horizontal pill linking to a hub page. Tints background/border/shadow from
+// the supplied hex `color`; passes that same color through to the icon stroke.
+function HubPill({ to, color, label, description, Icon }) {
+  const r = parseInt(color.slice(1, 3), 16)
+  const g = parseInt(color.slice(3, 5), 16)
+  const b = parseInt(color.slice(5, 7), 16)
+  const tint = (a) => `rgba(${r}, ${g}, ${b}, ${a})`
+
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-4 rounded-2xl border py-5 px-6 transition-all"
+      style={{ backgroundColor: tint(0.10), borderColor: tint(0.40) }}
+      onMouseEnter={e => {
+        e.currentTarget.style.backgroundColor = tint(0.20)
+        e.currentTarget.style.boxShadow = `0 0 20px ${tint(0.4)}`
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.backgroundColor = tint(0.10)
+        e.currentTarget.style.boxShadow = 'none'
+      }}
+    >
+      <div className="flex-shrink-0">
+        <Icon size={48} stroke={color} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-black text-lg leading-tight">{label}</p>
+        <p className="text-[#a0a0a0] text-sm leading-snug mt-0.5">{description}</p>
+      </div>
+      <div className="flex-shrink-0 text-white/60 text-xl">→</div>
+    </Link>
+  )
+}
+
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function EventPage() {
   const { year } = useParams()
@@ -553,6 +588,10 @@ export default function EventPage() {
   }
 
   // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
+  const myReg = user ? regs.find(r => r.user_id === user.id) : null
+  const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
+  const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
+
   return (
     <div className="bg-base text-white">
       {/* Photo lightbox */}
@@ -621,6 +660,11 @@ export default function EventPage() {
               {event.reg_close_date && `closes ${formatDate(event.reg_close_date)}`}
             </p>
           )}
+          {myReg && (
+            <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mt-4">
+              Registered as Player{myTeam ? ` + Team (${myTeam.name})` : ' · Side Events Only'}
+            </p>
+          )}
         </div>
       </section>
 
@@ -658,11 +702,8 @@ export default function EventPage() {
       <RegistrationTimeline eventName={event.name} />
 
       {/* Register CTA banner — full-width, shown to non-registered users when registration is open */}
-      {event.status === 'open' && (() => {
-        const myReg = user ? regs.find(r => r.user_id === user.id) : null
-        if (myReg) return null
-        return (
-          <section className="max-w-7xl mx-auto px-6 py-8">
+      {event.status === 'open' && !myReg && (
+        <section className="max-w-7xl mx-auto px-6 py-8">
             <div
               className="relative overflow-hidden rounded-2xl border border-line border-l-4 border-l-brand p-8 md:p-12"
               style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #131313 100%)' }}
@@ -700,15 +741,10 @@ export default function EventPage() {
               </div>
             </div>
           </section>
-        )
-      })()}
+      )}
 
       {/* CTA cards (open events only) — state-aware */}
-      {event.status === 'open' && (() => {
-        const myReg = user ? regs.find(r => r.user_id === user.id) : null
-        const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
-        const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
-
+      {event.status === 'open' && myReg && (() => {
         const cardStyle = {
           background: '#191919',
           border: '1px solid rgba(255,255,255,0.06)',
@@ -724,19 +760,21 @@ export default function EventPage() {
         const cardClass = 'rounded-2xl p-10 transition-all text-center flex flex-col'
         const primaryButton = 'block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]'
 
-        // States A/B (not registered) are handled by the Register banner rendered above the timeline.
-        if (!myReg) return null
+        const playerHubPill = (
+          <HubPill
+            to="/player-hub"
+            color="#FF6B00"
+            label="Player Hub"
+            description="View your checklist, pay your fees and sign the Code of Conduct."
+            Icon={DashboardGridIcon}
+          />
+        )
 
         // ── State C: registered, not on a team ───────────────────────────────
         if (!myReg.team_id) {
           return (
             <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
-              <div className="text-center mb-8">
-                <span className="inline-block bg-brand/10 text-brand border border-brand/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
-                  ✓ Registered as Player
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
                   <h2 className="text-white font-black text-xl mb-4 leading-tight">Create Team</h2>
                   <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
@@ -755,52 +793,29 @@ export default function EventPage() {
                     Enter Invite Code
                   </button>
                 </div>
-                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                  <div className="mb-6 flex justify-center"><DashboardGridIcon /></div>
-                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Player Hub</h2>
-                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                    View your checklist, pay your fees and sign the Code of Conduct.
-                  </p>
-                  <Link to="/player-hub" className={primaryButton}>
-                    Go to Player Hub
-                  </Link>
-                </div>
               </div>
+              {playerHubPill}
             </section>
           )
         }
 
         // ── State D: registered and on a team ────────────────────────────────
         return (
-          <section className="max-w-3xl mx-auto px-6 pt-16 pb-12">
-            <div className="text-center mb-8">
-              <span className="inline-block bg-brand/10 text-brand border border-brand/30 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider">
-                ✓ Registered as Player{myTeam ? ` · ${myTeam.name}` : ''}
-              </span>
-            </div>
-            <div className={`grid grid-cols-1 ${isCaptainOrManager ? 'md:grid-cols-2' : ''} gap-6`}>
-              {isCaptainOrManager && (
-                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Team Hub</h2>
-                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                    Manage your team roster, approve players, and track readiness.
-                  </p>
-                  <Link to="/captain-hub" className={primaryButton}>
-                    Go to Team Hub
-                  </Link>
-                </div>
-              )}
-              <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                <div className="mb-6 flex justify-center"><DashboardGridIcon /></div>
-                <h2 className="text-white font-black text-xl mb-4 leading-tight">Player Hub</h2>
-                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                  View your checklist, pay your fees and sign the Code of Conduct.
-                </p>
-                <Link to="/player-hub" className={primaryButton}>
-                  Go to Player Hub
-                </Link>
+          <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
+            {isCaptainOrManager ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <HubPill
+                  to="/captain-hub"
+                  color="#E24B4A"
+                  label="Team Hub"
+                  description="Manage your team roster, approve players, and track readiness."
+                  Icon={TeamShieldIcon}
+                />
+                {playerHubPill}
               </div>
-            </div>
+            ) : (
+              playerHubPill
+            )}
           </section>
         )
       })()}
