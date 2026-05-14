@@ -1,0 +1,26 @@
+-- ============================================================
+-- Migration: payment_records — missing authenticated GRANT
+-- Date: 2026-05-14
+-- Purpose:
+--   20260514000000_payment_tracking.sql created the payment_records
+--   table, enabled RLS, and added the policies — but omitted the
+--   underlying table-level GRANT. RLS policies cannot run without a
+--   base GRANT, so players hit 42501 (surfaced as HTTP 403) when the
+--   PlayerHub payment panel tried to read their own records.
+--
+--   This grants SELECT to authenticated; the payment_records_own_read
+--   RLS policy then scopes each user to their own rows.
+--
+--   Applied to production via the SQL editor as a hotfix — this file
+--   exists so local migrations stay in sync with the deployed schema.
+--   `supabase db push` is a no-op for this change in production.
+--
+-- Why SELECT only (no INSERT/UPDATE/DELETE for authenticated):
+--   All payment_records writes flow through the api/admin/payments.js
+--   route using the service_role client, which bypasses RLS and is
+--   already covered by the service_role default privileges. The
+--   authenticated role never writes this table directly, so granting
+--   it write access would only widen the surface without being used.
+-- ============================================================
+
+GRANT SELECT ON public.payment_records TO authenticated;
