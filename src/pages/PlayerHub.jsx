@@ -737,12 +737,14 @@ export default function PlayerHub() {
       setDinnerGuestsDraft(reg.dinner_guests ?? 0)
     }
 
-    // Fetch payment records for this registration (depends on reg.id)
+    // Fetch payment records for this registration (depends on reg.id).
+    // recorded_by is intentionally not selected — that's admin-only context.
     if (reg?.id) {
       const { data: prData, error: prErr } = await supabase
         .from('payment_records')
-        .select('amount')
+        .select('id, amount, recorded_at, bank_reference, notes')
         .eq('registration_id', reg.id)
+        .order('recorded_at', { ascending: false })
       if (prErr) console.error('PlayerHub: payment_records query failed:', prErr)
       setPaymentRecords(prData ?? [])
     } else {
@@ -1589,6 +1591,30 @@ export default function PlayerHub() {
                 <Stat label="Amount paid" value={dollars(amountPaid)} />
                 <Stat label="Balance" value={dollars(Math.abs(balance))} tone={balanceTone} prefix={balanceLabel} />
               </div>
+
+              {paymentRecords.length > 0 && (
+                <div className="bg-base border border-line rounded-xl p-4 mb-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Payment History</p>
+                  <div className="divide-y divide-line">
+                    {paymentRecords.map(rec => (
+                      <div key={rec.id} className="py-2 first:pt-0 last:pb-0">
+                        <div className="flex justify-between items-baseline gap-3">
+                          <span className="text-[#e5e5e5]/50 text-xs">{formatDate(rec.recorded_at, 'long')}</span>
+                          <span className={`text-xs font-semibold ${rec.amount < 0 ? 'text-red-400' : 'text-brand'}`}>
+                            {dollars(rec.amount)}
+                          </span>
+                        </div>
+                        {rec.bank_reference && (
+                          <p className="text-[#e5e5e5]/30 text-[11px] mt-0.5">Ref: {rec.bank_reference}</p>
+                        )}
+                        {rec.notes && (
+                          <p className="text-[#e5e5e5]/30 text-[11px] mt-0.5 break-words">{rec.notes}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {isPaidInFull ? (
                 <div className="bg-brand/10 border border-brand/30 rounded-xl p-4">
