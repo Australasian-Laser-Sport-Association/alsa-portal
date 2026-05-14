@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
+import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
@@ -20,6 +21,55 @@ function isUnder18(dob, eventYear) {
   const eighteenth = new Date(birth)
   eighteenth.setFullYear(eighteenth.getFullYear() + 18)
   return eighteenth > cutoff
+}
+
+const STAT_TONES = {
+  neutral: 'bg-base border-line text-white',
+  red: 'bg-red-500/10 border-red-500/30 text-red-400',
+  green: 'bg-brand/10 border-brand/30 text-brand',
+  blue: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+}
+
+function Stat({ label, value, tone = 'neutral', prefix = '' }) {
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${STAT_TONES[tone] ?? STAT_TONES.neutral}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider opacity-60">{label}</p>
+      <p className="font-black text-sm mt-0.5">{prefix}{value}</p>
+    </div>
+  )
+}
+
+function Field({ label, value, className = '' }) {
+  return (
+    <div className={className}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">{label}</p>
+      <p className="text-white font-mono text-sm mt-0.5 break-all select-all">{value}</p>
+    </div>
+  )
+}
+
+function CopyableReference({ value }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(err => console.error('[CopyableReference] clipboard write failed:', err))
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="w-full text-left bg-brand/5 border border-brand/30 hover:border-brand/60 rounded-xl px-4 py-3 transition-colors group"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-brand font-mono font-black text-base tracking-wide select-all">{value}</span>
+        <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${copied ? 'text-brand' : 'text-[#e5e5e5]/40 group-hover:text-brand'}`}>
+          {copied ? 'Copied!' : 'Click to copy'}
+        </span>
+      </div>
+    </button>
+  )
 }
 
 // ── Checklist Item ──────────────────────────────────────────────────────────
@@ -594,7 +644,7 @@ export default function PlayerHub() {
   const [cocContent, setCocContent] = useState('')
   const [cocSig, setCocSig] = useState(null) // null = not signed, { signed_at } = signed
   const [testResult, setTestResult] = useState(null)
-  const [payment, setPayment] = useState(null)
+  const [paymentRecords, setPaymentRecords] = useState([])
   const [u18Sub, setU18Sub] = useState(null) // null = not submitted
   const [u18FormContent, setU18FormContent] = useState('')
   const [mediaSub, setMediaSub] = useState(null) // null = not submitted, { consents } = submitted
@@ -633,7 +683,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, processing_fee_pct, dinner_guest_price, reg_open_date')
+      .select('id, name, year, status, side_events, main_fee, processing_fee_pct, dinner_guest_price, reg_open_date, bank_bsb, bank_account_number, bank_account_name')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -648,7 +698,6 @@ export default function PlayerHub() {
       { data: cocVersion, error: cocVersionErr },
       { data: cocSigData },
       { data: testData },
-      { data: payData },
       { data: u18Data },
       { data: u18Version, error: under18VersionErr },
       { data: mediaData },
@@ -661,7 +710,6 @@ export default function PlayerHub() {
       supabase.from('code_of_conduct_versions').select('content').eq('is_published', true).maybeSingle(),
       supabase.from('code_of_conduct_signatures').select('signed_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
       supabase.from('referee_test_results').select('passed, score').eq('user_id', user.id).maybeSingle(),
-      supabase.from('payments').select('amount, status, created_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
       supabase.from('under18_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
       supabase.from('under18_form_versions').select('content').eq('is_published', true).maybeSingle(),
       supabase.from('media_release_submissions').select('consents, submitted_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
@@ -678,7 +726,6 @@ export default function PlayerHub() {
     setCocContent(cocVersion?.content ?? '')
     setCocSig(cocSigData ?? null)
     setTestResult(testData ?? null)
-    setPayment(payData ?? null)
     setU18Sub(u18Data ?? null)
     setU18FormContent(u18Version?.content ?? '')
     setMediaSub(mediaData ?? null)
@@ -688,6 +735,18 @@ export default function PlayerHub() {
       setSelectedSlugs(new Set(reg.side_events ?? []))
       setDinnerGuests(reg.dinner_guests ?? 0)
       setDinnerGuestsDraft(reg.dinner_guests ?? 0)
+    }
+
+    // Fetch payment records for this registration (depends on reg.id)
+    if (reg?.id) {
+      const { data: prData, error: prErr } = await supabase
+        .from('payment_records')
+        .select('amount')
+        .eq('registration_id', reg.id)
+      if (prErr) console.error('PlayerHub: payment_records query failed:', prErr)
+      setPaymentRecords(prData ?? [])
+    } else {
+      setPaymentRecords([])
     }
 
     // Fetch team roster if player is on a team
@@ -764,7 +823,13 @@ export default function PlayerHub() {
     const { data: updated } = await supabase.from('zltac_registrations')
       .update({ side_events: [...selectedSlugs], has_confirmed_side_events: true })
       .eq('user_id', user.id).eq('year', event.year).select().single()
-    if (updated) setRegistration(updated)
+    if (updated) {
+      await recomputeOwing(updated.id)
+      const { data: reread } = await supabase.from('zltac_registrations')
+        .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+        .eq('id', updated.id).maybeSingle()
+      setRegistration(reread ?? updated)
+    }
     setSavingConfirm(false)
   }
 
@@ -775,7 +840,11 @@ export default function PlayerHub() {
       .update({ dinner_guests: dinnerGuestsDraft, has_confirmed_extras: true })
       .eq('user_id', user.id).eq('year', event.year).select().single()
     if (updated) {
-      setRegistration(updated)
+      await recomputeOwing(updated.id)
+      const { data: reread } = await supabase.from('zltac_registrations')
+        .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+        .eq('id', updated.id).maybeSingle()
+      setRegistration(reread ?? updated)
       setDinnerGuests(dinnerGuestsDraft)
     }
     setSavingExtrasConfirm(false)
@@ -868,7 +937,7 @@ export default function PlayerHub() {
   const extrasHasChanges = dinnerGuestsDraft !== dinnerGuests
   const extrasConfirmDisabled = extrasConfirmed && !extrasHasChanges
 
-  // Cost
+  // Itemised cost (informational — for the Cost Breakdown card display)
   const mainFee = event.main_fee ?? 0
   const dinnerPrice = event.dinner_guest_price ?? 0
   const selectedIndividualEvents = individualSideEvents.filter(se => selectedSlugs.has(se.slug))
@@ -880,15 +949,23 @@ export default function PlayerHub() {
   const subtotal = mainFee + sideTotal + dinnerGuests * dinnerPrice
   const processingFee = Math.round(subtotal * (event.processing_fee_pct ?? 0) / 100)
   const total = subtotal + processingFee
-  const amountPaid = payment?.amount ?? 0
-  const balanceOwing = Math.max(0, total - amountPaid)
-  const paymentStatus = payment?.status ?? (isRegistered ? 'unpaid' : null)
 
-  const PAYMENT_STYLES = {
-    unpaid: 'bg-red-500/15 text-red-400 border-red-500/30',
-    partial: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
-    paid: 'bg-brand/15 text-brand border-brand/30',
-  }
+  // Source of truth for billing: registration.amount_owing + payment_records ledger.
+  const amountOwing = registration?.amount_owing ?? 0
+  const amountPaid = paymentRecords.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const balance = amountOwing - amountPaid
+  const isPaidInFull = isRegistered && balance <= 0
+  const balanceTone = balance > 0 ? 'red' : balance === 0 ? 'green' : 'blue'
+  const balanceLabel = balance < 0 ? 'overpaid ' : ''
+
+  const hasBankDetails = !!(event.bank_bsb && event.bank_account_number && event.bank_account_name)
+  const paymentRef = registration?.payment_reference ?? ''
+
+  const PAYMENT_BADGE = balance > 0
+    ? { label: 'Unpaid', cls: 'bg-red-500/15 text-red-400 border-red-500/30' }
+    : balance < 0
+      ? { label: 'Overpaid', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' }
+      : { label: 'Paid in Full', cls: 'bg-brand/15 text-brand border-brand/30' }
 
   return (
     <div className="min-h-screen bg-base text-white">
@@ -1081,7 +1158,7 @@ export default function PlayerHub() {
             cocSigned={!!cocSig}
             refPassed={!!testResult?.passed}
             mediaSubmitted={!!mediaSub}
-            paid={paymentStatus === 'paid'}
+            paid={isPaidInFull}
             sideEventsConfirmed={sideEventsConfirmed}
             extrasConfirmed={extrasConfirmed}
             u18Required={u18Required}
@@ -1235,12 +1312,46 @@ export default function PlayerHub() {
             )}
 
             <ChecklistItem
-              status={!isRegistered || !paymentStatus ? 'pending' : paymentStatus === 'paid' ? 'done' : 'error'}
-              label="Payment — Payment Info Released Soon"
+              status={!isRegistered ? 'pending' : isPaidInFull ? 'done' : 'error'}
+              label={
+                !isRegistered
+                  ? 'Payment'
+                  : isPaidInFull
+                    ? `Payment — Paid in full${balance < 0 ? ' (overpaid)' : ''}`
+                    : `Payment — ${dollars(balance)} outstanding`
+              }
             >
-              <p className="text-[#e5e5e5]/60 text-sm">
-                Payment details and instructions will be released closer to the event.
-              </p>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <Stat label="Amount owing" value={dollars(amountOwing)} />
+                <Stat label="Amount paid" value={dollars(amountPaid)} />
+                <Stat label="Balance" value={dollars(Math.abs(balance))} tone={balanceTone} prefix={balanceLabel} />
+              </div>
+
+              {isPaidInFull ? (
+                <div className="bg-brand/10 border border-brand/30 rounded-xl p-4">
+                  <p className="text-brand font-semibold text-sm">Payment received — thanks!</p>
+                </div>
+              ) : hasBankDetails ? (
+                <div className="bg-base border border-line rounded-xl p-4 space-y-4">
+                  <p className="text-white font-semibold text-sm">Pay the balance to:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="BSB" value={event.bank_bsb} />
+                    <Field label="Account Number" value={event.bank_account_number} />
+                    <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
+                  </div>
+                  {paymentRef && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-1.5">Reference</p>
+                      <CopyableReference value={paymentRef} />
+                      <p className="text-[#e5e5e5]/40 text-xs mt-2">Include this exact reference so we can match your payment.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-base border border-line rounded-xl p-4">
+                  <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
+                </div>
+              )}
             </ChecklistItem>
           </div>
 
@@ -1486,8 +1597,12 @@ export default function PlayerHub() {
               </div>
               <div className="border-t border-line pt-3 space-y-1.5 mb-4">
                 <div className="flex justify-between">
-                  <span className="text-white font-bold text-sm">Total</span>
-                  <span className="text-brand font-black text-lg">{dollars(total)}</span>
+                  <span className="text-[#e5e5e5]/40 text-sm">Estimated total</span>
+                  <span className="text-[#e5e5e5]/60 text-sm">{dollars(total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white font-bold text-sm">Amount billed</span>
+                  <span className="text-brand font-black text-lg">{dollars(amountOwing)}</span>
                 </div>
                 {amountPaid > 0 && (
                   <div className="flex justify-between text-sm">
@@ -1495,19 +1610,17 @@ export default function PlayerHub() {
                     <span className="text-[#e5e5e5]/40">{dollars(amountPaid)}</span>
                   </div>
                 )}
-                {balanceOwing > 0 && (
+                {balance !== 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">Balance owing</span>
-                    <span className="text-red-400 font-semibold">{dollars(balanceOwing)}</span>
+                    <span className="text-[#e5e5e5]/60">{balance > 0 ? 'Balance owing' : 'Overpaid'}</span>
+                    <span className={`font-semibold ${balance > 0 ? 'text-red-400' : 'text-blue-400'}`}>{dollars(Math.abs(balance))}</span>
                   </div>
                 )}
               </div>
               <div className="flex items-center justify-between gap-3">
-                {paymentStatus && (
-                  <span className={`text-xs px-2.5 py-1 rounded-full border font-bold uppercase tracking-wide ${PAYMENT_STYLES[paymentStatus] ?? ''}`}>
-                    {paymentStatus === 'paid' ? 'Paid in Full' : paymentStatus}
-                  </span>
-                )}
+                <span className={`text-xs px-2.5 py-1 rounded-full border font-bold uppercase tracking-wide ${PAYMENT_BADGE.cls}`}>
+                  {PAYMENT_BADGE.label}
+                </span>
                 <button disabled className="ml-auto bg-brand/10 border border-brand/20 text-brand/50 text-xs font-bold px-4 py-1.5 rounded-lg cursor-not-allowed">
                   Pay Now (coming soon)
                 </button>

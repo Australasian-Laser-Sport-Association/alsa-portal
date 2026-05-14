@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
+import { recomputeOwing } from '../lib/recomputeOwing'
 import Footer from '../components/Footer'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
@@ -96,13 +97,14 @@ export default function CaptainRegister() {
     if (insertError) { setError(insertError.message); setSaving(false); return }
 
     // Register the captain as a player on their own team
-    await supabase.from('zltac_registrations').upsert({
+    const { data: capReg } = await supabase.from('zltac_registrations').upsert({
       user_id: user.id,
       year: parseInt(year),
       team_id: newTeam.id,
       side_events: null,
       status: 'pending',
-    }, { onConflict: 'user_id,year' })
+    }, { onConflict: 'user_id,year' }).select('id').single()
+    if (capReg?.id) await recomputeOwing(capReg.id)
 
     // Phase B.3a dual-write: populate unified teams schema alongside legacy.
     try {

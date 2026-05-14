@@ -1,5 +1,6 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyUser } from '../_lib/auth.js'
+import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -80,7 +81,7 @@ export default async function handler(req, res) {
     // Add 'doubles' to partner's side_events
     const { data: partnerReg, error: partnerRegErr } = await supabaseAdmin
       .from('zltac_registrations')
-      .select('side_events')
+      .select('id, side_events')
       .eq('user_id', partnerId)
       .eq('year', eventYear)
       .maybeSingle()
@@ -92,9 +93,9 @@ export default async function handler(req, res) {
       const { error: sideErr } = await supabaseAdmin
         .from('zltac_registrations')
         .update({ side_events: newSlugs })
-        .eq('user_id', partnerId)
-        .eq('year', eventYear)
+        .eq('id', partnerReg.id)
       if (sideErr) return res.status(500).json({ error: sideErr.message })
+      await computeAndWriteAmountOwing(partnerReg.id)
     }
 
     return res.json({ record })

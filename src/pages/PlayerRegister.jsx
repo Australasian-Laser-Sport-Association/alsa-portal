@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
+import { recomputeOwing } from '../lib/recomputeOwing'
 import Footer from '../components/Footer'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
@@ -76,7 +77,7 @@ export default function PlayerRegister() {
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
     }
 
-    const { error: regError } = await supabase.from('zltac_registrations').upsert({
+    const { data: regRow, error: regError } = await supabase.from('zltac_registrations').upsert({
       user_id: user.id,
       year: parseInt(year),
       team_id: null,
@@ -85,10 +86,12 @@ export default function PlayerRegister() {
       emergency_contact_name: emergencyName.trim() || null,
       emergency_contact_phone: emergencyPhone.trim() || null,
       status: 'pending',
-    }, { onConflict: 'user_id,year' })
+    }, { onConflict: 'user_id,year' }).select('id').single()
+
+    if (regError) { setSubmitting(false); setError(regError.message); return }
+    if (regRow?.id) await recomputeOwing(regRow.id)
 
     setSubmitting(false)
-    if (regError) { setError(regError.message); return }
     navigate(`/player-hub`)
   }
 

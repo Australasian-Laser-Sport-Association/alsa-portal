@@ -1,10 +1,11 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyUser } from '../_lib/auth.js'
+import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 
 async function addPartnerSideEvent(partnerId, eventYear) {
   const { data: reg, error: regErr } = await supabaseAdmin
     .from('zltac_registrations')
-    .select('side_events')
+    .select('id, side_events')
     .eq('user_id', partnerId)
     .eq('year', eventYear)
     .maybeSingle()
@@ -14,9 +15,9 @@ async function addPartnerSideEvent(partnerId, eventYear) {
     const { error: updErr } = await supabaseAdmin
       .from('zltac_registrations')
       .update({ side_events: newSlugs })
-      .eq('user_id', partnerId)
-      .eq('year', eventYear)
+      .eq('id', reg.id)
     if (updErr) return { error: updErr }
+    await computeAndWriteAmountOwing(reg.id)
   }
   return { error: null }
 }

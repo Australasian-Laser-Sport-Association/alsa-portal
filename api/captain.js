@@ -1,5 +1,6 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
+import { computeAndWriteAmountOwing, computeAndWriteAmountOwingMany } from './_lib/computeAmountOwing.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -27,6 +28,8 @@ export default async function handler(req, res) {
       .select()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
+
+    if (data?.[0]?.id) await computeAndWriteAmountOwing(data[0].id)
 
     // Phase B.3a dual-write: mirror membership into team_members.
     try {
@@ -56,12 +59,15 @@ export default async function handler(req, res) {
     if (team.captain_id !== user.id) return res.status(403).json({ error: 'Only the team captain can disband the team' })
 
     // 1. Kick all members off the team but keep their registrations
-    const { error: regErr } = await supabaseAdmin
+    const { data: affected, error: regErr } = await supabaseAdmin
       .from('zltac_registrations')
       .update({ team_id: null })
       .eq('team_id', teamId)
       .eq('year', year)
+      .select('id')
     if (regErr) return res.status(500).json({ error: regErr.message })
+
+    if (affected?.length) await computeAndWriteAmountOwingMany(affected.map(r => r.id))
 
     // 2. Phase B.3a dual-write: clear team_members rows for this team
     try {

@@ -112,6 +112,7 @@ export default function AdminEvent() {
   const [form, setForm] = useState({})
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
+  const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
   const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false })
 
   // Logo
@@ -168,6 +169,11 @@ export default function AdminEvent() {
       team_fee: centsToDisplay(ev.team_fee),
       dinner_guest_fee: centsToDisplay(ev.dinner_guest_price),
       processing_fee_pct: ev.processing_fee_pct != null ? String(ev.processing_fee_pct) : '2.50',
+    })
+    setBank({
+      bsb: ev.bank_bsb ?? '',
+      account_number: ev.bank_account_number ?? '',
+      account_name: ev.bank_account_name ?? '',
     })
     setSettings({
       reg_open_date: ev.reg_open_date ? ev.reg_open_date.slice(0, 16) : '',
@@ -262,6 +268,9 @@ export default function AdminEvent() {
       team_fee: displayToCents(pricing.team_fee),
       dinner_guest_price: displayToCents(pricing.dinner_guest_fee),
       processing_fee_pct: parseFloat(pricing.processing_fee_pct) || 0,
+      bank_bsb: bank.bsb.trim() || null,
+      bank_account_number: bank.account_number.trim() || null,
+      bank_account_name: bank.account_name.trim() || null,
       side_events: sideEvents.map(se => ({
         ...se,
         price: displayToCents(se.price),
@@ -692,7 +701,7 @@ export default function AdminEvent() {
         <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
           <div className="space-y-4">
             <DollarInput label="Player Registration Fee (AUD)" hint="Per player entry fee" value={pricing.player_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, player_fee: v }))} />
-            <DollarInput label="Team Registration Fee (AUD)" hint="Per team entry fee (if separate from player fee)" value={pricing.team_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, team_fee: v }))} />
+            <DollarInput label="Team Registration Fee (Per Player)" hint="Charged per player when they're on a team, on top of the main entry fee." value={pricing.team_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, team_fee: v }))} />
             <DollarInput label="Dinner Guest Fee (AUD)" hint="Per additional dinner guest" value={pricing.dinner_guest_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, dinner_guest_fee: v }))} />
 
             <div>
@@ -729,6 +738,34 @@ export default function AdminEvent() {
                 </div>
               </div>
             )}
+
+            <div className="pt-4 border-t border-line">
+              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Bank Details</label>
+              <p className="text-xs text-[#e5e5e5]/30 mb-3">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">BSB</label>
+                  <input type="text" value={bank.bsb} disabled={isArchived} placeholder="123-456"
+                    onChange={e => setBank(b => ({ ...b, bsb: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Account Number</label>
+                  <input type="text" value={bank.account_number} disabled={isArchived}
+                    onChange={e => setBank(b => ({ ...b, account_number: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Account Name</label>
+                  <input type="text" value={bank.account_name} disabled={isArchived}
+                    onChange={e => setBank(b => ({ ...b, account_name: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Live preview */}
