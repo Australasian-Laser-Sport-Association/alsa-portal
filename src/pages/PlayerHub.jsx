@@ -683,7 +683,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, processing_fee_pct, dinner_guest_price, reg_open_date, bank_bsb, bank_account_number, bank_account_name')
+      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, bank_bsb, bank_account_number, bank_account_name')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -1328,86 +1328,10 @@ export default function PlayerHub() {
                 !isRegistered
                   ? 'Payment'
                   : isPaidInFull
-                    ? `Payment — Paid in full${balance < 0 ? ' (overpaid)' : ''}`
+                    ? `Payment — Paid${balance < 0 ? ' (overpaid)' : ''}`
                     : `Payment — ${dollars(balance)} outstanding`
               }
-            >
-              {/* Itemised breakdown — informational, computed live from event pricing */}
-              <div className="bg-base border border-line rounded-xl p-4 mb-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Cost breakdown</p>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-[#e5e5e5]/50">Player registration fee</span>
-                    <span className="text-[#e5e5e5]/50">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
-                  </div>
-                  {hasTeam && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">Team registration fee (per player)</span>
-                      <span className="text-[#e5e5e5]/50">{dollars(teamFee)}</span>
-                    </div>
-                  )}
-                  {billedSideEvents.map(se => (
-                    <div key={se.slug} className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">
-                        {se.name}
-                        {sideEventAnnotations[se.slug] && (
-                          <span className="text-[#e5e5e5]/30"> ({sideEventAnnotations[se.slug]})</span>
-                        )}
-                      </span>
-                      <span className="text-[#e5e5e5]/50">{dollars(se.price ?? 0)}</span>
-                    </div>
-                  ))}
-                  {dinnerGuests > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
-                      <span className="text-[#e5e5e5]/50">{dollars(dinnerGuests * dinnerPrice)}</span>
-                    </div>
-                  )}
-                  {processingFee > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/40">Processing fee ({event.processing_fee_pct}%)</span>
-                      <span className="text-[#e5e5e5]/40">{dollars(processingFee)}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t border-line mt-3 pt-3 flex justify-between">
-                  <span className="text-white font-bold text-sm">Amount billed</span>
-                  <span className="text-brand font-black text-sm">{dollars(amountOwing)}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <Stat label="Amount owing" value={dollars(amountOwing)} />
-                <Stat label="Amount paid" value={dollars(amountPaid)} />
-                <Stat label="Balance" value={dollars(Math.abs(balance))} tone={balanceTone} prefix={balanceLabel} />
-              </div>
-
-              {isPaidInFull ? (
-                <div className="bg-brand/10 border border-brand/30 rounded-xl p-4">
-                  <p className="text-brand font-semibold text-sm">Payment received — thanks!</p>
-                </div>
-              ) : hasBankDetails ? (
-                <div className="bg-base border border-line rounded-xl p-4 space-y-4">
-                  <p className="text-white font-semibold text-sm">Pay the balance to:</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="BSB" value={event.bank_bsb} />
-                    <Field label="Account Number" value={event.bank_account_number} />
-                    <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
-                  </div>
-                  {paymentRef && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-1.5">Reference</p>
-                      <CopyableReference value={paymentRef} />
-                      <p className="text-[#e5e5e5]/40 text-xs mt-2">Include this exact reference so we can match your payment.</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-base border border-line rounded-xl p-4">
-                  <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
-                </div>
-              )}
-            </ChecklistItem>
+            />
           </div>
 
           {/* ── My Team ── */}
@@ -1607,6 +1531,90 @@ export default function PlayerHub() {
               >
                 {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
               </button>
+            </div>
+          )}
+
+          {/* ── Payment Details ── */}
+          {isRegistered && (
+            <div className="bg-surface border border-line rounded-2xl p-5" id="payment-details">
+              <h2 className="text-white font-bold mb-1">Payment Details</h2>
+              <p className="text-[#e5e5e5]/40 text-xs mb-5">Your event fees and how to pay</p>
+
+              {/* Itemised breakdown — informational, computed live from event pricing */}
+              <div className="bg-base border border-line rounded-xl p-4 mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Cost breakdown</p>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[#e5e5e5]/50">Player registration fee</span>
+                    <span className="text-[#e5e5e5]/50">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
+                  </div>
+                  {hasTeam && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">Team registration fee (per player)</span>
+                      <span className="text-[#e5e5e5]/50">{dollars(teamFee)}</span>
+                    </div>
+                  )}
+                  {billedSideEvents.map(se => (
+                    <div key={se.slug} className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">
+                        {se.name}
+                        {sideEventAnnotations[se.slug] && (
+                          <span className="text-[#e5e5e5]/30"> ({sideEventAnnotations[se.slug]})</span>
+                        )}
+                      </span>
+                      <span className="text-[#e5e5e5]/50">{dollars(se.price ?? 0)}</span>
+                    </div>
+                  ))}
+                  {dinnerGuests > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
+                      <span className="text-[#e5e5e5]/50">{dollars(dinnerGuests * dinnerPrice)}</span>
+                    </div>
+                  )}
+                  {processingFee > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/40">Processing fee ({event.processing_fee_pct}%)</span>
+                      <span className="text-[#e5e5e5]/40">{dollars(processingFee)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-line mt-3 pt-3 flex justify-between">
+                  <span className="text-white font-bold text-sm">Amount billed</span>
+                  <span className="text-brand font-black text-sm">{dollars(amountOwing)}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <Stat label="Amount owing" value={dollars(amountOwing)} />
+                <Stat label="Amount paid" value={dollars(amountPaid)} />
+                <Stat label="Balance" value={dollars(Math.abs(balance))} tone={balanceTone} prefix={balanceLabel} />
+              </div>
+
+              {isPaidInFull ? (
+                <div className="bg-brand/10 border border-brand/30 rounded-xl p-4">
+                  <p className="text-brand font-semibold text-sm">Payment received — thanks!</p>
+                </div>
+              ) : hasBankDetails ? (
+                <div className="bg-base border border-line rounded-xl p-4 space-y-4">
+                  <p className="text-white font-semibold text-sm">Pay the balance to:</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="BSB" value={event.bank_bsb} />
+                    <Field label="Account Number" value={event.bank_account_number} />
+                    <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
+                  </div>
+                  {paymentRef && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-1.5">Reference</p>
+                      <CopyableReference value={paymentRef} />
+                      <p className="text-[#e5e5e5]/40 text-xs mt-2">Include this exact reference so we can match your payment.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-base border border-line rounded-xl p-4">
+                  <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
+                </div>
+              )}
             </div>
           )}
 
