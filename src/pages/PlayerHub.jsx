@@ -914,15 +914,6 @@ export default function PlayerHub() {
   const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled && se.slug !== 'presentation-dinner')
   const individualSideEvents = enabledSideEvents.filter(se => ['lord-of-the-rings', 'solos'].includes(se.slug))
   const teamSideEvents = enabledSideEvents.filter(se => ['doubles', 'triples'].includes(se.slug))
-  const doublesEvent = teamSideEvents.find(se => se.slug === 'doubles')
-  const triplesEvent = teamSideEvents.find(se => se.slug === 'triples')
-
-  // Partner confirmation state
-  const doublesConfirmed = doublesRecord?.confirmed === true
-  const triplesConfirmed = triplesRecord?.confirmed === true // true only when player2_confirmed AND player3_confirmed
-  const doublesPartnerId = doublesRecord ? (doublesRecord.player1_id === user.id ? doublesRecord.player2_id : doublesRecord.player1_id) : null
-  const doublesPartner = doublesPartnerId ? partnerProfileMap[doublesPartnerId] : null
-  const doublesPartnerDisplay = doublesPartner ? (doublesPartner.alias ?? `${doublesPartner.first_name} ${doublesPartner.last_name}`) : null
 
   // Team state
   const hasTeam = !!registration?.team_id
@@ -937,18 +928,44 @@ export default function PlayerHub() {
   const extrasHasChanges = dinnerGuestsDraft !== dinnerGuests
   const extrasConfirmDisabled = extrasConfirmed && !extrasHasChanges
 
-  // Itemised cost (informational — for the Cost Breakdown card display)
+  // Itemised cost (informational — for the Payment section breakdown).
+  // Mirrors the computeAmountOwing server helper exactly so the itemisation
+  // always reconciles to amount_owing (the registration row stays the source
+  // of truth). Side events: every enabled non-dinner slug saved on the
+  // registration, no confirmation gating, no live UI-selection state.
   const mainFee = event.main_fee ?? 0
+  const teamFee = hasTeam ? (event.team_fee ?? 0) : 0
   const dinnerPrice = event.dinner_guest_price ?? 0
-  const selectedIndividualEvents = individualSideEvents.filter(se => selectedSlugs.has(se.slug))
-  const individualSideTotal = selectedIndividualEvents.reduce((s, se) => s + (se.price ?? 0), 0)
-  const teamSideTotal =
-    (doublesConfirmed && selectedSlugs.has('doubles') ? (doublesEvent?.price ?? 0) : 0) +
-    (triplesConfirmed && selectedSlugs.has('triples') ? (triplesEvent?.price ?? 0) : 0)
-  const sideTotal = individualSideTotal + teamSideTotal
-  const subtotal = mainFee + sideTotal + dinnerGuests * dinnerPrice
+  const billedSideEvents = (() => {
+    const config = new Map(
+      (event.side_events ?? [])
+        .filter(se => se.enabled && se.slug !== 'presentation-dinner')
+        .map(se => [se.slug, se])
+    )
+    return (registration?.side_events ?? [])
+      .map(slug => config.get(slug))
+      .filter(Boolean)
+  })()
+  const sideTotal = billedSideEvents.reduce((s, se) => s + (se.price ?? 0), 0)
+  const subtotal = mainFee + teamFee + sideTotal + dinnerGuests * dinnerPrice
   const processingFee = Math.round(subtotal * (event.processing_fee_pct ?? 0) / 100)
-  const total = subtotal + processingFee
+
+  // Decorative partner annotations for the doubles/triples itemisation rows.
+  // Does not affect pricing — billedSideEvents already reconciles to amount_owing.
+  const partnerName = (id) => {
+    const p = partnerProfileMap[id]
+    return p ? (p.alias || p.first_name || null) : null
+  }
+  const sideEventAnnotations = {
+    doubles: doublesRecord?.confirmed
+      ? `with ${partnerName(doublesRecord.player1_id === user.id ? doublesRecord.player2_id : doublesRecord.player1_id) ?? 'partner'}`
+      : 'pending partner',
+    triples: triplesRecord?.confirmed
+      ? `with ${[triplesRecord.player1_id, triplesRecord.player2_id, triplesRecord.player3_id]
+          .filter(id => id && id !== user.id)
+          .map(partnerName).filter(Boolean).join(', ') || 'partners'}`
+      : 'pending partner',
+  }
 
   // Source of truth for billing: registration.amount_owing + payment_records ledger.
   const amountOwing = registration?.amount_owing ?? 0
@@ -960,12 +977,6 @@ export default function PlayerHub() {
 
   const hasBankDetails = !!(event.bank_bsb && event.bank_account_number && event.bank_account_name)
   const paymentRef = registration?.payment_reference ?? ''
-
-  const PAYMENT_BADGE = balance > 0
-    ? { label: 'Unpaid', cls: 'bg-red-500/15 text-red-400 border-red-500/30' }
-    : balance < 0
-      ? { label: 'Overpaid', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' }
-      : { label: 'Paid in Full', cls: 'bg-brand/15 text-brand border-brand/30' }
 
   return (
     <div className="min-h-screen bg-base text-white">
@@ -1321,6 +1332,50 @@ export default function PlayerHub() {
                     : `Payment — ${dollars(balance)} outstanding`
               }
             >
+              {/* Itemised breakdown — informational, computed live from event pricing */}
+              <div className="bg-base border border-line rounded-xl p-4 mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Cost breakdown</p>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[#e5e5e5]/50">Player registration fee</span>
+                    <span className="text-[#e5e5e5]/50">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
+                  </div>
+                  {hasTeam && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">Team registration fee (per player)</span>
+                      <span className="text-[#e5e5e5]/50">{dollars(teamFee)}</span>
+                    </div>
+                  )}
+                  {billedSideEvents.map(se => (
+                    <div key={se.slug} className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">
+                        {se.name}
+                        {sideEventAnnotations[se.slug] && (
+                          <span className="text-[#e5e5e5]/30"> ({sideEventAnnotations[se.slug]})</span>
+                        )}
+                      </span>
+                      <span className="text-[#e5e5e5]/50">{dollars(se.price ?? 0)}</span>
+                    </div>
+                  ))}
+                  {dinnerGuests > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/50">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
+                      <span className="text-[#e5e5e5]/50">{dollars(dinnerGuests * dinnerPrice)}</span>
+                    </div>
+                  )}
+                  {processingFee > 0 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#e5e5e5]/40">Processing fee ({event.processing_fee_pct}%)</span>
+                      <span className="text-[#e5e5e5]/40">{dollars(processingFee)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-line mt-3 pt-3 flex justify-between">
+                  <span className="text-white font-bold text-sm">Amount billed</span>
+                  <span className="text-brand font-black text-sm">{dollars(amountOwing)}</span>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <Stat label="Amount owing" value={dollars(amountOwing)} />
                 <Stat label="Amount paid" value={dollars(amountPaid)} />
@@ -1552,79 +1607,6 @@ export default function PlayerHub() {
               >
                 {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
               </button>
-            </div>
-          )}
-
-          {/* ── Cost Breakdown ── */}
-          {isRegistered && (
-            <div className="bg-surface border border-line rounded-2xl p-5">
-              <h2 className="text-white font-bold mb-4">Cost Breakdown</h2>
-              <div className="space-y-2 mb-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#e5e5e5]/60">Player registration fee</span>
-                  <span className="text-[#e5e5e5]/60">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
-                </div>
-                {selectedIndividualEvents.map(se => (
-                  <div key={se.slug} className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">{se.name}</span>
-                    <span className="text-[#e5e5e5]/60">{dollars(se.price)}</span>
-                  </div>
-                ))}
-                {doublesConfirmed && selectedSlugs.has('doubles') && doublesEvent && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">Doubles{doublesPartnerDisplay ? ` (with ${doublesPartnerDisplay})` : ''}</span>
-                    <span className="text-[#e5e5e5]/60">{dollars(doublesEvent.price)}</span>
-                  </div>
-                )}
-                {triplesConfirmed && selectedSlugs.has('triples') && triplesEvent && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">Triples</span>
-                    <span className="text-[#e5e5e5]/60">{dollars(triplesEvent.price)}</span>
-                  </div>
-                )}
-                {dinnerGuests > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
-                    <span className="text-[#e5e5e5]/60">{dollars(dinnerGuests * dinnerPrice)}</span>
-                  </div>
-                )}
-                {processingFee > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/40">Processing fee ({event.processing_fee_pct}%)</span>
-                    <span className="text-[#e5e5e5]/40">{dollars(processingFee)}</span>
-                  </div>
-                )}
-              </div>
-              <div className="border-t border-line pt-3 space-y-1.5 mb-4">
-                <div className="flex justify-between">
-                  <span className="text-[#e5e5e5]/40 text-sm">Estimated total</span>
-                  <span className="text-[#e5e5e5]/60 text-sm">{dollars(total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white font-bold text-sm">Amount billed</span>
-                  <span className="text-brand font-black text-lg">{dollars(amountOwing)}</span>
-                </div>
-                {amountPaid > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/40">Amount paid</span>
-                    <span className="text-[#e5e5e5]/40">{dollars(amountPaid)}</span>
-                  </div>
-                )}
-                {balance !== 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#e5e5e5]/60">{balance > 0 ? 'Balance owing' : 'Overpaid'}</span>
-                    <span className={`font-semibold ${balance > 0 ? 'text-red-400' : 'text-blue-400'}`}>{dollars(Math.abs(balance))}</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className={`text-xs px-2.5 py-1 rounded-full border font-bold uppercase tracking-wide ${PAYMENT_BADGE.cls}`}>
-                  {PAYMENT_BADGE.label}
-                </span>
-                <button disabled className="ml-auto bg-brand/10 border border-brand/20 text-brand/50 text-xs font-bold px-4 py-1.5 rounded-lg cursor-not-allowed">
-                  Pay Now (coming soon)
-                </button>
-              </div>
             </div>
           )}
 
