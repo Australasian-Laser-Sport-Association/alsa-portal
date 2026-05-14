@@ -16,17 +16,19 @@ export default async function handler(req, res) {
       { data: coc_sigs, error: e4 },
       { data: ref_results, error: e5 },
       { data: media_releases, error: e6 },
-      { data: payments, error: e7 },
+      { data: payment_records_raw, error: e7 },
       { data: doubles, error: e8 },
       { data: triples, error: e9 },
     ] = await Promise.all([
-      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests').eq('year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state'),
       supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),
       supabaseAdmin.from('code_of_conduct_signatures').select('user_id, signed_at'),
       supabaseAdmin.from('referee_test_results').select('user_id, passed, score'),
       supabaseAdmin.from('media_release_submissions').select('user_id, submitted_at'),
-      supabaseAdmin.from('payments').select('user_id, status, amount').eq('event_year', year),
+      supabaseAdmin.from('payment_records')
+        .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes, zltac_registrations!inner(year)')
+        .eq('zltac_registrations.year', year),
       supabaseAdmin.from('doubles_pairs').select('*').eq('event_year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('triples_teams').select('*').eq('event_year', year).order('created_at', { ascending: false }),
     ])
@@ -34,7 +36,18 @@ export default async function handler(req, res) {
     const errs = [e1, e2, e3, e4, e5, e6, e7, e8, e9].filter(Boolean)
     if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
 
-    return res.json({ registrations, profiles, teams, coc_sigs, ref_results, media_releases, payments, doubles, triples })
+    // Strip the zltac_registrations embed (used only for year-filtering).
+    const payment_records = (payment_records_raw ?? []).map(r => ({
+      id: r.id,
+      registration_id: r.registration_id,
+      amount: r.amount,
+      recorded_at: r.recorded_at,
+      recorded_by: r.recorded_by,
+      bank_reference: r.bank_reference,
+      notes: r.notes,
+    }))
+
+    return res.json({ registrations, profiles, teams, coc_sigs, ref_results, media_releases, payment_records, doubles, triples })
   }
 
   if (req.method === 'DELETE') {

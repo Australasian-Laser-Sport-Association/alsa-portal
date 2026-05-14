@@ -2,9 +2,18 @@
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
+import { dollars } from '../../lib/pricing.js'
+import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 
 function fmt(d) {
   return formatDate(d, 'short') || '—'
+}
+
+const PAY_PILL = {
+  unpaid:   { color: 'red',   label: 'Unpaid' },
+  partial:  { color: 'amber', label: 'Partial' },
+  paid:     { color: 'green', label: 'Paid' },
+  overpaid: { color: 'blue',  label: 'Overpaid' },
 }
 
 function Pill({ color, children }) {
@@ -12,6 +21,7 @@ function Pill({ color, children }) {
     green:  'bg-green-500/15 text-green-400 border-green-500/30',
     red:    'bg-red-500/15 text-red-400 border-red-500/30',
     amber:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+    blue:   'bg-blue-500/15 text-blue-400 border-blue-500/30',
     grey:   'bg-[#374056] text-[#e5e5e5]/40 border-line',
   }
   return (
@@ -43,7 +53,7 @@ export default function AdminRegistrations() {
   const [cocSigs, setCocSigs] = useState([])
   const [refResults, setRefResults] = useState([])
   const [mediaReleases, setMediaReleases] = useState([])
-  const [payments, setPayments] = useState([])
+  const [paymentRecords, setPaymentRecords] = useState([])
   const [doubles, setDoubles] = useState([])
   const [triples, setTriples] = useState([])
   const [loading, setLoading] = useState(true)
@@ -51,6 +61,7 @@ export default function AdminRegistrations() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState('all')
   const [removeConfirm, setRemoveConfirm] = useState(null) // { userId, name, alias }
+  const [paymentModal, setPaymentModal] = useState(null) // { registration, profile }
   const [toast, setToast] = useState(null)
 
   useEffect(() => {
@@ -85,7 +96,7 @@ export default function AdminRegistrations() {
       setCocSigs(data.coc_sigs ?? [])
       setRefResults(data.ref_results ?? [])
       setMediaReleases(data.media_releases ?? [])
-      setPayments(data.payments ?? [])
+      setPaymentRecords(data.payment_records ?? [])
       setDoubles(data.doubles ?? [])
       setTriples(data.triples ?? [])
     } catch (err) {
@@ -100,7 +111,10 @@ export default function AdminRegistrations() {
   const cocSet     = new Set(cocSigs.map(c => c.user_id))
   const refMap     = Object.fromEntries(refResults.map(r => [r.user_id, r]))
   const mediaSet   = new Set(mediaReleases.map(m => m.user_id))
-  const payMap     = Object.fromEntries(payments.map(p => [p.user_id, p]))
+  const recordsByReg = paymentRecords.reduce((acc, r) => {
+    (acc[r.registration_id] ??= []).push(r)
+    return acc
+  }, {})
 
   // Enrich registrations
   const players = regs.map(reg => {
@@ -109,11 +123,15 @@ export default function AdminRegistrations() {
     const coc     = cocSet.has(reg.user_id)
     const ref     = refMap[reg.user_id] ?? null
     const media   = mediaSet.has(reg.user_id)
-    const pay     = payMap[reg.user_id] ?? null
-    const paid    = pay?.status === 'paid'
+    const payRecords  = recordsByReg[reg.id] ?? []
+    const amountOwing = reg.amount_owing ?? 0
+    const amountPaid  = payRecords.reduce((s, r) => s + r.amount, 0)
+    const balance     = amountOwing - amountPaid
+    const payStatus   = balance < 0 ? 'overpaid' : balance === 0 ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
+    const paid        = balance <= 0
     const complete = coc && ref?.passed && media && paid
     const doneCount = [coc, ref?.passed, media, paid].filter(Boolean).length
-    return { ...reg, profile, team, coc, ref, media, paid, complete, doneCount }
+    return { ...reg, profile, team, coc, ref, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount }
   })
 
   // Filters
@@ -142,6 +160,16 @@ export default function AdminRegistrations() {
     const { error } = await supabase.from('teams').update({ status }).eq('id', id)
     if (error) { console.error(error); return }
     setTeams(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+  }
+
+  // Called by RecordPaymentModal after a record is added/edited/deleted.
+  // Replaces this registration's records so the row columns + modal refresh
+  // without a full reload.
+  function handlePaymentChange(records, summary) {
+    setPaymentRecords(prev => [
+      ...prev.filter(r => r.registration_id !== summary.registrationId),
+      ...records,
+    ])
   }
 
   async function removePlayer() {
@@ -184,6 +212,18 @@ export default function AdminRegistrations() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Record Payment modal */}
+      {paymentModal && (
+        <RecordPaymentModal
+          registration={paymentModal.registration}
+          profile={paymentModal.profile}
+          records={recordsByReg[paymentModal.registration.id] ?? []}
+          profMap={profMap}
+          onChange={handlePaymentChange}
+          onClose={() => setPaymentModal(null)}
+        />
       )}
 
       {/* Header */}
@@ -265,10 +305,10 @@ export default function AdminRegistrations() {
               {filtered.length === 0 ? (
                 <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No registrations found</p>
               ) : (
-                <table className="w-full text-sm" style={{ minWidth: '900px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '1180px' }}>
                   <thead>
                     <tr className="border-b border-line">
-                      {['Name', 'Alias', 'State', 'Team', 'CoC', 'Ref Test', 'Media', 'Payment', 'Status', 'Actions'].map(h => (
+                      {['Name', 'Alias', 'State', 'Team', 'CoC', 'Ref Test', 'Media', 'Owing', 'Paid', 'Balance', 'Payment', 'Status', 'Actions'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -318,9 +358,19 @@ export default function AdminRegistrations() {
                           <td className="px-4 py-3">
                             {p.media ? <Pill color="green">Submitted</Pill> : <Pill color="grey">Pending</Pill>}
                           </td>
+                          {/* Owing */}
+                          <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountOwing)}</td>
+                          {/* Paid */}
+                          <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountPaid)}</td>
+                          {/* Balance */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className={`text-xs font-semibold ${p.balance > 0 ? 'text-red-400' : p.balance < 0 ? 'text-blue-400' : 'text-green-400'}`}>
+                              {dollars(p.balance)}
+                            </span>
+                          </td>
                           {/* Payment */}
                           <td className="px-4 py-3">
-                            {p.paid ? <Pill color="green">Paid</Pill> : <Pill color="red">Unpaid</Pill>}
+                            <Pill color={PAY_PILL[p.payStatus].color}>{PAY_PILL[p.payStatus].label}</Pill>
                           </td>
                           {/* Status */}
                           <td className="px-4 py-3 whitespace-nowrap">
@@ -329,13 +379,21 @@ export default function AdminRegistrations() {
                               : <Pill color="red">{p.doneCount}/4</Pill>}
                           </td>
                           {/* Actions */}
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias })}
-                              className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
-                            >
-                              Remove
-                            </button>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
+                                className="text-xs text-brand/70 hover:text-brand hover:bg-brand/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                              >
+                                Record Payment
+                              </button>
+                              <button
+                                onClick={() => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias })}
+                                className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )
