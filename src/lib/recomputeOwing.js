@@ -6,9 +6,9 @@ import { apiFetch } from './apiFetch.js'
 export async function recomputeOwing(registrationId) {
   if (!registrationId) return null
   try {
-    const { amountOwing } = await apiFetch('/api/player/recompute-owing', {
+    const { amountOwing } = await apiFetch('/api/player/registration', {
       method: 'POST',
-      body: JSON.stringify({ registrationId }),
+      body: JSON.stringify({ action: 'recompute-owing', registrationId }),
     })
     return amountOwing
   } catch (err) {

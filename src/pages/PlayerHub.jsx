@@ -857,13 +857,13 @@ export default function PlayerHub() {
     setCancelError(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/api/player/cancel-registration', {
+      const res = await fetch('/api/player/registration', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
         },
-        body: JSON.stringify({ year: event.year }),
+        body: JSON.stringify({ action: 'cancel', year: event.year }),
       })
       const body = await res.json().catch(() => ({}))
       if (res.status === 409 && body.code === 'CAPTAIN_BLOCKED') {
