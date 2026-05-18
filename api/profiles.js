@@ -27,7 +27,7 @@ export default async function handler(req, res) {
 
     const { data: profiles, error: profsErr } = await supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, state')
+      .select('id, first_name, last_name, alias, state, roles')
       .in('id', rosterIds)
 
     if (profsErr) return res.status(500).json({ error: profsErr.message })
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, first_name, last_name, alias, state, dob, avatar_url')
+    .select('id, first_name, last_name, alias, state, dob, avatar_url, roles')
     .in('id', ids)
 
   if (error) return res.status(500).json({ error: error.message })

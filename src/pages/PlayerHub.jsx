@@ -8,6 +8,7 @@ import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
 import JoinTeamModal from '../components/JoinTeamModal'
+import CommitteeBadge from '../components/CommitteeBadge'
 import { DashboardGridIcon } from '../components/icons.jsx'
 
 function dollars(cents) {
@@ -361,6 +362,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
             <p className="text-white text-sm font-semibold">
               {partnerProfile ? `${partnerProfile.first_name} ${partnerProfile.last_name}` : 'Unknown Player'}
               {partnerProfile?.alias && <span className="text-brand ml-1">"{partnerProfile.alias}"</span>}
+              <CommitteeBadge roles={partnerProfile?.roles} size="xs" className="ml-1.5" />
             </p>
           </div>
           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
@@ -401,6 +403,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                 <p className="text-white text-xs font-semibold">
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
+                  <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
                 </p>
                 <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
@@ -559,6 +562,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           <p className="text-white text-xs font-semibold">
             {isMe ? 'You (organiser)' : p ? `${p.first_name} ${p.last_name}` : '—'}
             {!isMe && p?.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
+            {!isMe && <CommitteeBadge roles={p?.roles} size="xs" className="ml-1.5" />}
           </p>
         </div>
         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border flex-shrink-0 ${
@@ -602,6 +606,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                 <p className="text-white text-xs font-semibold">
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
+                  <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
                 </p>
                 <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
@@ -1051,9 +1056,12 @@ export default function PlayerHub() {
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">ZLTAC {eventYear} · Player Hub</p>
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-black text-white">
-                {firstName} {lastName}
-                {aliasDisplay && <span className="text-brand ml-2 text-2xl">"{aliasDisplay}"</span>}
+              <h1 className="text-3xl font-black text-white flex flex-wrap items-center gap-2">
+                <span>
+                  {firstName} {lastName}
+                  {aliasDisplay && <span className="text-brand ml-2 text-2xl">"{aliasDisplay}"</span>}
+                </span>
+                <CommitteeBadge roles={profile?.roles} size="sm" />
               </h1>
               <p className="text-[#e5e5e5]/40 text-xs mt-1">
                 ALSA ID: {memberId} · {team ? team.name : isRegistered ? 'Side events only' : 'Not yet registered'}
@@ -1080,6 +1088,7 @@ export default function PlayerHub() {
                   {inviter ? `${inviter.first_name} ${inviter.last_name}` : 'A player'}
                 </span>
                 {inviter?.alias && <span className="text-brand"> ({inviter.alias})</span>}
+                <CommitteeBadge roles={inviter?.roles} size="xs" className="ml-1.5" />
                 {' '}has invited you to be their Doubles partner. Do you accept?
               </p>
               <div className="flex gap-3">
@@ -1124,6 +1133,7 @@ export default function PlayerHub() {
                   {inviter ? `${inviter.first_name} ${inviter.last_name}` : 'A player'}
                 </span>
                 {inviter?.alias && <span className="text-brand"> ({inviter.alias})</span>}
+                <CommitteeBadge roles={inviter?.roles} size="xs" className="ml-1.5" />
                 {' '}has invited you to join their Triples team. Do you accept?
               </p>
               <div className="flex gap-3">
@@ -1389,6 +1399,7 @@ export default function PlayerHub() {
                             {p.alias && <span className="text-brand ml-1.5 font-normal">"{p.alias}"</span>}
                             {p.id === user.id && <span className="text-[#e5e5e5]/30 ml-1.5 text-xs">(You)</span>}
                             {p.id === team.captain_id && <span className="ml-1.5 text-xs">👑</span>}
+                            <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
                           </p>
                           {p.state && <p className="text-[#e5e5e5]/35 text-[10px]">{p.state}</p>}
                         </div>

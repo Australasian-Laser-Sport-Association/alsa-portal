@@ -74,6 +74,7 @@ export default function AdminUsers() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [editingRoles, setEditingRoles] = useState(false)
   const [draftRoles, setDraftRoles] = useState([])
+  const [draftAlsaPosition, setDraftAlsaPosition] = useState('')
   const [savingRoles, setSavingRoles] = useState(false)
   const [msg, setMsg] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
@@ -108,6 +109,7 @@ export default function AdminUsers() {
   async function openUser(u) {
     setSelected(u)
     setDraftRoles(u._roles)
+    setDraftAlsaPosition(u.alsa_position ?? '')
     setEditingRoles(false)
     setMsg(null)
     setConfirmDelete(null)
@@ -120,16 +122,23 @@ export default function AdminUsers() {
 
   async function saveRoles(userId) {
     const finalRoles = [...new Set(['player', ...draftRoles])]
+    // Clear alsa_position if alsa_committee is being removed; otherwise send trimmed value.
+    const finalPosition = finalRoles.includes('alsa_committee')
+      ? (draftAlsaPosition.trim() || null)
+      : null
     setSavingRoles(true)
     try {
       await apiFetch(`/api/admin/users?id=${userId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ roles: finalRoles }),
+        body: JSON.stringify({ roles: finalRoles, alsa_position: finalPosition ?? '' }),
       })
-      const update = u => u.id === userId ? { ...u, roles: finalRoles, _roles: finalRoles } : u
+      const update = u => u.id === userId
+        ? { ...u, roles: finalRoles, _roles: finalRoles, alsa_position: finalPosition }
+        : u
       setUsers(us => us.map(update))
-      setSelected(s => s ? { ...s, roles: finalRoles, _roles: finalRoles } : s)
+      setSelected(s => s ? { ...s, roles: finalRoles, _roles: finalRoles, alsa_position: finalPosition } : s)
       setDraftRoles(finalRoles)
+      setDraftAlsaPosition(finalPosition ?? '')
       setEditingRoles(false)
       setMsg({ type: 'ok', text: 'Roles updated.' })
     } catch (err) {
@@ -289,7 +298,7 @@ export default function AdminUsers() {
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider">Roles</p>
                 {!editingRoles && (
-                  <button onClick={() => { setEditingRoles(true); setDraftRoles(selected._roles); setMsg(null) }}
+                  <button onClick={() => { setEditingRoles(true); setDraftRoles(selected._roles); setDraftAlsaPosition(selected.alsa_position ?? ''); setMsg(null) }}
                     className="text-[10px] text-brand/70 hover:text-brand font-semibold transition-colors">
                     Change roles
                   </button>
@@ -324,12 +333,32 @@ export default function AdminUsers() {
                   {!isSuperAdmin && (
                     <p className="text-[10px] text-[#e5e5e5]/30 mb-3">Elevated roles require Superadmin access to assign.</p>
                   )}
+
+                  {/* ALSA position — only meaningful when alsa_committee is selected */}
+                  <div className="mb-4 pt-3 border-t border-line">
+                    <label className="block text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1.5">
+                      ALSA Position
+                      {!draftRoles.includes('alsa_committee') && (
+                        <span className="ml-1 text-[#e5e5e5]/30 normal-case font-normal">(requires ALSA Committee role)</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={draftAlsaPosition}
+                      onChange={e => setDraftAlsaPosition(e.target.value)}
+                      disabled={!draftRoles.includes('alsa_committee')}
+                      placeholder="e.g. President, Secretary, Treasurer"
+                      maxLength={80}
+                      className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    />
+                  </div>
+
                   <div className="flex gap-2">
                     <button onClick={() => saveRoles(selected.id)} disabled={savingRoles}
                       className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black text-xs font-bold px-4 py-2 rounded-lg transition-all">
                       {savingRoles ? 'Saving…' : 'Save Roles'}
                     </button>
-                    <button onClick={() => { setEditingRoles(false); setDraftRoles(selected._roles) }}
+                    <button onClick={() => { setEditingRoles(false); setDraftRoles(selected._roles); setDraftAlsaPosition(selected.alsa_position ?? '') }}
                       className="border border-line text-[#e5e5e5]/50 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
                       Cancel
                     </button>

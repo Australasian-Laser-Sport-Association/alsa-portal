@@ -51,6 +51,10 @@ export default async function handler(req, res) {
         }
       } else if (Array.isArray(body.roles)) {
         update = { roles: body.roles }
+        if (Object.prototype.hasOwnProperty.call(body, 'alsa_position')) {
+          const pos = typeof body.alsa_position === 'string' ? body.alsa_position.trim() : ''
+          update.alsa_position = pos || null
+        }
       } else if (typeof body.suspended === 'boolean') {
         update = { suspended: body.suspended }
       } else {
@@ -86,7 +90,7 @@ export default async function handler(req, res) {
     ] = await Promise.all([
       supabaseAdmin
         .from('profiles')
-        .select('id, first_name, last_name, alias, state, roles, suspended, created_at, home_arena')
+        .select('id, first_name, last_name, alias, state, roles, suspended, created_at, home_arena, alsa_position')
         .order('created_at', { ascending: false }),
       supabaseAdmin.from('zltac_registrations').select('user_id, year'),
       supabaseAdmin.from('teams').select('id, name, captain_id'),

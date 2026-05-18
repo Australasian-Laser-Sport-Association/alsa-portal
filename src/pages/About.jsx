@@ -1,14 +1,17 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Flag, TrendingUp, Trophy, Award, Network, Target, Users, Shield, ArrowRight } from 'lucide-react'
 import Footer from '../components/Footer'
 
-const COMMITTEE = [
-  { initials: 'PH', name: 'Paige Horrigan',   role: 'President',        alias: 'Shifter'   },
-  { initials: 'NR', name: 'Nick Risk',         role: 'Vice President',   alias: 'Wax'       },
-  { initials: 'CR', name: 'Claire Roe-Smith',  role: 'Secretary',        alias: 'Pendragon' },
-  { initials: 'AC', name: 'Adam Crouch',       role: 'Treasurer',        alias: 'Crouchy'   },
-  { initials: 'MH', name: 'Matthew Hogan',     role: 'Committee Member', alias: 'Taipan'    },
-]
+function memberInitials(p) {
+  const a = (p.first_name?.[0] ?? '').toUpperCase()
+  const b = (p.last_name?.[0] ?? '').toUpperCase()
+  return (a + b) || (p.alias?.[0]?.toUpperCase() ?? '?')
+}
+
+function memberFullName(p) {
+  return [p.first_name, p.last_name].filter(Boolean).join(' ') || p.alias || 'Committee Member'
+}
 
 const TIMELINE = [
   {
@@ -59,6 +62,17 @@ const PARTNERS = [
 ]
 
 export default function About() {
+  const [committee, setCommittee] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/committee')
+      .then(r => r.ok ? r.json() : { alsa: [] })
+      .then(data => { if (!cancelled) setCommittee(data.alsa ?? []) })
+      .catch(() => { if (!cancelled) setCommittee([]) })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <div className="bg-base text-white">
 
@@ -213,23 +227,32 @@ export default function About() {
           <p className="text-[#e5e5e5]/40 text-sm text-center mb-14 max-w-md mx-auto">
             ALSA is led by a volunteer committee of players and organisers committed to the growth of the sport.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {COMMITTEE.map(({ initials, name, role, alias }) => (
-              <div
-                key={name}
-                className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
-              >
-                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto">
-                  <span className="text-brand font-bold text-2xl">{initials}</span>
+          {committee.length === 0 ? (
+            <p className="text-center text-[#e5e5e5]/30 text-sm">Committee details will appear here soon.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {committee.map(p => (
+                <div
+                  key={p.id}
+                  className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
+                >
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto overflow-hidden">
+                    {p.avatar_url
+                      ? <img src={p.avatar_url} alt={memberFullName(p)} className="w-full h-full object-cover" />
+                      : <span className="text-brand font-bold text-2xl">{memberInitials(p)}</span>
+                    }
+                  </div>
+                  <p className="text-white font-bold text-lg mb-2">{memberFullName(p)}</p>
+                  <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{p.alsa_position || 'Committee Member'}</p>
+                  {p.alias && (
+                    <p className="text-white/80 text-base md:text-lg">
+                      <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{p.alias}</span>
+                    </p>
+                  )}
                 </div>
-                <p className="text-white font-bold text-lg mb-2">{name}</p>
-                <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{role}</p>
-                <p className="text-white/80 text-base md:text-lg">
-                  <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{alias}</span>
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

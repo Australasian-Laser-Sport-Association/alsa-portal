@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Footer from '../components/Footer'
 import StatsStrip from '../components/zltac/StatsStrip'
 import FormatEvolutionTimeline from '../components/zltac/FormatEvolutionTimeline'
@@ -7,17 +7,29 @@ import HostingGrid from '../components/zltac/HostingGrid'
 import LegendsAndDynasties from '../components/zltac/LegendsAndDynasties'
 import HallOfFame from '../components/zltac/HallOfFame'
 
-const ZLTAC_COMMITTEE = [
-  { initials: 'PH', name: 'Paige Horrigan',  role: 'Committee Member', alias: 'Shifter' },
-  { initials: 'AC', name: 'Adam Crouch',      role: 'Committee Member', alias: 'Crouchy' },
-  { initials: 'NR', name: 'Nick Risk',        role: 'Committee Member', alias: 'Wax'     },
-  { initials: 'MH', name: 'Matthew Hogan',    role: 'Committee Member', alias: 'Taipan'  },
-  { initials: 'MN', name: 'Max Newman',       role: 'Committee Member', alias: 'Rizzler' },
-]
+function memberInitials(p) {
+  const a = (p.first_name?.[0] ?? '').toUpperCase()
+  const b = (p.last_name?.[0] ?? '').toUpperCase()
+  return (a + b) || (p.alias?.[0]?.toUpperCase() ?? '?')
+}
+
+function memberFullName(p) {
+  return [p.first_name, p.last_name].filter(Boolean).join(' ') || p.alias || 'Committee Member'
+}
 
 export default function ZLTACLanding() {
   // State filter is lifted up so HostingGrid can drive YearExplorer.
   const [stateFilter, setStateFilter] = useState('all')
+  const [committee, setCommittee] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/committee')
+      .then(r => r.ok ? r.json() : { zltac: [] })
+      .then(data => { if (!cancelled) setCommittee(data.zltac ?? []) })
+      .catch(() => { if (!cancelled) setCommittee([]) })
+    return () => { cancelled = true }
+  }, [])
 
   function handleSelectRegion(region) {
     // Toggle off if already selected, otherwise apply the filter and scroll up.
@@ -76,23 +88,32 @@ export default function ZLTACLanding() {
           <p className="text-[#e5e5e5]/40 text-sm text-center mb-14 max-w-md mx-auto">
             The ZLTAC committee runs the championship year-round under the ALSA umbrella — formats, scheduling, host coordination, and the rules of play.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-            {ZLTAC_COMMITTEE.map(({ initials, name, role, alias }) => (
-              <div
-                key={name}
-                className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
-              >
-                <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto">
-                  <span className="text-brand font-bold text-2xl">{initials}</span>
+          {committee.length === 0 ? (
+            <p className="text-center text-[#e5e5e5]/30 text-sm">Committee details will appear here soon.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              {committee.map(p => (
+                <div
+                  key={p.id}
+                  className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
+                >
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto overflow-hidden">
+                    {p.avatar_url
+                      ? <img src={p.avatar_url} alt={memberFullName(p)} className="w-full h-full object-cover" />
+                      : <span className="text-brand font-bold text-2xl">{memberInitials(p)}</span>
+                    }
+                  </div>
+                  <p className="text-white font-bold text-lg mb-2">{memberFullName(p)}</p>
+                  <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">Committee Member</p>
+                  {p.alias && (
+                    <p className="text-white/80 text-base md:text-lg">
+                      <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{p.alias}</span>
+                    </p>
+                  )}
                 </div>
-                <p className="text-white font-bold text-lg mb-2">{name}</p>
-                <p className="text-brand text-sm font-semibold uppercase tracking-wide mb-2">{role}</p>
-                <p className="text-white/80 text-base md:text-lg">
-                  <span className="font-normal text-white/60">ALIAS</span> – <span className="font-bold">{alias}</span>
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

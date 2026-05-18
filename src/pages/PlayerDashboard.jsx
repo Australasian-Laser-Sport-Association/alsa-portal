@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { formatDate } from '../lib/dateFormat'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
+import CommitteeBadge from '../components/CommitteeBadge'
+
+const COMMITTEE_PILL_ROLES = new Set(['alsa_committee', 'zltac_committee'])
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -137,15 +140,19 @@ function ProfileCard({ profile, userId, userEmail, onUpdated }) {
             <p className="text-white font-bold text-lg">{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || '—'}</p>
             {profile?.alias && <p className="text-brand text-sm font-medium">{profile.alias}</p>}
             {(profile?.roles?.length > 0) && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {ROLE_ORDER.filter(r => (profile.roles ?? []).includes(r)).map(r => {
-                  const m = ROLE_PILL_META[r]
-                  return (
-                    <span key={r} className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${m.cls}`}>
-                      {m.label}
-                    </span>
-                  )
-                })}
+              <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                {ROLE_ORDER
+                  .filter(r => (profile.roles ?? []).includes(r))
+                  .filter(r => !COMMITTEE_PILL_ROLES.has(r))
+                  .map(r => {
+                    const m = ROLE_PILL_META[r]
+                    return (
+                      <span key={r} className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${m.cls}`}>
+                        {m.label}
+                      </span>
+                    )
+                  })}
+                <CommitteeBadge roles={profile.roles} />
               </div>
             )}
           </div>
@@ -341,11 +348,22 @@ export default function PlayerDashboard() {
 
         {/* Welcome header */}
         <div>
-          <h1 className="text-3xl font-black text-white">
-            Welcome Back, <span className="text-brand">{displayName}</span>
+          <h1 className="text-3xl font-black text-white flex flex-wrap items-center gap-3">
+            <span>Welcome Back, <span className="text-brand">{displayName}</span></span>
+            <CommitteeBadge roles={profile?.roles} size="md" />
           </h1>
           <p className="text-[#e5e5e5]/35 text-sm mt-1">{alsaId}</p>
         </div>
+
+        {/* Admin Hub — full-width, committee only */}
+        {showAdminHub && (
+          <Link
+            to="/admin"
+            className="block text-center bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold py-3 px-5 rounded-xl transition-colors"
+          >
+            Go to Admin Hub
+          </Link>
+        )}
 
         {/* Profile card */}
         <ProfileCard
@@ -379,15 +397,6 @@ export default function PlayerDashboard() {
                   description="Manage your team roster, view player completion status and team settings."
                   buttonLabel="Go to Team Hub"
                   to="/captain-hub"
-                />
-              )}
-              {showAdminHub && (
-                <HubCard
-                  color="#7C3AED"
-                  title="Admin Hub"
-                  description="Full ALSA and ZLTAC management including current event, registrations, users and settings."
-                  buttonLabel="Go to Admin Hub"
-                  to="/admin"
                 />
               )}
             </div>

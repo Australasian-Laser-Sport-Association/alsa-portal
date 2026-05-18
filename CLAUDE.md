@@ -32,6 +32,11 @@ for the committee.
   admin/committee roles are: `superadmin`, `alsa_committee`, `zltac_committee`,
   `advisor`. Regular users have `['player']`; captains additionally have
   `'captain'`.
+- Committee membership is driven *entirely* off `profiles.roles`. Do not add
+  parallel boolean columns (e.g. `is_alsa_committee`, `is_zltac_committee`) —
+  they would duplicate the roles array and create drift risk. The badge UI,
+  RLS helpers (`is_committee()`), AdminUsers role editor, and the public
+  `/api/committee` endpoint all read from this one source.
 - RLS policies use the `public.is_committee()` helper function to check
   admin access. Do not duplicate the role list in ad-hoc policies — if the
   set of admin roles ever changes, it changes in one place.

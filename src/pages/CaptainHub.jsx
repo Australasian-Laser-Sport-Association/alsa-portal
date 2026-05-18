@@ -4,6 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import Footer from '../components/Footer'
+import CommitteeBadge from '../components/CommitteeBadge'
 import { TeamShieldIcon } from '../components/icons.jsx'
 
 function isUnder18(dob, eventYear) {
@@ -516,10 +517,11 @@ export default function CaptainHub() {
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>
                         {initials(name)}
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                         <span className="text-white text-sm font-semibold">{name}</span>
-                        {p.alias && <span className="text-brand text-xs ml-2">"{p.alias}"</span>}
-                        {p.state && <span className="ml-2 text-[10px] bg-line text-[#e5e5e5]/50 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
+                        {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
+                        <CommitteeBadge roles={p.roles} size="xs" />
+                        {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/50 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
                       </div>
                       <button
                         onClick={() => addPlayer(p)}
@@ -608,6 +610,7 @@ export default function CaptainHub() {
                           <div className="flex items-center gap-2 flex-wrap mb-2">
                             <span className="text-white font-semibold text-sm">{name}</span>
                             {alias && <span className="text-brand text-xs">"{alias}"</span>}
+                            <CommitteeBadge roles={r.profiles?.roles} size="xs" />
                             {pState && <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">{pState}</span>}
                             {u18 && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full font-bold">U18</span>}
                             {isMe && <span className="text-[10px] text-[#e5e5e5]/30 font-semibold">(You)</span>}

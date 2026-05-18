@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
     const { data: profs, error: profsErr } = await supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, state')
+      .select('id, first_name, last_name, alias, state, roles')
       .in('id', availableIds)
       .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
 
