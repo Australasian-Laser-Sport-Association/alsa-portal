@@ -1,16 +1,17 @@
 import supabaseAdmin from './_lib/supabase.js'
-import { verifyUser } from './_lib/auth.js'
+import { verifyUser, getTeammateIds } from './_lib/auth.js'
+import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { ids, teamId, eventYear } = req.body ?? {}
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(401).json({ error: authErr })
 
-  // Team roster mode — auth required
+  const { ids, teamId, eventYear, year } = req.body ?? {}
+
+  // Team roster mode
   if (teamId || eventYear) {
-    const { error } = await verifyUser(req)
-    if (error) return res.status(401).json({ error })
-
     if (!teamId || !eventYear) return res.status(400).json({ error: 'teamId and eventYear are required' })
 
     const { data: regs, error: regsErr } = await supabaseAdmin
@@ -33,8 +34,18 @@ export default async function handler(req, res) {
     return res.json({ profiles: profiles ?? [] })
   }
 
-  // ID lookup mode — no auth required
+  // ID lookup mode
   if (!Array.isArray(ids) || ids.length === 0) return res.json({ profiles: [] })
+
+  const { data: callerProfile } = await supabaseAdmin
+    .from('profiles').select('roles').eq('id', user.id).maybeSingle()
+  const isCommittee = (callerProfile?.roles ?? []).some(r => COMMITTEE_ROLES.includes(r))
+
+  const dobAllowed = isCommittee
+    ? new Set(ids)
+    : await getTeammateIds(user.id, ids, year)
+  // Caller can always see their own dob
+  dobAllowed.add(user.id)
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
@@ -42,5 +53,10 @@ export default async function handler(req, res) {
     .in('id', ids)
 
   if (error) return res.status(500).json({ error: error.message })
-  return res.json({ profiles: data ?? [] })
+
+  const filtered = (data ?? []).map(row =>
+    dobAllowed.has(row.id) ? row : { ...row, dob: null }
+  )
+
+  return res.json({ profiles: filtered })
 }

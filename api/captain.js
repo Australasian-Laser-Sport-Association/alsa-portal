@@ -1,5 +1,5 @@
 import supabaseAdmin from './_lib/supabase.js'
-import { verifyUser } from './_lib/auth.js'
+import { verifyUser, getActiveEventYear } from './_lib/auth.js'
 import { computeAndWriteAmountOwing, computeAndWriteAmountOwingMany } from './_lib/computeAmountOwing.js'
 
 export default async function handler(req, res) {
@@ -85,9 +85,45 @@ export default async function handler(req, res) {
   }
 
   if (action === 'team-completions') {
-    const { playerIds, eventYear } = body
-    if (!Array.isArray(playerIds) || playerIds.length === 0 || !eventYear) {
+    const { playerIds, eventYear: bodyEventYear } = body
+    if (!Array.isArray(playerIds) || playerIds.length === 0) {
       return res.json({ coc_sigs: [], payments: [], ref_results: [], u18_subs: [], media_subs: [] })
+    }
+
+    const eventYear = bodyEventYear ?? await getActiveEventYear()
+    if (!eventYear) return res.status(400).json({ error: 'eventYear is required (no active event)' })
+
+    // Caller must captain a team. Get all teams they captain.
+    const { data: captainedTeams, error: ctErr } = await supabaseAdmin
+      .from('teams')
+      .select('id')
+      .eq('captain_id', user.id)
+    if (ctErr) return res.status(500).json({ error: ctErr.message })
+
+    const captainedTeamIds = (captainedTeams ?? []).map(t => t.id)
+    if (captainedTeamIds.length === 0) {
+      return res.status(403).json({ error: 'You do not captain any team' })
+    }
+
+    // Roster of those teams in the target event year.
+    const { data: rosters, error: rosterErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('user_id')
+      .eq('year', eventYear)
+      .in('team_id', captainedTeamIds)
+    if (rosterErr) return res.status(500).json({ error: rosterErr.message })
+
+    const allowedPlayerIds = new Set((rosters ?? []).map(r => r.user_id))
+    if (allowedPlayerIds.size === 0) {
+      return res.status(403).json({ error: 'You do not captain a team in this event year' })
+    }
+
+    const outsideIds = playerIds.filter(id => !allowedPlayerIds.has(id))
+    if (outsideIds.length > 0) {
+      return res.status(403).json({
+        error: 'One or more playerIds are not on your team',
+        outsideIds,
+      })
     }
 
     const [

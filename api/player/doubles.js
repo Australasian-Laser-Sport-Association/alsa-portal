@@ -14,7 +14,11 @@ export default async function handler(req, res) {
   // ── Search available doubles partners ──────────────────────────────────────
   if (action === 'search') {
     const { eventYear, term } = body
-    if (!eventYear || !term) return res.status(400).json({ error: 'eventYear and term are required' })
+    const safeTerm = typeof term === 'string' ? term.trim() : ''
+    if (!eventYear || !safeTerm) return res.status(400).json({ error: 'eventYear and term are required' })
+    if (safeTerm.length > 100) return res.status(400).json({ error: 'Search term too long' })
+    // Reject PostgREST filter metacharacters to prevent .or() string injection.
+    if (/[,()*.:\\]/.test(safeTerm)) return res.status(400).json({ error: 'Search term contains invalid characters' })
 
     const { data: eligible, error: eligErr } = await supabaseAdmin
       .from('zltac_registrations')
@@ -47,7 +51,7 @@ export default async function handler(req, res) {
       .from('profiles')
       .select('id, first_name, last_name, alias, state')
       .in('id', availableIds)
-      .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,alias.ilike.%${term}%`)
+      .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
 
     if (profsErr) return res.status(500).json({ error: profsErr.message })
     if (!profs?.length) return res.json({ results: [] })
