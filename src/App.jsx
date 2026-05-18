@@ -6,6 +6,7 @@ import ActiveEventBanner from './components/ActiveEventBanner'
 // Public pages
 import Home from './pages/Home'
 import About from './pages/About'
+import MemberRegister from './pages/MemberRegister'
 import Contact from './pages/Contact'
 import ZLTACLanding from './pages/ZLTACLanding'
 import EventPage from './pages/EventPage'
@@ -35,6 +36,7 @@ import AdminRegistrations from './pages/admin/AdminRegistrations'
 import AdminCoC from './pages/admin/AdminCoC'
 import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
+import AdminMembers from './pages/admin/AdminMembers'
 import AdminUnder18Form from './pages/admin/AdminUnder18Form'
 import AdminMediaRelease from './pages/admin/AdminMediaRelease'
 // ZLTAC history
@@ -64,6 +66,7 @@ function App() {
           {/* Public */}
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
+          <Route path="/members" element={<MemberRegister />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/zltac" element={<ZLTACLanding />} />
 
@@ -100,6 +103,7 @@ function App() {
             <Route path="coc" element={<AdminCoC />} />
             <Route path="referee-test" element={<AdminRefereeTest />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="members" element={<AdminMembers />} />
             <Route path="under18-form" element={<AdminUnder18Form />} />
             <Route path="media-release" element={<AdminMediaRelease />} />
           </Route>

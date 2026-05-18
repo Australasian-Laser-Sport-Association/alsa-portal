@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { formatDate } from '../lib/dateFormat'
+import { apiFetch } from '../lib/apiFetch.js'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
 import CommitteeBadge from '../components/CommitteeBadge'
+import MemberBadge from '../components/MemberBadge'
 
 const COMMITTEE_PILL_ROLES = new Set(['alsa_committee', 'zltac_committee'])
 
@@ -41,8 +43,19 @@ function Input({ label, type = 'text', value, onChange, placeholder }) {
   )
 }
 
+function membershipStatusText(membership) {
+  if (!membership) return null
+  if (membership.current) {
+    return `ALSA Member ${membership.current.period.label} — expires ${formatDate(membership.current.period.ends_at, 'short')}`
+  }
+  if (membership.most_recent) {
+    return `ALSA Member — expired ${formatDate(membership.most_recent.period.ends_at, 'short')}`
+  }
+  return 'Not currently an ALSA member'
+}
+
 // ── Profile Card ─────────────────────────────────────────────────────────────
-function ProfileCard({ profile, userId, userEmail, onUpdated }) {
+function ProfileCard({ profile, userId, userEmail, membership, onUpdated }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -139,10 +152,10 @@ function ProfileCard({ profile, userId, userEmail, onUpdated }) {
           <div>
             <p className="text-white font-bold text-lg">{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || '—'}</p>
             {profile?.alias && <p className="text-brand text-sm font-medium">{profile.alias}</p>}
-            {(profile?.roles?.length > 0) && (
+            {(profile?.roles?.length > 0 || membership?.current) && (
               <div className="flex flex-wrap gap-1 mt-1.5 items-center">
                 {ROLE_ORDER
-                  .filter(r => (profile.roles ?? []).includes(r))
+                  .filter(r => (profile?.roles ?? []).includes(r))
                   .filter(r => !COMMITTEE_PILL_ROLES.has(r))
                   .map(r => {
                     const m = ROLE_PILL_META[r]
@@ -152,8 +165,14 @@ function ProfileCard({ profile, userId, userEmail, onUpdated }) {
                       </span>
                     )
                   })}
-                <CommitteeBadge roles={profile.roles} />
+                <CommitteeBadge roles={profile?.roles} />
+                <MemberBadge isMember={!!membership?.current} />
               </div>
+            )}
+            {membership !== undefined && (
+              <p className="text-[#e5e5e5]/40 text-xs mt-1.5">
+                {membershipStatusText(membership)}
+              </p>
             )}
           </div>
         </div>
@@ -300,6 +319,7 @@ export default function PlayerDashboard() {
   const [profile, setProfile] = useState(null)
   const [openEvent, setOpenEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
+  const [membership, setMembership] = useState(undefined)
 
   useEffect(() => {
     if (!user) return
@@ -323,6 +343,11 @@ export default function PlayerDashboard() {
         .maybeSingle()
       setRegistration(reg)
     }
+
+    apiFetch('/api/me/membership')
+      .then(m => setMembership(m))
+      .catch(() => setMembership({ current: null, most_recent: null }))
+
     setLoading(false)
   }
 
@@ -351,6 +376,7 @@ export default function PlayerDashboard() {
           <h1 className="text-3xl font-black text-white flex flex-wrap items-center gap-3">
             <span>Welcome Back, <span className="text-brand">{displayName}</span></span>
             <CommitteeBadge roles={profile?.roles} size="md" />
+            <MemberBadge isMember={!!membership?.current} size="md" />
           </h1>
           <p className="text-[#e5e5e5]/35 text-sm mt-1">{alsaId}</p>
         </div>
@@ -370,6 +396,7 @@ export default function PlayerDashboard() {
           profile={profile}
           userId={user.id}
           userEmail={user.email}
+          membership={membership}
           onUpdated={load}
         />
 

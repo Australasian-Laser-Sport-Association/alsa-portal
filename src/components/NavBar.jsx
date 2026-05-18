@@ -7,7 +7,15 @@ import { useCurrentEvent } from '../hooks/useCurrentEvent'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
-  { label: 'About', href: '/about', visible: true },
+  {
+    label: 'ALSA',
+    href: '/about',
+    visible: true,
+    children: [
+      { label: 'About', href: '/about' },
+      { label: 'Member Register', href: '/members' },
+    ],
+  },
   { label: 'ZLTAC', href: '/zltac', visible: true },
   { label: 'Contact', href: '/contact', visible: true },
 ]
@@ -16,6 +24,69 @@ const PILL_STATUS_LABEL = { open: 'EVENT OPEN' }
 
 function navLinkClass({ isActive }) {
   return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'text-brand' : 'text-[#e5e5e5]/70 hover:text-white'}`
+}
+
+function DesktopDropdown({ link, currentPath }) {
+  const parentActive = link.children.some(c => c.href === currentPath)
+  return (
+    <div className="relative group">
+      <Link
+        to={link.href}
+        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+          parentActive ? 'text-brand' : 'text-[#e5e5e5]/70 hover:text-white'
+        }`}
+      >
+        {link.label}
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </Link>
+      <div className="absolute top-full left-0 pt-1 min-w-[200px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+        <div className="bg-surface border border-line rounded-lg shadow-lg py-1 overflow-hidden">
+          {link.children.map(c => (
+            <NavLink
+              key={c.href}
+              to={c.href}
+              className={({ isActive }) =>
+                `block px-4 py-2 text-sm transition-colors ${
+                  isActive ? 'text-brand bg-line/30' : 'text-[#e5e5e5]/70 hover:text-white hover:bg-line/40'
+                }`
+              }
+            >
+              {c.label}
+            </NavLink>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MobileDropdown({ link, onNavigate }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="py-2.5 px-3 text-sm text-[#e5e5e5]/70 hover:text-brand rounded-lg hover:bg-line transition-colors flex items-center justify-between w-full text-left"
+      >
+        <span>{link.label}</span>
+        <svg className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && link.children.map(c => (
+        <Link
+          key={c.href}
+          to={c.href}
+          onClick={onNavigate}
+          className="py-2 pl-7 pr-3 text-sm text-[#e5e5e5]/60 hover:text-brand rounded-lg hover:bg-line transition-colors"
+        >
+          {c.label}
+        </Link>
+      ))}
+    </>
+  )
 }
 
 const HUB_PILLS = [
@@ -108,11 +179,15 @@ export default function NavBar() {
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-0.5 flex-1">
-          {navLinks.map(link => (
-            <NavLink key={link.href} to={link.href} end={link.href === '/'} className={navLinkClass}>
-              {link.label}
-            </NavLink>
-          ))}
+          {navLinks.map(link =>
+            link.children
+              ? <DesktopDropdown key={link.label} link={link} currentPath={location.pathname} />
+              : (
+                <NavLink key={link.href} to={link.href} end={link.href === '/'} className={navLinkClass}>
+                  {link.label}
+                </NavLink>
+              )
+          )}
           {event && pillStatusLabel && (
             <Link
               to={`/events/${event.year}`}
@@ -201,16 +276,20 @@ export default function NavBar() {
             </Link>
           ))}
 
-          {navLinks.map(({ label, href }) => (
-            <Link
-              key={href}
-              to={href}
-              onClick={() => setMobileOpen(false)}
-              className="py-2.5 px-3 text-sm text-[#e5e5e5]/70 hover:text-brand rounded-lg hover:bg-line transition-colors"
-            >
-              {label}
-            </Link>
-          ))}
+          {navLinks.map(link =>
+            link.children
+              ? <MobileDropdown key={link.label} link={link} onNavigate={() => setMobileOpen(false)} />
+              : (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="py-2.5 px-3 text-sm text-[#e5e5e5]/70 hover:text-brand rounded-lg hover:bg-line transition-colors"
+                >
+                  {link.label}
+                </Link>
+              )
+          )}
 
           {/* Current-event pill — sits in the link list, below Contact */}
           {event && pillStatusLabel && (
