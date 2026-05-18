@@ -18,11 +18,11 @@ export default function MemberRegister() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/members')
+    fetch('/api/public?resource=members')
       .then(async r => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}))
-          console.error('[MemberRegister] /api/members failed:', r.status, body)
+          console.error('[MemberRegister] /api/public?resource=members failed:', r.status, body)
           if (!cancelled) { setError(true); setLoading(false) }
           return
         }
@@ -30,7 +30,7 @@ export default function MemberRegister() {
         if (!cancelled) { setData(d); setLoading(false) }
       })
       .catch(err => {
-        console.error('[MemberRegister] /api/members threw:', err)
+        console.error('[MemberRegister] /api/public?resource=members threw:', err)
         if (!cancelled) { setError(true); setLoading(false) }
       })
     return () => { cancelled = true }

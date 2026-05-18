@@ -316,7 +316,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     if (q.trim().length < 2) { setResults([]); return }
     setSearching(true)
     try {
-      const { results: res } = await apiFetch('/api/player/doubles', {
+      const { results: res } = await apiFetch('/api/player?resource=doubles', {
         method: 'POST',
         body: JSON.stringify({ action: 'search', eventYear, term: q.trim() }),
       })
@@ -327,7 +327,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   async function invite(pid) {
     setSaving(true); setError('')
     try {
-      const { record: rec } = await apiFetch('/api/player/doubles', {
+      const { record: rec } = await apiFetch('/api/player?resource=doubles', {
         method: 'POST',
         body: JSON.stringify({ action: 'create', eventYear, partnerId: pid }),
       })
@@ -342,7 +342,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 
   async function changePartner() {
     setSaving(true)
-    await apiFetch('/api/player/doubles', {
+    await apiFetch('/api/player?resource=doubles', {
       method: 'POST',
       body: JSON.stringify({ action: 'delete', id: record.id }),
     })
@@ -443,7 +443,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     if (q.trim().length < 2) { setResults([]); return }
     setSearching(true)
     try {
-      const { results: res } = await apiFetch('/api/player/triples', {
+      const { results: res } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
         body: JSON.stringify({
           action: 'search',
@@ -461,7 +461,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     setSaving(true); setError('')
     const partnerProfile = results.find(r => r.id === pid)
     try {
-      const { record: rec } = await apiFetch('/api/player/triples', {
+      const { record: rec } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
         body: JSON.stringify(
           record
@@ -481,7 +481,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   async function clearSlot(slot) {
     setSaving(true)
     try {
-      const { record: rec } = await apiFetch('/api/player/triples', {
+      const { record: rec } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
         body: JSON.stringify({ action: 'clear-slot', id: record.id, slot }),
       })
@@ -495,7 +495,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 
   async function disbandTeam() {
     setSaving(true)
-    await apiFetch('/api/player/triples', {
+    await apiFetch('/api/player?resource=triples', {
       method: 'POST',
       body: JSON.stringify({ action: 'disband', id: record.id }),
     })
@@ -810,13 +810,13 @@ export default function PlayerHub() {
     setSelectedSlugs(newSlugs)
     if (removing) {
       if (slug === 'doubles' && doublesRecord) {
-        apiFetch('/api/player/doubles', {
+        apiFetch('/api/player?resource=doubles', {
           method: 'POST',
           body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
         }).then(() => setDoublesRecord(null))
       }
       if (slug === 'triples' && triplesRecord) {
-        apiFetch('/api/player/triples', {
+        apiFetch('/api/player?resource=triples', {
           method: 'POST',
           body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
         }).then(() => setTriplesRecord(null))
@@ -864,7 +864,7 @@ export default function PlayerHub() {
     setCancelError(null)
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/api/player/registration', {
+      const res = await fetch('/api/player?resource=registration', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1094,7 +1094,7 @@ export default function PlayerHub() {
               <div className="flex gap-3">
                 <button
                   onClick={async () => {
-                    const { record } = await apiFetch('/api/player/doubles', {
+                    const { record } = await apiFetch('/api/player?resource=doubles', {
                       method: 'POST',
                       body: JSON.stringify({ action: 'confirm', id: doublesRecord.id }),
                     })
@@ -1105,7 +1105,7 @@ export default function PlayerHub() {
                 </button>
                 <button
                   onClick={async () => {
-                    await apiFetch('/api/player/doubles', {
+                    await apiFetch('/api/player?resource=doubles', {
                       method: 'POST',
                       body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
                     })
@@ -1139,7 +1139,7 @@ export default function PlayerHub() {
               <div className="flex gap-3">
                 <button
                   onClick={async () => {
-                    const { record } = await apiFetch('/api/player/triples', {
+                    const { record } = await apiFetch('/api/player?resource=triples', {
                       method: 'POST',
                       body: JSON.stringify({ action: 'confirm', id: triplesRecord.id, mySlot }),
                     })
@@ -1150,7 +1150,7 @@ export default function PlayerHub() {
                 </button>
                 <button
                   onClick={async () => {
-                    await apiFetch('/api/player/triples', {
+                    await apiFetch('/api/player?resource=triples', {
                       method: 'POST',
                       body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
                     })

@@ -66,7 +66,7 @@ export default function About() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/committee')
+    fetch('/api/public?resource=committee')
       .then(r => r.ok ? r.json() : { alsa: [] })
       .then(data => { if (!cancelled) setCommittee(data.alsa ?? []) })
       .catch(() => { if (!cancelled) setCommittee([]) })

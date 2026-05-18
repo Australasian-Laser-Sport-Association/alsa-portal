@@ -5,8 +5,8 @@ const SIZE_CLS = {
 }
 
 // Render a small emerald pill when the user is a current ALSA member.
-// Pass isMember (boolean) — typically derived from /api/me/membership's
-// `current` field or another current-period check.
+// Pass isMember (boolean) — typically derived from the alsa_membership.current
+// field returned by /api/profiles when the caller asks for their own row.
 export default function MemberBadge({ isMember, size = 'sm', className = '' }) {
   if (!isMember) return null
   const sizeCls = SIZE_CLS[size] ?? SIZE_CLS.sm

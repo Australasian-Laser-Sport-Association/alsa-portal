@@ -1,15 +1,14 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
 
-// Committee-gated CRUD for alsa_membership_periods.
-//   GET                 → list all periods, newest first
-//   POST                → create { label, starts_at, ends_at }
-//   PATCH ?id=<id>      → update { label?, starts_at?, ends_at? }
-//   DELETE ?id=<id>     → delete (FK ON DELETE RESTRICT prevents removing
-//                         periods with memberships attached)
+// Committee-gated CRUD for ALSA membership data. Dispatches by ?resource=:
+//   ?resource=members  → memberships    (GET grouped / POST grant / DELETE by id)
+//   ?resource=periods  → period windows (GET list / POST create / PATCH update / DELETE by id)
 //
-// Overlap rule: on POST/PATCH, reject if the new [starts_at, ends_at) range
-// overlaps any *other* period. This keeps "current period" unambiguous.
+// Consolidated from api/admin/members.js + api/admin/membership-periods.js
+// to stay under the Vercel Hobby function cap.
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function findOverlap(starts_at, ends_at, excludeId = null) {
   let q = supabaseAdmin
@@ -27,10 +26,92 @@ function validDate(s) {
   return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))
 }
 
-export default async function handler(req, res) {
-  const { error: authErr } = await verifyCommittee(req)
-  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+// ── Members handler ─────────────────────────────────────────────────────────
 
+async function handleMembers(req, res, user) {
+  if (req.method === 'GET') {
+    const { data, error } = await supabaseAdmin
+      .from('alsa_memberships')
+      .select(`
+        id, profile_id, period_id, payment_reference, notes, created_at, created_by,
+        profiles:profile_id (id, first_name, last_name, alias, avatar_url),
+        period:alsa_membership_periods!inner (id, label, starts_at, ends_at)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    const today = new Date().toISOString().slice(0, 10)
+    const threeMoAgo = new Date()
+    threeMoAgo.setMonth(threeMoAgo.getMonth() - 3)
+    const cutoff = threeMoAgo.toISOString().slice(0, 10)
+
+    const active = []
+    const recently_expired = []
+    const long_expired = []
+
+    for (const row of (data ?? [])) {
+      const startsAt = row.period?.starts_at
+      const endsAt = row.period?.ends_at
+      if (!startsAt || !endsAt) continue
+      if (startsAt <= today && endsAt > today) active.push(row)
+      else if (endsAt <= today && endsAt > cutoff) recently_expired.push(row)
+      else if (endsAt <= cutoff) long_expired.push(row)
+      // Periods starting in the future (startsAt > today) fall through —
+      // they're not yet active, not expired. Not currently surfaced in any bucket.
+    }
+
+    return res.json({ active, recently_expired, long_expired })
+  }
+
+  if (req.method === 'POST') {
+    const { profile_id, period_id, payment_reference, notes } = req.body ?? {}
+    if (!profile_id || !period_id) {
+      return res.status(400).json({ error: 'profile_id and period_id are required' })
+    }
+
+    const insertRow = {
+      profile_id,
+      period_id,
+      payment_reference: typeof payment_reference === 'string' && payment_reference.trim() ? payment_reference.trim() : null,
+      notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+      created_by: user.id,
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('alsa_memberships')
+      .insert(insertRow)
+      .select(`
+        id, profile_id, period_id, payment_reference, notes, created_at, created_by,
+        profiles:profile_id (id, first_name, last_name, alias, avatar_url),
+        period:alsa_membership_periods!inner (id, label, starts_at, ends_at)
+      `)
+      .single()
+
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ error: 'This member already has a membership for that period.' })
+      }
+      return res.status(500).json({ error: error.message })
+    }
+    return res.json({ membership: data })
+  }
+
+  if (req.method === 'DELETE') {
+    const id = req.query.id
+    if (!id) return res.status(400).json({ error: 'id is required' })
+
+    const { error } = await supabaseAdmin.from('alsa_memberships').delete().eq('id', id)
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ ok: true })
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+// ── Periods handler ─────────────────────────────────────────────────────────
+
+async function handlePeriods(req, res, _user) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('alsa_membership_periods')
@@ -98,7 +179,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'no fields to update' })
     }
 
-    // If dates are changing, resolve effective range and check overlap.
     if (update.starts_at !== undefined || update.ends_at !== undefined) {
       const { data: existing, error: exErr } = await supabaseAdmin
         .from('alsa_membership_periods')
@@ -153,4 +233,16 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' })
+}
+
+// ── Dispatch ────────────────────────────────────────────────────────────────
+
+export default async function handler(req, res) {
+  const { user, error: authErr } = await verifyCommittee(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  const resource = req.query.resource
+  if (resource === 'members') return handleMembers(req, res, user)
+  if (resource === 'periods') return handlePeriods(req, res, user)
+  return res.status(400).json({ error: 'resource query param must be "members" or "periods"' })
 }

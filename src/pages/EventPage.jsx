@@ -446,16 +446,16 @@ export default function EventPage() {
           setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
           setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
 
-          // /api/event (confirmed doubles/triples) is non-critical for page render —
+          // /api/public?resource=event (confirmed doubles/triples) is non-critical for page render —
           // if it 500s, fall back to empty arrays so the rest of the page still renders.
           let doublesData = []
           let triplesData = []
           try {
-            const result = await apiFetch(`/api/event?year=${parseInt(year)}`)
+            const result = await apiFetch(`/api/public?resource=event&year=${parseInt(year)}`)
             doublesData = result.doubles ?? []
             triplesData = result.triples ?? []
           } catch (err) {
-            console.error('EventPage: /api/event failed, falling back to empty doubles/triples:', err)
+            console.error('EventPage: /api/public?resource=event failed, falling back to empty doubles/triples:', err)
           }
           setDoublesPairs(doublesData)
           setTriplesTeams(triplesData)

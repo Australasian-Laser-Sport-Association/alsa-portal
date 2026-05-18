@@ -24,7 +24,7 @@ export default function ZLTACLanding() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/committee')
+    fetch('/api/public?resource=committee')
       .then(r => r.ok ? r.json() : { zltac: [] })
       .then(data => { if (!cancelled) setCommittee(data.zltac ?? []) })
       .catch(() => { if (!cancelled) setCommittee([]) })

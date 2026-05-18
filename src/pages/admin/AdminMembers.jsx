@@ -41,13 +41,13 @@ function PeriodModal({ open, period, onClose, onSaved }) {
     try {
       const body = { label: label.trim(), starts_at: startsAt, ends_at: endsAt }
       if (editing) {
-        const { period: updated } = await apiFetch(`/api/admin/membership-periods?id=${period.id}`, {
+        const { period: updated } = await apiFetch(`/api/admin/alsa?resource=periods&id=${period.id}`, {
           method: 'PATCH',
           body: JSON.stringify(body),
         })
         onSaved(updated)
       } else {
-        const { period: created } = await apiFetch('/api/admin/membership-periods', {
+        const { period: created } = await apiFetch('/api/admin/alsa?resource=periods', {
           method: 'POST',
           body: JSON.stringify(body),
         })
@@ -135,7 +135,7 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
     setSaving(true)
     setError(null)
     try {
-      const { membership } = await apiFetch('/api/admin/members', {
+      const { membership } = await apiFetch('/api/admin/alsa?resource=members', {
         method: 'POST',
         body: JSON.stringify({
           profile_id: profile.id,
@@ -292,8 +292,8 @@ export default function AdminMembers() {
     setError(null)
     try {
       const [{ periods: ps }, mems, { profiles }] = await Promise.all([
-        apiFetch('/api/admin/membership-periods'),
-        apiFetch('/api/admin/members'),
+        apiFetch('/api/admin/alsa?resource=periods'),
+        apiFetch('/api/admin/alsa?resource=members'),
         apiFetch('/api/admin/users'),
       ])
       setPeriods(ps ?? [])
@@ -333,7 +333,7 @@ export default function AdminMembers() {
 
   async function removeMembership(row) {
     try {
-      await apiFetch(`/api/admin/members?id=${row.id}`, { method: 'DELETE' })
+      await apiFetch(`/api/admin/alsa?resource=members&id=${row.id}`, { method: 'DELETE' })
       setRemoveConfirm(null)
       await loadAll()
     } catch (e) {
@@ -344,7 +344,7 @@ export default function AdminMembers() {
   async function deletePeriod(p) {
     if (!confirm(`Delete period "${p.label}"? This is blocked if any memberships still reference it.`)) return
     try {
-      await apiFetch(`/api/admin/membership-periods?id=${p.id}`, { method: 'DELETE' })
+      await apiFetch(`/api/admin/alsa?resource=periods&id=${p.id}`, { method: 'DELETE' })
       await loadAll()
     } catch (e) {
       setError(e.message)

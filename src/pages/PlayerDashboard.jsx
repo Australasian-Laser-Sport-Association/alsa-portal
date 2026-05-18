@@ -344,8 +344,14 @@ export default function PlayerDashboard() {
       setRegistration(reg)
     }
 
-    apiFetch('/api/me/membership')
-      .then(m => setMembership(m))
+    apiFetch('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ ids: [user.id] }),
+    })
+      .then(res => {
+        const myRow = (res.profiles ?? []).find(p => p.id === user.id)
+        setMembership(myRow?.alsa_membership ?? { current: null, most_recent: null })
+      })
       .catch(() => setMembership({ current: null, most_recent: null }))
 
     setLoading(false)

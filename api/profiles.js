@@ -2,6 +2,28 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getTeammateIds } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 
+// Fetch ALSA membership status for one profile. Returns
+// { current, most_recent } in the same shape the dashboard previously
+// got from the now-removed /api/me/membership endpoint.
+async function fetchAlsaMembership(profileId) {
+  const today = new Date().toISOString().slice(0, 10)
+
+  const { data, error } = await supabaseAdmin
+    .from('alsa_memberships')
+    .select('id, period:alsa_membership_periods!inner(id, label, starts_at, ends_at)')
+    .eq('profile_id', profileId)
+
+  if (error) return { current: null, most_recent: null }
+
+  const rows = (data ?? []).map(m => ({ membership_id: m.id, period: m.period }))
+  const current = rows.find(r => r.period.starts_at <= today && r.period.ends_at > today) ?? null
+  const expired = rows.filter(r => r.period.ends_at <= today)
+  expired.sort((a, b) => b.period.ends_at.localeCompare(a.period.ends_at))
+  const most_recent = expired[0] ?? null
+
+  return { current, most_recent }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -54,9 +76,16 @@ export default async function handler(req, res) {
 
   if (error) return res.status(500).json({ error: error.message })
 
-  const filtered = (data ?? []).map(row =>
-    dobAllowed.has(row.id) ? row : { ...row, dob: null }
-  )
+  // Attach alsa_membership only to the caller's own row, if present.
+  const selfRequested = ids.includes(user.id)
+  const alsa_membership = selfRequested ? await fetchAlsaMembership(user.id) : null
+
+  const filtered = (data ?? []).map(row => {
+    const base = dobAllowed.has(row.id) ? row : { ...row, dob: null }
+    return row.id === user.id && alsa_membership
+      ? { ...base, alsa_membership }
+      : base
+  })
 
   return res.json({ profiles: filtered })
 }
