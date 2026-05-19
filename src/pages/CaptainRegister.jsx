@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import Footer from '../components/Footer'
 
@@ -69,6 +70,24 @@ export default function CaptainRegister() {
 
     setSaving(true)
     setError('')
+
+    // Server-side cap checks before any inserts. max_teams gates the team
+    // creation; max_players gates the captain's own registration upsert.
+    // Both are no-ops when the corresponding column is null.
+    try {
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'precheck-create-team', year: parseInt(year) }),
+      })
+      await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'precheck-register', year: parseInt(year) }),
+      })
+    } catch (err) {
+      setSaving(false)
+      setError(err?.message || 'Could not start team registration. Please try again.')
+      return
+    }
 
     let logo_url = null
     if (logoFile) {

@@ -113,7 +113,7 @@ export default function AdminEvent() {
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
   const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
-  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false })
+  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false })
 
   // Logo
   const [logoFile, setLogoFile] = useState(null)
@@ -178,6 +178,7 @@ export default function AdminEvent() {
     setSettings({
       reg_open_date: ev.reg_open_date ? ev.reg_open_date.slice(0, 16) : '',
       reg_close_date: ev.reg_close_date ? ev.reg_close_date.slice(0, 16) : '',
+      event_starts_at: ev.event_starts_at ? ev.event_starts_at.slice(0, 16) : '',
       max_teams: ev.max_teams ?? '',
       max_players: ev.max_players ?? '',
       max_players_per_team: ev.max_players_per_team ?? '',
@@ -278,6 +279,7 @@ export default function AdminEvent() {
       })),
       reg_open_date: settings.reg_open_date || null,
       reg_close_date: settings.reg_close_date || null,
+      event_starts_at: settings.event_starts_at || null,
       max_teams: settings.max_teams ? parseInt(settings.max_teams) : null,
       max_players: settings.max_players ? parseInt(settings.max_players) : null,
       max_players_per_team: settings.max_players_per_team ? parseInt(settings.max_players_per_team) : null,
@@ -802,27 +804,37 @@ export default function AdminEvent() {
       {/* ── TAB 3: Registration Settings ─────────────────────────────────── */}
       {activeTab === 3 && (
         <div className="space-y-5 max-w-xl">
-          <div className="grid grid-cols-2 gap-3">
-            {[{ label: 'Registration Opens', key: 'reg_open_date' }, { label: 'Registration Closes', key: 'reg_close_date' }].map(({ label, key }) => (
+          {/* Phase boundaries. reg_close_date is the open→locked threshold
+              (was a label-only field before — now enforced server-side via
+              the phase guard); event_starts_at is the locked→closed
+              threshold. Both nullable: a null threshold means the boundary
+              is never crossed. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Registration Opens', key: 'reg_open_date',  hint: 'When players can first register (informational).' },
+              { label: 'Registration locks at', key: 'reg_close_date',  hint: 'After this, players can\'t edit; payments still work.' },
+              { label: 'Registration closes',  key: 'event_starts_at', hint: 'After this, registration is fully closed (including payments).' },
+            ].map(({ label, key, hint }) => (
               <div key={key}>
                 <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
                 <input type="datetime-local" value={settings[key] ?? ''} disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
                 />
+                {hint && <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">{hint}</p>}
               </div>
             ))}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Max Teams', key: 'max_teams', hint: 'Event-wide cap on total teams' },
-              { label: 'Max Players', key: 'max_players', hint: 'Event-wide cap on total players' },
+              { label: 'Max teams (leave blank for no cap)',  key: 'max_teams',   hint: 'Event-wide cap on total teams' },
+              { label: 'Max players (leave blank for no cap)', key: 'max_players', hint: 'Event-wide cap on total players' },
             ].map(({ label, key, hint }) => (
               <div key={key}>
                 <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
                 <p className="text-xs text-[#e5e5e5]/30 mb-1.5">{hint}</p>
-                <input type="number" value={settings[key] ?? ''} placeholder="Unlimited" disabled={isArchived}
+                <input type="number" value={settings[key] ?? ''} placeholder="No cap" disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
                 />
@@ -831,21 +843,24 @@ export default function AdminEvent() {
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Max Players per Team</label>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Max players per team (leave blank for no cap)</label>
             <p className="text-xs text-[#e5e5e5]/30 mb-1.5">Team composition limit — applies to each team individually</p>
-            <input type="number" value={settings.max_players_per_team ?? ''} placeholder="Unlimited" disabled={isArchived}
+            <input type="number" value={settings.max_players_per_team ?? ''} placeholder="No cap" disabled={isArchived}
               onChange={e => setSettings(s => ({ ...s, max_players_per_team: e.target.value || '' }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
             />
           </div>
 
+          {/* TODO: re-introduce 'Allow Side Events Only' and 'Enable Waitlist'
+              toggles here once the side-events-only registration flow and the
+              waitlist sign-up flow are built. The underlying columns
+              (allow_side_events_only, enable_waitlist) are still saved by
+              this form so any existing values are preserved on the DB. */}
           <div className="space-y-3 pt-1">
             {[
               { label: 'Require Code of Conduct', sub: 'Players must sign CoC before registration is complete', key: 'require_coc' },
-              { label: 'Require Referee Test', sub: 'At least one team member must pass the referee test', key: 'require_ref_test' },
+              { label: 'Require Referee Test', sub: 'All team members must pass the referee test', key: 'require_ref_test' },
               { label: 'Require Payment', sub: 'Registration is only confirmed once the event fee is paid — turn off for free or on-the-day-paid events', key: 'require_payment' },
-              { label: 'Allow Side Events Only', sub: 'Players can register for side events without joining a team', key: 'allow_side_events_only' },
-              { label: 'Enable Waitlist', sub: 'When max teams/players is reached, allow waitlist sign-ups', key: 'enable_waitlist' },
             ].map(({ label, sub, key }) => (
               <label key={key} className="flex items-start gap-3 cursor-pointer bg-surface border border-line rounded-xl p-4">
                 <Toggle value={settings[key]} disabled={isArchived} onChange={v => setSettings(s => ({ ...s, [key]: v }))} />

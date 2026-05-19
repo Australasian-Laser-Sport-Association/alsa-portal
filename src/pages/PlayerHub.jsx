@@ -9,6 +9,9 @@ import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
 import JoinTeamModal from '../components/JoinTeamModal'
 import CommitteeBadge from '../components/CommitteeBadge'
+import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import { eventPhase } from '../lib/eventPhase'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
 
 function dollars(cents) {
@@ -743,7 +746,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, bank_bsb, bank_account_number, bank_account_name')
+      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -979,6 +982,13 @@ export default function PlayerHub() {
   }
 
   const eventYear = event.year
+  // Phase gates self-service edits. When 'locked' or 'closed', the
+  // Confirm-Side-Events and Confirm-Extras buttons disable and the locked
+  // banner pins above the checklist. Other player-mutation paths (partner
+  // pickers, team join/leave) are blocked server-side via the phase guard
+  // in api/player.js / api/captain.js — they'll surface a 403 toast.
+  const phase = eventPhase(event)
+  const locked = phase !== 'open'
   const firstName = profile?.first_name ?? 'Player'
   const lastName = profile?.last_name ?? ''
   const aliasDisplay = profile?.alias
@@ -1267,9 +1277,12 @@ export default function PlayerHub() {
           <PlayerHubProgress
             eventName={event.name}
             hasTeam={hasTeam}
+            cocRequired={isCocRequired(event)}
             cocSigned={cocSigned}
+            refRequired={isRefTestRequired(event)}
             refPassed={!!testResult?.passed}
             mediaSubmitted={mediaSubmitted}
+            paymentRequired={isPaymentRequired(event)}
             paid={isPaidInFull}
             sideEventsConfirmed={sideEventsConfirmed}
             extrasConfirmed={extrasConfirmed}
@@ -1310,6 +1323,12 @@ export default function PlayerHub() {
             </div>
           )}
 
+          {/* Phase banner — visible to player when registration is locked or
+              fully closed. */}
+          {locked && (
+            <LockedRegistrationBanner phase={phase} className="mb-2" />
+          )}
+
           {/* ── Registration Checklist ── */}
           <div className="bg-surface border border-line rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-line">
@@ -1328,50 +1347,58 @@ export default function PlayerHub() {
               )}
             </ChecklistItem>
 
-            <ChecklistItem
-              status={!isRegistered ? 'pending' : cocStatus === 'current' ? 'done' : 'error'}
-              label={
-                cocStatus === 'current'
-                  ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
-                  : cocStatus === 'stale'
-                    ? 'Code of Conduct — updated, please re-accept'
-                    : 'Code of Conduct — not yet signed'
-              }
-            >
-              {isRegistered && cocStatus !== 'current' && (
-                <CoCPanel
-                  userId={user.id}
-                  eventYear={eventYear}
-                  activeDoc={activeDocs.code_of_conduct}
-                  stale={cocStatus === 'stale'}
-                  onAccepted={load}
-                />
-              )}
-            </ChecklistItem>
+            {/* CoC row is hidden entirely when the event's require_coc
+                toggle is off. */}
+            {isCocRequired(event) && (
+              <ChecklistItem
+                status={!isRegistered ? 'pending' : cocStatus === 'current' ? 'done' : 'error'}
+                label={
+                  cocStatus === 'current'
+                    ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
+                    : cocStatus === 'stale'
+                      ? 'Code of Conduct — updated, please re-accept'
+                      : 'Code of Conduct — not yet signed'
+                }
+              >
+                {isRegistered && cocStatus !== 'current' && (
+                  <CoCPanel
+                    userId={user.id}
+                    eventYear={eventYear}
+                    activeDoc={activeDocs.code_of_conduct}
+                    stale={cocStatus === 'stale'}
+                    onAccepted={load}
+                  />
+                )}
+              </ChecklistItem>
+            )}
 
-            <ChecklistItem
-              status={!isRegistered ? 'pending' : testResult?.passed ? 'done' : testResult ? 'error' : 'error'}
-              label={
-                testResult?.passed
-                  ? `Referee Test — Passed (${testResult.score}%)`
-                  : testResult
-                    ? 'Referee Test — Failed — retake required'
-                    : 'Referee Test — Not yet taken'
-              }
-            >
-              {isRegistered && (
-                <div>
-                  {testResult?.passed && (
-                    <p className="text-yellow-400/80 text-xs mb-2">
-                      You have already passed the referee test ({testResult.score}%). Retaking will replace your current score.
-                    </p>
-                  )}
-                  <Link to="/referee-test" className="text-brand text-xs hover:underline">
-                    {testResult?.passed ? 'Retake Test →' : testResult ? 'Retake test →' : 'Take the Referee Test →'}
-                  </Link>
-                </div>
-              )}
-            </ChecklistItem>
+            {/* Ref-test row is hidden entirely when the event's require_ref_test
+                toggle is off. Otherwise behaves as before. */}
+            {isRefTestRequired(event) && (
+              <ChecklistItem
+                status={!isRegistered ? 'pending' : testResult?.passed ? 'done' : testResult ? 'error' : 'error'}
+                label={
+                  testResult?.passed
+                    ? `Referee Test — Passed (${testResult.score}%)`
+                    : testResult
+                      ? 'Referee Test — Failed — retake required'
+                      : 'Referee Test — Not yet taken'
+                }
+              >
+                {isRegistered && (
+                  <div>
+                    {testResult?.passed && (
+                      <p className="text-yellow-400/80 text-xs mb-2">
+                        You have already passed the referee test ({testResult.score}%). Retaking will replace your current score.
+                      </p>
+                    )}
+                    <Link to="/referee-test" className="text-brand text-xs hover:underline">
+                      {testResult?.passed ? 'Retake Test →' : testResult ? 'Retake test →' : 'Take the Referee Test →'}
+                    </Link>
+                  </div>
+                )}
+              </ChecklistItem>
+            )}
 
             <ChecklistItem
               status={!isRegistered ? 'pending' : mediaStatus === 'current' ? 'done' : 'error'}
@@ -1446,16 +1473,20 @@ export default function PlayerHub() {
               </ChecklistItem>
             )}
 
-            <ChecklistItem
-              status={!isRegistered ? 'pending' : isPaidInFull ? 'done' : 'error'}
-              label={
-                !isRegistered
-                  ? 'Payment'
-                  : isPaidInFull
-                    ? `Payment — Paid${balance < 0 ? ' (overpaid)' : ''}`
-                    : `Payment — ${dollars(balance)} outstanding`
-              }
-            />
+            {/* Payment row is hidden entirely when the event's
+                require_payment toggle is off. */}
+            {isPaymentRequired(event) && (
+              <ChecklistItem
+                status={!isRegistered ? 'pending' : isPaidInFull ? 'done' : 'error'}
+                label={
+                  !isRegistered
+                    ? 'Payment'
+                    : isPaidInFull
+                      ? `Payment — Paid${balance < 0 ? ' (overpaid)' : ''}`
+                      : `Payment — ${dollars(balance)} outstanding`
+                }
+              />
+            )}
           </div>
 
           {/* ── My Team ── */}
@@ -1618,10 +1649,11 @@ export default function PlayerHub() {
               <div className="mt-5 border-t border-line pt-5">
                 <button
                   onClick={confirmSideEvents}
-                  disabled={sideConfirmDisabled || savingConfirm}
-                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${sideConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                  disabled={sideConfirmDisabled || savingConfirm || locked}
+                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${(sideConfirmDisabled || locked) ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                  title={locked ? 'Registration is locked. Contact the committee.' : undefined}
                 >
-                  {savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
+                  {locked ? 'Locked — contact committee' : savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
                 </button>
               </div>
             </div>
@@ -1651,16 +1683,23 @@ export default function PlayerHub() {
               {/* Confirm extras button */}
               <button
                 onClick={confirmExtras}
-                disabled={extrasConfirmDisabled || savingExtrasConfirm}
-                className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${extrasConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                disabled={extrasConfirmDisabled || savingExtrasConfirm || locked}
+                className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${(extrasConfirmDisabled || locked) ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                title={locked ? 'Registration is locked. Contact the committee.' : undefined}
               >
-                {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
+                {locked ? 'Locked — contact committee' : savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
               </button>
             </div>
           )}
 
           {/* ── Payment Details ── */}
-          {isRegistered && (
+          {/* When require_payment is off AND the event phase is locked,
+              hide this section in PlayerHub — there's nothing the player
+              can action and the breakdown adds clutter. Admin views still
+              show payment details because manual records may still be
+              recorded server-side. While the event is open we keep the
+              section visible so players who *want* to pay still can. */}
+          {isRegistered && !(!isPaymentRequired(event) && locked) && (
             <div className="bg-surface border border-line rounded-2xl p-5" id="payment-details">
               <h2 className="text-white font-bold mb-1">Payment Details</h2>
               <p className="text-[#e5e5e5]/40 text-xs mb-5">Your event fees and how to pay</p>

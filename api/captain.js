@@ -1,6 +1,14 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getActiveEventYear } from './_lib/auth.js'
 import { computeAndWriteAmountOwing, computeAndWriteAmountOwingMany } from './_lib/computeAmountOwing.js'
+import { requireOpenPhase } from './_lib/eventPhase.js'
+
+async function denyIfLocked(res, year) {
+  const guard = await requireOpenPhase(year)
+  if (guard.ok) return false
+  res.status(guard.status).json({ error: guard.error, phase: guard.phase })
+  return true
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -13,11 +21,46 @@ export default async function handler(req, res) {
   if (action === 'add-player') {
     const { playerId, teamId, year } = body
     if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
+    if (await denyIfLocked(res, year)) return
 
     const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()
     if (teamErr) return res.status(500).json({ error: teamErr.message })
     if (!team || team.captain_id !== user.id) {
       return res.status(403).json({ error: 'Only the team captain can add players' })
+    }
+
+    // Enforce per-event max_players_per_team. When the cap is null, no
+    // limit applies. We treat re-assigning a player who's already on this
+    // team as a no-op for cap purposes (idempotent add).
+    const { data: eventForCap, error: eventForCapErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('max_players_per_team')
+      .eq('year', year)
+      .maybeSingle()
+    if (eventForCapErr) return res.status(500).json({ error: eventForCapErr.message })
+
+    const teamCap = eventForCap?.max_players_per_team
+    if (teamCap) {
+      const { data: currentReg, error: currentRegErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .select('team_id')
+        .eq('user_id', playerId)
+        .eq('year', year)
+        .maybeSingle()
+      if (currentRegErr) return res.status(500).json({ error: currentRegErr.message })
+
+      if (currentReg?.team_id !== teamId) {
+        const { count, error: countErr } = await supabaseAdmin
+          .from('zltac_registrations')
+          .select('id', { count: 'exact', head: true })
+          .eq('team_id', teamId)
+          .eq('year', year)
+        if (countErr) return res.status(500).json({ error: countErr.message })
+
+        if ((count ?? 0) >= teamCap) {
+          return res.status(400).json({ error: `Team is full (${teamCap}/${teamCap}). Contact the committee.` })
+        }
+      }
     }
 
     const { data, error: updateErr } = await supabaseAdmin
@@ -48,9 +91,42 @@ export default async function handler(req, res) {
     return res.json({ data })
   }
 
+  if (action === 'precheck-create-team') {
+    // Cap-check used by CaptainRegister before inserting a new team row.
+    // Returns 400 with a user-facing message when the event would exceed
+    // max_teams. Null cap = no limit. Race: the count is taken before the
+    // client insert, so a concurrent submission could still slip past;
+    // acceptable for a soft admin-imposed cap.
+    const { year } = body
+    if (!year) return res.status(400).json({ error: 'year is required' })
+
+    const { data: ev, error: evErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('id, max_teams')
+      .eq('year', year)
+      .maybeSingle()
+    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (!ev) return res.status(404).json({ error: 'Event not found for year' })
+
+    const cap = ev.max_teams
+    if (!cap) return res.json({ ok: true })
+
+    const { count, error: countErr } = await supabaseAdmin
+      .from('teams')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', ev.id)
+    if (countErr) return res.status(500).json({ error: countErr.message })
+
+    if ((count ?? 0) >= cap) {
+      return res.status(400).json({ error: `Maximum number of teams (${cap}) reached for this event.` })
+    }
+    return res.json({ ok: true })
+  }
+
   if (action === 'disband-team') {
     const { teamId, year } = body
     if (!teamId || !year) return res.status(400).json({ error: 'teamId and year are required' })
+    if (await denyIfLocked(res, year)) return
 
     // Validate caller is captain
     const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()

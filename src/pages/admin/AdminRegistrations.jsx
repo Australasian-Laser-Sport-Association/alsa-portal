@@ -4,6 +4,9 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
 import { dollars } from '../../lib/pricing.js'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
+import RegistrationEditModal from '../../components/RegistrationEditModal.jsx'
+import { eventPhase } from '../../lib/eventPhase'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'
 
 function fmt(d) {
   return formatDate(d, 'short') || '—'
@@ -62,16 +65,22 @@ export default function AdminRegistrations() {
   const [stateFilter, setStateFilter] = useState('all')
   const [removeConfirm, setRemoveConfirm] = useState(null) // { userId, name, alias }
   const [paymentModal, setPaymentModal] = useState(null) // { registration, profile }
+  const [editModal, setEditModal] = useState(null)        // { registration, profile }
+  const [event, setEvent] = useState(null)                // active event row (for phase + side_events list)
+  const [needsFollowUp, setNeedsFollowUp] = useState(false) // filter toggle
   const [toast, setToast] = useState(null)
 
   useEffect(() => {
     supabase
       .from('zltac_events')
-      .select('year')
+      .select('id, year, name, side_events, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment')
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
-      .then(({ data }) => setEventYear(data?.year ?? null))
+      .then(({ data }) => {
+        setEvent(data ?? null)
+        setEventYear(data?.year ?? null)
+      })
   }, [])
 
   useEffect(() => {
@@ -117,6 +126,12 @@ export default function AdminRegistrations() {
   }, {})
 
   // Enrich registrations
+  // Per-event requirement toggles. When off, that requirement is skipped
+  // from the per-row "complete" badge and from the doneCount.
+  const refRequired     = isRefTestRequired(event)
+  const cocRequired     = isCocRequired(event)
+  const paymentRequired = isPaymentRequired(event)
+
   const players = regs.map(reg => {
     const profile = profMap[reg.user_id] ?? null
     const team    = teamMap[reg.team_id] ?? null
@@ -129,15 +144,35 @@ export default function AdminRegistrations() {
     const balance     = amountOwing - amountPaid
     const payStatus   = balance < 0 ? 'overpaid' : balance === 0 ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
     const paid        = balance <= 0
-    const complete = coc && ref?.passed && media && paid
-    const doneCount = [coc, ref?.passed, media, paid].filter(Boolean).length
-    return { ...reg, profile, team, coc, ref, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount }
+    const cocOk    = !cocRequired || coc
+    const refOk    = !refRequired || ref?.passed === true
+    const paidOk   = !paymentRequired || paid
+    const complete = cocOk && refOk && media && paidOk
+    const checks = [
+      ...(cocRequired ? [coc] : []),
+      ...(refRequired ? [ref?.passed] : []),
+      media,
+      ...(paymentRequired ? [paid] : []),
+    ]
+    const doneCount = checks.filter(Boolean).length
+    return { ...reg, profile, team, coc, ref, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
+
+  // Phase + needs-follow-up derivation.
+  // "Needs follow-up" = registration where the event is past the open
+  // phase (so players can't self-fix anything) AND there's still money
+  // owed. Admin's call-list during the lockup window. When payment isn't
+  // required for the event, this list is always empty.
+  const phase = eventPhase(event)
+  const needsFollowUpCount = paymentRequired && phase === 'locked'
+    ? players.filter(p => p.balance > 0).length
+    : 0
 
   // Filters
   const states = [...new Set(players.map(p => p.profile?.state).filter(Boolean))].sort()
   const filtered = players.filter(p => {
     if (stateFilter !== 'all' && p.profile?.state !== stateFilter) return false
+    if (needsFollowUp && !(paymentRequired && phase === 'locked' && p.balance > 0)) return false
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       const name = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ').toLowerCase()
@@ -149,6 +184,16 @@ export default function AdminRegistrations() {
 
   const completeCount   = players.filter(p => p.complete).length
   const incompleteCount = players.length - completeCount
+
+  // Wired into the RegistrationEditModal so the admin can pick partners
+  // from anyone currently registered for the year.
+  const allPlayersForPicker = regs.map(r => ({ user_id: r.user_id, profile: profMap[r.user_id] ?? null }))
+
+  function handleEditSaved(summary) {
+    setEditModal(null)
+    showToast(`Saved. New balance: ${dollars(summary.balance)}`)
+    fetchAll()
+  }
 
   // Player count per team
   const playerCountByTeam = regs.reduce((acc, r) => {
@@ -226,6 +271,28 @@ export default function AdminRegistrations() {
         />
       )}
 
+      {/* Edit Registration modal — admin-only, bypasses phase guard. */}
+      {editModal && (
+        <RegistrationEditModal
+          registration={editModal.registration}
+          profile={editModal.profile}
+          enabledSideEvents={(event?.side_events ?? []).filter(se => se.enabled)}
+          teams={teams.filter(t => t.status === 'approved').map(t => ({ id: t.id, name: t.name }))}
+          allPlayers={allPlayersForPicker}
+          existingDoublesPair={doubles.find(d =>
+            d.player1_id === editModal.registration.user_id ||
+            d.player2_id === editModal.registration.user_id
+          )}
+          existingTriplesTeam={triples.find(t =>
+            t.player1_id === editModal.registration.user_id ||
+            t.player2_id === editModal.registration.user_id ||
+            t.player3_id === editModal.registration.user_id
+          )}
+          onClose={() => setEditModal(null)}
+          onSaved={handleEditSaved}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -297,6 +364,24 @@ export default function AdminRegistrations() {
               <option value="all">All states</option>
               {states.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {/* Needs-follow-up filter — only meaningful during the locked phase.
+                Count badge shows how many registrations currently match. */}
+            {phase === 'locked' && (
+              <button
+                onClick={() => setNeedsFollowUp(v => !v)}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider border transition-colors ${
+                  needsFollowUp
+                    ? 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40'
+                    : 'bg-surface text-[#e5e5e5]/60 border-line hover:border-yellow-500/30 hover:text-yellow-300'
+                }`}
+                title={needsFollowUp ? 'Showing players who haven\'t paid since lock' : 'Filter to locked-phase unpaid players'}
+              >
+                Needs follow-up
+                <span className={`tabular-nums px-1.5 py-0.5 rounded text-[10px] ${
+                  needsFollowUp ? 'bg-yellow-500/25 text-yellow-200' : 'bg-line/40 text-[#e5e5e5]/55'
+                }`}>{needsFollowUpCount}</span>
+              </button>
+            )}
             <span className="text-[#e5e5e5]/30 text-xs self-center">{filtered.length} of {players.length} shown</span>
           </div>
 
@@ -376,11 +461,17 @@ export default function AdminRegistrations() {
                           <td className="px-4 py-3 whitespace-nowrap">
                             {p.complete
                               ? <Pill color="green">Complete</Pill>
-                              : <Pill color="red">{p.doneCount}/4</Pill>}
+                              : <Pill color="red">{p.doneCount}/{p.totalChecks}</Pill>}
                           </td>
                           {/* Actions */}
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setEditModal({ registration: p, profile: p.profile })}
+                                className="text-xs text-[#e5e5e5]/60 hover:text-white hover:bg-line font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                              >
+                                Edit
+                              </button>
                               <button
                                 onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
                                 className="text-xs text-brand/70 hover:text-brand hover:bg-brand/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"

@@ -47,9 +47,12 @@ function StepCircle({ Icon, status }) {
 export default function PlayerHubProgress({
   eventName,
   hasTeam,
+  cocRequired = true,
   cocSigned,
+  refRequired = true,
   refPassed,
   mediaSubmitted,
+  paymentRequired = true,
   paid,
   sideEventsConfirmed,
   extrasConfirmed,
@@ -61,13 +64,16 @@ export default function PlayerHubProgress({
   const baseSteps = [
     { Icon: PersonIcon, label: 'Register as a player', description: 'You\'ve created your ALSA account and signed up.', done: true },
     { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Use a captain\'s invite code or start a new team.', done: hasTeam },
-    { Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct.', done: cocSigned },
-    { Icon: RefTestIcon, label: 'Pass the Ref Test', description: 'Complete the referee knowledge test.', done: refPassed },
+    // CoC step only appears when the event requires it.
+    ...(cocRequired ? [{ Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct.', done: cocSigned }] : []),
+    // Ref-test step only appears when the event requires it.
+    ...(refRequired ? [{ Icon: RefTestIcon, label: 'Pass the Ref Test', description: 'Complete the referee knowledge test.', done: refPassed }] : []),
     { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.', done: mediaSubmitted },
     { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).', done: sideEventsConfirmed },
     { Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.', done: extrasConfirmed },
     ...(u18Required ? [{ Icon: CocDocumentIcon, label: 'Submit Under-18 form', description: 'Required for players under 18 on event date.', done: u18Submitted }] : []),
-    { Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.', done: paid },
+    // Payment step only appears when the event requires it.
+    ...(paymentRequired ? [{ Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.', done: paid }] : []),
   ]
 
   const allDone = baseSteps.every(s => s.done)

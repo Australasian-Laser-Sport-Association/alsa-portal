@@ -8,6 +8,8 @@ import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 import JoinTeamModal from '../components/JoinTeamModal'
+import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import { eventPhase } from '../lib/eventPhase'
 import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
 
 function initials(name = '') {
@@ -758,8 +760,19 @@ export default function EventPage() {
       {/* Registration timeline — static "How it works" illustration, shown to everyone */}
       <RegistrationTimeline eventName={event.name} />
 
+      {/* Locked-phase banner — shown above the CTA when the event has moved
+          past 'open'. Renders nothing for 'open'. */}
+      {(() => {
+        const phase = eventPhase(event)
+        return phase !== 'open' ? (
+          <section className="max-w-5xl mx-auto px-6 pt-6">
+            <LockedRegistrationBanner phase={phase} />
+          </section>
+        ) : null
+      })()}
+
       {/* Register CTA banner — full-width, shown to non-registered users when registration is open */}
-      {event.status === 'open' && !myReg && (
+      {event.status === 'open' && eventPhase(event) === 'open' && !myReg && (
         <section className="max-w-7xl mx-auto px-6 py-8">
             <div
               className="relative overflow-hidden rounded-2xl border border-line border-l-4 border-l-brand p-8 md:p-12"

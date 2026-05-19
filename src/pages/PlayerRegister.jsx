@@ -2,6 +2,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import Footer from '../components/Footer'
 
@@ -59,6 +60,21 @@ export default function PlayerRegister() {
 
     setSubmitting(true)
     setError('')
+
+    // Server-side cap check for max_players. When the event has a cap and
+    // it would be exceeded, this returns 400 with a user-facing message.
+    // Already-registered callers pass through (the upsert is idempotent
+    // count-wise).
+    try {
+      await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'precheck-register', year: parseInt(year) }),
+      })
+    } catch (err) {
+      setSubmitting(false)
+      setError(err?.message || 'Could not start registration. Please try again.')
+      return
+    }
 
     // Trigger already created the profile row — just update it with form data
     const { error: profErr } = await supabase

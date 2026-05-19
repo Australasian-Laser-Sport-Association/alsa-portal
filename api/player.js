@@ -2,6 +2,17 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
+import { requireOpenPhase } from './_lib/eventPhase.js'
+
+// Helper: returns true and writes a 403 to res when the event for the
+// given year is not in 'open' phase. Player-mutation actions early-return
+// after this check.
+async function denyIfLocked(res, year) {
+  const guard = await requireOpenPhase(year)
+  if (guard.ok) return false
+  res.status(guard.status).json({ error: guard.error, phase: guard.phase })
+  return true
+}
 
 // Consolidated player-action endpoint. Dispatches by ?resource=:
 //   ?resource=doubles      → doubles partner flow (POST + action)
@@ -99,6 +110,7 @@ async function handleDoubles(req, res, user) {
   if (action === 'create') {
     const { eventYear, partnerId } = body
     if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })
+    if (await denyIfLocked(res, eventYear)) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('doubles_pairs')
@@ -138,6 +150,7 @@ async function handleDoubles(req, res, user) {
     if (pairErr) return res.status(500).json({ error: pairErr.message })
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player2_id !== user.id) return res.status(403).json({ error: 'Not a party to this pair' })
+    if (await denyIfLocked(res, pair.event_year)) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('doubles_pairs')
@@ -154,12 +167,13 @@ async function handleDoubles(req, res, user) {
     const { id } = body
     if (!id) return res.status(400).json({ error: 'id is required' })
 
-    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select('player1_id, player2_id').eq('id', id).maybeSingle()
+    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select('player1_id, player2_id, event_year').eq('id', id).maybeSingle()
     if (pairErr) return res.status(500).json({ error: pairErr.message })
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player1_id !== user.id && pair.player2_id !== user.id) {
       return res.status(403).json({ error: 'Not a party to this pair' })
     }
+    if (await denyIfLocked(res, pair.event_year)) return
 
     const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })
@@ -237,6 +251,7 @@ async function handleTriples(req, res, user) {
   if (action === 'create') {
     const { eventYear, slot, partnerId } = body
     if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })
+    if (await denyIfLocked(res, eventYear)) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('triples_teams')
@@ -261,9 +276,10 @@ async function handleTriples(req, res, user) {
     const { id, slot, partnerId, eventYear } = body
     if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).maybeSingle()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
+    if (await denyIfLocked(res, existing.event_year ?? eventYear)) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -285,6 +301,7 @@ async function handleTriples(req, res, user) {
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
+    if (await denyIfLocked(res, existing.event_year)) return
 
     const myField = `player${mySlot}_confirmed`
     const otherSlot = mySlot === 2 ? 3 : 2
@@ -311,9 +328,10 @@ async function handleTriples(req, res, user) {
     const { id, slot } = body
     if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id').eq('id', id).maybeSingle()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
+    if (await denyIfLocked(res, existing.event_year)) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -332,7 +350,7 @@ async function handleTriples(req, res, user) {
 
     const { data: existing, error: existingErr } = await supabaseAdmin
       .from('triples_teams')
-      .select('player1_id, player2_id, player3_id')
+      .select('player1_id, player2_id, player3_id, event_year')
       .eq('id', id)
       .maybeSingle()
 
@@ -341,6 +359,7 @@ async function handleTriples(req, res, user) {
 
     const isParty = [existing.player1_id, existing.player2_id, existing.player3_id].includes(user.id)
     if (!isParty) return res.status(403).json({ error: 'Not a party to this team' })
+    if (await denyIfLocked(res, existing.event_year)) return
 
     const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })
@@ -356,9 +375,49 @@ async function handleRegistration(req, res, user) {
   const body = req.body ?? {}
   const { action } = body
 
+  if (action === 'precheck-register') {
+    // Cap-check used by PlayerRegister / CaptainRegister before inserting
+    // a new registration row. Returns 400 with a user-facing message when
+    // the event would exceed max_players. Null cap = no limit. Already
+    // registered = no-op for cap purposes (upsert is idempotent count-wise).
+    const { year } = body
+    if (!year) return res.status(400).json({ error: 'year is required' })
+
+    const { data: ev, error: evErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('max_players')
+      .eq('year', year)
+      .maybeSingle()
+    if (evErr) return res.status(500).json({ error: evErr.message })
+
+    const cap = ev?.max_players
+    if (!cap) return res.json({ ok: true })
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('year', year)
+      .maybeSingle()
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existing) return res.json({ ok: true })
+
+    const { count, error: countErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('year', year)
+    if (countErr) return res.status(500).json({ error: countErr.message })
+
+    if ((count ?? 0) >= cap) {
+      return res.status(400).json({ error: `Registration cap of ${cap} reached. Contact the committee.` })
+    }
+    return res.json({ ok: true })
+  }
+
   if (action === 'cancel') {
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })
+    if (await denyIfLocked(res, year)) return
 
     const { data: reg, error: regErr } = await supabaseAdmin
       .from('zltac_registrations')

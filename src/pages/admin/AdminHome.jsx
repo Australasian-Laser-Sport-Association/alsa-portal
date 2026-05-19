@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { dollars } from '../../lib/pricing'
 import { formatDate } from '../../lib/dateFormat'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -48,7 +49,7 @@ export default function AdminHome() {
       // 1. Identify the active event first — most stats are scoped to it.
       const { data: activeEvent } = await supabase
         .from('zltac_events')
-        .select('id, name, year')
+        .select('id, name, year, require_ref_test, require_coc, require_payment')
         .eq('status', 'open')
         .limit(1).maybeSingle()
       const activeYear = activeEvent?.year ?? null
@@ -143,14 +144,25 @@ export default function AdminHome() {
       const cocSignedRegistered = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid)).length
       const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid)).length
 
+      // Per-event toggles. When a requirement is disabled the corresponding
+      // tile renders "N/A" instead of a value — surfacing that the dashboard
+      // isn't ignoring the check by accident.
+      const refRequired = isRefTestRequired(activeEvent)
+      const cocRequired = isCocRequired(activeEvent)
+      const paymentRequired = isPaymentRequired(activeEvent)
+
       setStats({
         totalUsers: totalUsers ?? 0,
         teamsForEvent,
         playersForEvent,
-        paymentsReceivedCents,
+        paymentRequired,
+        paymentsReceivedDisplay: paymentRequired ? dollars(paymentsReceivedCents ?? 0) : 'N/A',
+        amountOwingDisplay:      paymentRequired ? dollars(amountOwingCents ?? 0)     : 'N/A',
         amountOwingCents,
-        refRatio:   ratioLabel(refPassedRegistered,   playersForEvent),
-        cocRatio:   ratioLabel(cocSignedRegistered,   playersForEvent),
+        refRequired,
+        refRatio:   refRequired ? ratioLabel(refPassedRegistered, playersForEvent) : 'N/A',
+        cocRequired,
+        cocRatio:   cocRequired ? ratioLabel(cocSignedRegistered,   playersForEvent) : 'N/A',
         mediaRatio: ratioLabel(mediaSignedRegistered, playersForEvent),
         eventLabel,
         eventScope,
@@ -218,18 +230,28 @@ export default function AdminHome() {
             <StatCard label={playersLabel} value={stats.playersForEvent} color="text-white" />
             <StatCard
               label="Payments Received"
-              value={dollars(stats.paymentsReceivedCents ?? 0)}
-              sub={stats.eventScope}
+              value={stats.paymentsReceivedDisplay}
+              sub={stats.paymentRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
               color="text-brand"
             />
             <StatCard
               label="Payment Amount Owing"
-              value={dollars(stats.amountOwingCents ?? 0)}
-              sub={stats.eventScope}
-              color={stats.amountOwingCents > 0 ? 'text-yellow-400' : 'text-white'}
+              value={stats.amountOwingDisplay}
+              sub={stats.paymentRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
+              color={stats.paymentRequired !== false && stats.amountOwingCents > 0 ? 'text-yellow-400' : 'text-white'}
             />
-            <StatCard label="Ref Tests Passed"  value={stats.refRatio}   sub={stats.eventScope} color="text-white" />
-            <StatCard label="CoC's Signed"      value={stats.cocRatio}   sub={stats.eventScope} color="text-white" />
+            <StatCard
+              label="Ref Tests Passed"
+              value={stats.refRatio}
+              sub={stats.refRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
+              color="text-white"
+            />
+            <StatCard
+              label="CoC's Signed"
+              value={stats.cocRatio}
+              sub={stats.cocRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
+              color="text-white"
+            />
             <StatCard label="Media Forms Signed" value={stats.mediaRatio} sub={stats.eventScope} color="text-white" />
             <StatCard
               label="Active Event"

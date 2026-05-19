@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import Footer from '../components/Footer'
 import CommitteeBadge from '../components/CommitteeBadge'
 import { TeamShieldIcon } from '../components/icons.jsx'
@@ -97,6 +98,7 @@ const PAYMENT_META = {
   partial:  { cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: '◐', label: 'Partial' },
   paid:     { cls: 'bg-brand/10 text-brand border-brand/30',           icon: '✓', label: 'Paid' },
   overpaid: { cls: 'bg-blue-500/10 text-blue-400 border-blue-500/30',  icon: '+', label: 'Overpaid' },
+  na:       { cls: 'bg-line/40 text-[#e5e5e5]/35 border-line',         icon: '—', label: 'N/A' },
 }
 function PaymentChip({ status }) {
   const meta = PAYMENT_META[status] ?? PAYMENT_META.unpaid
@@ -181,7 +183,7 @@ export default function CaptainHub() {
   // ── Load data ─────────────────────────────────────────────────────────────
   async function load() {
     const [{ data: ev }, { data: t }] = await Promise.all([
-      supabase.from('zltac_events').select('id, name, year, status').eq('status', 'open').maybeSingle(),
+      supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment').eq('status', 'open').maybeSingle(),
       supabase.from('teams').select('id, name, state, home_venue, colour, invite_code, status, rejection_reason, logo_url').eq('captain_id', user.id).maybeSingle(),
     ])
     setEvent(ev)
@@ -475,12 +477,18 @@ export default function CaptainHub() {
       side_events: (r.side_events ?? []).join('; '),
       dinner_guests: r.dinner_guests ?? 0,
       status: r.status ?? '',
-      coc:         completionMap[r.user_id]?.coc       ? 'Yes' : 'No',
-      ref_test:    completionMap[r.user_id]?.test      ? 'Yes' : 'No',
+      coc:         !isCocRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.coc    ? 'Yes' : 'No',
+      ref_test:    !isRefTestRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.test   ? 'Yes' : 'No',
       media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
       side_events: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
       extras:      completionMap[r.user_id]?.extras    ? 'Yes' : 'No',
-      payment:     completionMap[r.user_id]?.paymentStatus ?? 'unpaid',
+      payment:     !isPaymentRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.paymentStatus ?? 'unpaid',
     }))
     const keys = Object.keys(rows[0])
     const csv = [keys.join(','), ...rows.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n')
@@ -492,9 +500,14 @@ export default function CaptainHub() {
     if (!c) return false
     const row = roster.find(r => r.user_id === uid)
     const u18needed = isUnder18(row?.profiles?.dob, event?.year)
+    const refRequired = isRefTestRequired(event)
+    const cocRequired = isCocRequired(event)
+    const paymentRequired = isPaymentRequired(event)
     return (
-      c.coc && c.test && c.media && c.sideEvents && c.extras &&
-      c.paymentStatus !== 'unpaid' &&
+      (!cocRequired || c.coc) &&
+      (!refRequired || c.test) &&
+      c.media && c.sideEvents && c.extras &&
+      (!paymentRequired || c.paymentStatus !== 'unpaid') &&
       (!u18needed || c.u18)
     )
   }
@@ -807,18 +820,36 @@ export default function CaptainHub() {
                               On narrow viewports the strip wraps; each chip
                               still carries its full status word. */}
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <StatusChip
-                              state={comp.coc ? 'complete' : 'incomplete'}
-                              label="CoC"
-                              title={comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'}
-                            />
-                            <StatusChip
-                              state={comp.test ? 'complete' : 'incomplete'}
-                              label={comp.test && comp.testScore != null ? `Ref ${comp.testScore}%` : 'Ref Test'}
-                              title={comp.test
-                                ? `Referee Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}`
-                                : 'Referee Test: not yet passed'}
-                            />
+                            {/* CoC chip renders N/A when the event has the
+                                requirement disabled. */}
+                            {(() => {
+                              const cocRequired = isCocRequired(event)
+                              const cocState = !cocRequired
+                                ? 'na'
+                                : comp.coc ? 'complete' : 'incomplete'
+                              const cocTitle = !cocRequired
+                                ? 'Code of Conduct: not required for this event'
+                                : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
+                              return <StatusChip state={cocState} label="CoC" title={cocTitle} />
+                            })()}
+                            {/* Ref Test chip renders N/A when the event has
+                                disabled the requirement; otherwise reflects
+                                the player's own pass/fail state. */}
+                            {(() => {
+                              const refRequired = isRefTestRequired(event)
+                              const refState = !refRequired
+                                ? 'na'
+                                : comp.test ? 'complete' : 'incomplete'
+                              const refTitle = !refRequired
+                                ? 'Referee Test: not required for this event'
+                                : comp.test
+                                  ? `Referee Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}`
+                                  : 'Referee Test: not yet passed'
+                              const refLabel = !refRequired
+                                ? 'Ref Test'
+                                : (comp.test && comp.testScore != null ? `Ref ${comp.testScore}%` : 'Ref Test')
+                              return <StatusChip state={refState} label={refLabel} title={refTitle} />
+                            })()}
                             <StatusChip
                               state={comp.media ? 'complete' : 'incomplete'}
                               label="Media"
@@ -836,7 +867,9 @@ export default function CaptainHub() {
                               label="Extras"
                               title={comp.extras ? 'Extras: confirmed' : 'Extras: not yet confirmed'}
                             />
-                            <PaymentChip status={comp.paymentStatus} />
+                            {/* Payment chip renders N/A when the event has
+                                the requirement disabled. */}
+                            <PaymentChip status={isPaymentRequired(event) ? comp.paymentStatus : 'na'} />
                           </div>
                         </div>
 

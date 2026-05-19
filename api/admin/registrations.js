@@ -1,5 +1,6 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
+import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 
 export default async function handler(req, res) {
   const { error } = await verifyCommittee(req)
@@ -59,6 +60,124 @@ export default async function handler(req, res) {
     }))
 
     return res.json({ registrations, profiles, teams, coc_sigs, ref_results, media_releases, payment_records, doubles, triples })
+  }
+
+  if (req.method === 'PATCH') {
+    // Committee-driven edit of a single registration. Bypasses the phase
+    // guard (admin can edit in any phase). Recomputes amount_owing after
+    // applying changes and returns the new balance for the success toast.
+    //
+    // Accepted body:
+    //   {
+    //     registrationId: uuid (required),
+    //     side_events?: string[],           // overwrite slug list
+    //     team_id?: uuid | null,            // null = no team
+    //     doubles_partner_id?: uuid | null, // null = no doubles partner
+    //     triples_partner_ids?: [p2: uuid|null, p3: uuid|null],
+    //     admin_note?: string | null,
+    //   }
+    const body = req.body ?? {}
+    const { registrationId } = body
+    if (!registrationId) return res.status(400).json({ error: 'registrationId is required' })
+
+    // Load the registration we're editing to get user_id + event_year.
+    const { data: reg, error: regErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id, user_id, year, side_events, team_id, admin_note')
+      .eq('id', registrationId)
+      .maybeSingle()
+    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (!reg) return res.status(404).json({ error: 'Registration not found' })
+
+    const updates = {}
+    if (Array.isArray(body.side_events)) updates.side_events = body.side_events
+    if ('team_id' in body) updates.team_id = body.team_id || null
+    if ('admin_note' in body) updates.admin_note = body.admin_note?.trim() || null
+
+    if (Object.keys(updates).length > 0) {
+      const { error: updErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .update(updates)
+        .eq('id', registrationId)
+      if (updErr) return res.status(500).json({ error: updErr.message })
+    }
+
+    // Doubles partner sync. Clear-and-replace semantics: any existing pair
+    // for this user is removed, plus any pair the new partner is already in
+    // (UNIQUE constraint on player1_id and player2_id per event year).
+    if ('doubles_partner_id' in body) {
+      const newPartnerId = body.doubles_partner_id || null
+      const { error: clearErr } = await supabaseAdmin
+        .from('doubles_pairs')
+        .delete()
+        .eq('event_year', reg.year)
+        .or(`player1_id.eq.${reg.user_id},player2_id.eq.${reg.user_id}`)
+      if (clearErr) return res.status(500).json({ error: `doubles clear: ${clearErr.message}` })
+
+      if (newPartnerId) {
+        // Also clear any existing pair the new partner might be part of.
+        const { error: clearPartnerErr } = await supabaseAdmin
+          .from('doubles_pairs')
+          .delete()
+          .eq('event_year', reg.year)
+          .or(`player1_id.eq.${newPartnerId},player2_id.eq.${newPartnerId}`)
+        if (clearPartnerErr) return res.status(500).json({ error: `doubles clear partner: ${clearPartnerErr.message}` })
+
+        const { error: insErr } = await supabaseAdmin
+          .from('doubles_pairs')
+          .insert({ event_year: reg.year, player1_id: reg.user_id, player2_id: newPartnerId, confirmed: true })
+        if (insErr) return res.status(500).json({ error: `doubles insert: ${insErr.message}` })
+      }
+    }
+
+    // Triples partner sync. Same clear-and-replace approach. Triples has no
+    // UNIQUE constraint so the cleanup is less strict, but we still clear
+    // any existing team containing this player before re-inserting.
+    if ('triples_partner_ids' in body) {
+      const partnerIds = Array.isArray(body.triples_partner_ids) ? body.triples_partner_ids : []
+      const [p2, p3] = [partnerIds[0] || null, partnerIds[1] || null]
+
+      const { error: clearErr } = await supabaseAdmin
+        .from('triples_teams')
+        .delete()
+        .eq('event_year', reg.year)
+        .or(`player1_id.eq.${reg.user_id},player2_id.eq.${reg.user_id},player3_id.eq.${reg.user_id}`)
+      if (clearErr) return res.status(500).json({ error: `triples clear: ${clearErr.message}` })
+
+      if (p2 || p3) {
+        const { error: insErr } = await supabaseAdmin
+          .from('triples_teams')
+          .insert({
+            event_year: reg.year,
+            player1_id: reg.user_id,
+            player2_id: p2,
+            player3_id: p3,
+            player2_confirmed: !!p2,
+            player3_confirmed: !!p3,
+            confirmed: !!(p2 && p3),
+          })
+        if (insErr) return res.status(500).json({ error: `triples insert: ${insErr.message}` })
+      }
+    }
+
+    // Recompute amount_owing now that team_id / side_events may have shifted.
+    const { amountOwing, error: recErr } = await computeAndWriteAmountOwing(registrationId)
+    if (recErr) return res.status(500).json({ error: `recompute: ${recErr}` })
+
+    // Fresh payment_records sum so the client can render the new balance.
+    const { data: records } = await supabaseAdmin
+      .from('payment_records')
+      .select('amount')
+      .eq('registration_id', registrationId)
+    const amountPaid = (records ?? []).reduce((s, r) => s + r.amount, 0)
+    const balance = (amountOwing ?? 0) - amountPaid
+
+    return res.json({
+      registrationId,
+      amountOwing: amountOwing ?? 0,
+      amountPaid,
+      balance,
+    })
   }
 
   if (req.method === 'DELETE') {
