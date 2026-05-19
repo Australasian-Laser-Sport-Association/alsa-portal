@@ -385,7 +385,7 @@ export default function AdminRegistrations() {
                                 onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
                                 className="text-xs text-brand/70 hover:text-brand hover:bg-brand/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
                               >
-                                Record Payment
+                                Record Payment / Refund
                               </button>
                               <button
                                 onClick={() => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias })}

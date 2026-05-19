@@ -12,7 +12,12 @@ function toCents(dollarStr) {
 }
 
 export default function RecordPaymentModal({ registration, profile, records, profMap, onChange, onClose }) {
-  const [newForm, setNewForm] = useState({ amount: '', datePaid: today(), bankRef: '', notes: '' })
+  const [newForm, setNewForm] = useState({ amount: '', datePaid: today(), bankRef: '', notes: '', reason: '' })
+  // Refund flow state. refundMode flips on the first "Record Refund" click and
+  // reveals the Reason field. confirmingRefund gates the actual submit behind
+  // an inline "Confirm refund of $X for [player]?" strip.
+  const [refundMode, setRefundMode] = useState(false)
+  const [confirmingRefund, setConfirmingRefund] = useState(false)
   const [editForm, setEditForm] = useState(null) // { id, amount, datePaid, bankRef, notes } | null
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -29,11 +34,16 @@ export default function RecordPaymentModal({ registration, profile, records, pro
     return [p.first_name, p.last_name].filter(Boolean).join(' ') || p.alias || '—'
   }
 
-  async function submitNew(e) {
-    e.preventDefault()
-    setError('')
+  function validatePositiveAmount() {
     const cents = toCents(newForm.amount)
-    if (cents === null || cents === 0) { setError('Amount must be a non-zero dollar value.'); return }
+    if (cents === null || cents <= 0) {
+      setError('Amount must be a positive dollar value.')
+      return null
+    }
+    return cents
+  }
+
+  async function postRecord(cents, type) {
     setSaving(true)
     try {
       const { records: fresh, summary } = await apiFetch('/api/admin/payments', {
@@ -44,14 +54,60 @@ export default function RecordPaymentModal({ registration, profile, records, pro
           datePaid: newForm.datePaid || today(),
           bankReference: newForm.bankRef,
           notes: newForm.notes,
+          type,
+          reason: type === 'refund' ? newForm.reason : undefined,
         }),
       })
       onChange(fresh, summary)
-      setNewForm({ amount: '', datePaid: today(), bankRef: '', notes: '' })
+      setNewForm({ amount: '', datePaid: today(), bankRef: '', notes: '', reason: '' })
+      setRefundMode(false)
+      setConfirmingRefund(false)
     } catch (err) {
       setError(err.message)
     }
     setSaving(false)
+  }
+
+  // "Record Payment" button — always submits as a payment, even if refundMode
+  // had been toggled. Clears refund state so the modal returns to its normal
+  // payment-default shape on success.
+  async function clickRecordPayment(e) {
+    e?.preventDefault?.()
+    setError('')
+    setConfirmingRefund(false)
+    const cents = validatePositiveAmount()
+    if (cents == null) return
+    await postRecord(cents, 'payment')
+  }
+
+  // "Record Refund" button — multi-step:
+  //   1. First click → flip into refundMode (reveals Reason field).
+  //   2. With refundMode on but empty reason → inline error.
+  //   3. With reason filled and no pending confirmation → show confirm strip.
+  //   4. Confirmation strip's confirm button → submits as refund.
+  async function clickRecordRefund(e) {
+    e?.preventDefault?.()
+    setError('')
+    const cents = validatePositiveAmount()
+    if (cents == null) return
+
+    if (!refundMode) {
+      setRefundMode(true)
+      return
+    }
+    if (!newForm.reason.trim()) {
+      setError('Reason is required for refunds.')
+      return
+    }
+    if (!confirmingRefund) {
+      setConfirmingRefund(true)
+      return
+    }
+    await postRecord(cents, 'refund')
+  }
+
+  function cancelRefundConfirm() {
+    setConfirmingRefund(false)
   }
 
   async function submitEdit(e) {
@@ -113,7 +169,7 @@ export default function RecordPaymentModal({ registration, profile, records, pro
         <div className="p-6 border-b border-line">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-white font-bold text-lg">Record Payment</h2>
+              <h2 className="text-white font-bold text-lg">Record Payment or Refund</h2>
               <p className="text-[#e5e5e5]/50 text-sm mt-0.5">
                 {name}{profile?.alias ? <span className="text-brand"> ({profile.alias})</span> : ''}
               </p>
@@ -148,22 +204,24 @@ export default function RecordPaymentModal({ registration, profile, records, pro
           </div>
         )}
 
-        {/* New payment form */}
-        <form onSubmit={submitNew} className="p-6 border-b border-line space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">New Payment</p>
+        {/* New payment / refund form */}
+        <form onSubmit={clickRecordPayment} className="p-6 border-b border-line space-y-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">
+            New Payment or Refund
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-[#e5e5e5]/50 mb-1">Amount (AUD) *</label>
               <input
-                type="number" step="0.01" required
+                type="number" min="0.01" step="0.01" required
                 value={newForm.amount}
-                onChange={e => setNewForm(f => ({ ...f, amount: e.target.value }))}
+                onChange={e => { setNewForm(f => ({ ...f, amount: e.target.value })); setConfirmingRefund(false) }}
                 placeholder="0.00"
                 className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand"
               />
             </div>
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 mb-1">Date Paid</label>
+              <label className="block text-xs text-[#e5e5e5]/50 mb-1">Date</label>
               <input
                 type="date"
                 value={newForm.datePaid}
@@ -191,13 +249,65 @@ export default function RecordPaymentModal({ registration, profile, records, pro
               className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand resize-none"
             />
           </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold py-2.5 rounded-xl text-sm transition-colors"
-          >
-            {saving ? 'Saving…' : 'Record Payment'}
-          </button>
+
+          {/* Reason field — revealed once "Record Refund" is clicked. Required
+              for refund submissions; ignored for payments. */}
+          {refundMode && (
+            <div>
+              <label className="block text-xs text-[#e5e5e5]/50 mb-1">
+                Refund reason *
+              </label>
+              <input
+                type="text"
+                value={newForm.reason}
+                onChange={e => { setNewForm(f => ({ ...f, reason: e.target.value })); setConfirmingRefund(false) }}
+                placeholder="e.g. Cancelled side event, Overpaid"
+                autoFocus
+                className="w-full bg-base border border-red-500/40 rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-red-400"
+              />
+            </div>
+          )}
+
+          {/* Two-button row. The default form submit (Enter key) maps to
+              Record Payment, matching its `type="submit"`. */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={saving || confirmingRefund}
+              onClick={clickRecordPayment}
+              className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold py-2.5 rounded-xl text-sm transition-colors"
+            >
+              {saving && !confirmingRefund ? 'Saving…' : 'Record Payment'}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={clickRecordRefund}
+              className="bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 disabled:opacity-50 text-red-400 font-bold py-2.5 rounded-xl text-sm transition-colors"
+            >
+              {!refundMode
+                ? 'Record Refund'
+                : confirmingRefund
+                  ? (saving ? 'Saving…' : 'Confirm refund')
+                  : 'Record Refund'}
+            </button>
+          </div>
+
+          {/* Confirmation strip — shown only after a valid refund click. */}
+          {confirmingRefund && (
+            <div className="mt-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+              <p className="text-xs text-red-400">
+                Confirm refund of <strong>{dollars(toCents(newForm.amount) ?? 0)}</strong> for <strong>{name}</strong>?
+              </p>
+              <button
+                type="button"
+                onClick={cancelRefundConfirm}
+                className="text-xs text-[#e5e5e5]/60 hover:text-white font-semibold px-2 py-1 rounded transition-colors flex-shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </form>
 
         {/* History */}

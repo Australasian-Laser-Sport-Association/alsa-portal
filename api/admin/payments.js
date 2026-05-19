@@ -35,22 +35,51 @@ function validAmount(v) {
   return Number.isInteger(v) && v !== 0
 }
 
+// validPositiveAmount(v) — POST requires amountCents > 0; the server applies
+// the sign based on `type`. PATCH still allows negatives (legacy edit path).
+function validPositiveAmount(v) {
+  return Number.isInteger(v) && v > 0
+}
+
 export default async function handler(req, res) {
   const { user, error: authErr } = await verifyCommittee(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
   if (req.method === 'POST') {
-    const { registrationId, amountCents, datePaid, bankReference, notes } = req.body ?? {}
+    const { registrationId, amountCents, datePaid, bankReference, notes, type, reason } = req.body ?? {}
     if (!registrationId) return res.status(400).json({ error: 'registrationId is required' })
-    if (!validAmount(amountCents)) return res.status(400).json({ error: 'amountCents must be a non-zero integer' })
+
+    // Default to 'payment' for back-compat with any caller that omits `type`.
+    const recordType = type ?? 'payment'
+    if (recordType !== 'payment' && recordType !== 'refund') {
+      return res.status(400).json({ error: "type must be 'payment' or 'refund'" })
+    }
+    // Amount is always sent as a positive value; server applies the sign.
+    if (!validPositiveAmount(amountCents)) {
+      return res.status(400).json({ error: 'amountCents must be a positive integer' })
+    }
+
+    // Refunds require an explanatory reason. Merge it into the notes column
+    // (the only audit-trail surface payment_records has) so it's visible in
+    // history listings and CSV exports.
+    let storedNotes = notes?.trim() || null
+    if (recordType === 'refund') {
+      const trimmedReason = reason?.trim() ?? ''
+      if (!trimmedReason) return res.status(400).json({ error: 'reason is required for refunds' })
+      storedNotes = storedNotes
+        ? `Refund — ${trimmedReason} · ${storedNotes}`
+        : `Refund — ${trimmedReason}`
+    }
+
+    const signedAmount = recordType === 'refund' ? -amountCents : amountCents
 
     const { error: insErr } = await supabaseAdmin.from('payment_records').insert({
       registration_id: registrationId,
-      amount: amountCents,
+      amount: signedAmount,
       recorded_at: datePaid || new Date().toISOString(),
       recorded_by: user.id,
       bank_reference: bankReference?.trim() || null,
-      notes: notes?.trim() || null,
+      notes: storedNotes,
     })
     if (insErr) return res.status(500).json({ error: insErr.message })
 

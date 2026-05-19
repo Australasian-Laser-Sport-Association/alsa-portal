@@ -128,11 +128,20 @@ export default async function handler(req, res) {
 
     // Legal acceptances + under-18 approvals come from the unified Phase 1/2/3
     // tables. Acceptances are joined to legal_documents to filter by document_type.
+    //
+    // regs_status / doubles_pairs / triples_teams provide the raw data for the
+    // CaptainHub team-readiness chips (side events, extras, payment). The
+    // service-role client bypasses RLS so a plain captain (non-committee) can
+    // see other roster members' data via this endpoint.
     const [
       { data: acceptances, error: e1 },
       { data: payments, error: e2 },
       { data: ref_results, error: e3 },
       { data: u18_approvals, error: e4 },
+      { data: regs_status, error: e5 },
+      { data: doubles_pairs, error: e6 },
+      { data: triples_teams, error: e7 },
+      { data: pay_records, error: e8 },
     ] = await Promise.all([
       supabaseAdmin
         .from('legal_acceptances')
@@ -146,10 +155,42 @@ export default async function handler(req, res) {
         .select('user_id, status')
         .in('user_id', playerIds)
         .eq('event_year', eventYear),
+      supabaseAdmin
+        .from('zltac_registrations')
+        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing')
+        .in('user_id', playerIds)
+        .eq('year', eventYear),
+      supabaseAdmin
+        .from('doubles_pairs')
+        .select('player1_id, player2_id, confirmed')
+        .eq('event_year', eventYear)
+        .or(`player1_id.in.(${playerIds.join(',')}),player2_id.in.(${playerIds.join(',')})`),
+      supabaseAdmin
+        .from('triples_teams')
+        .select('player1_id, player2_id, player3_id, confirmed')
+        .eq('event_year', eventYear)
+        .or(`player1_id.in.(${playerIds.join(',')}),player2_id.in.(${playerIds.join(',')}),player3_id.in.(${playerIds.join(',')})`),
+      // payment_records joined to registrations (year-scoped). Used to compute
+      // per-player amount_paid so the captain hub Payment chip can derive
+      // 'paid'/'partial'/'overpaid' instead of reading amount_owing alone.
+      supabaseAdmin
+        .from('payment_records')
+        .select('amount, zltac_registrations!inner(user_id, year)')
+        .eq('zltac_registrations.year', eventYear),
     ])
 
-    const errs = [e1, e2, e3, e4].filter(Boolean)
+    const errs = [e1, e2, e3, e4, e5, e6, e7, e8].filter(Boolean)
     if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
+
+    // Sum payment_records per user, restricted to the requested playerIds.
+    const playerIdSet = new Set(playerIds)
+    const paid_cents_by_user = {}
+    for (const rec of (pay_records ?? [])) {
+      const uid = rec.zltac_registrations?.user_id
+      if (uid && playerIdSet.has(uid)) {
+        paid_cents_by_user[uid] = (paid_cents_by_user[uid] ?? 0) + (rec.amount ?? 0)
+      }
+    }
 
     // Preserve the response shape that CaptainHub.jsx already consumes:
     // each array is just rows of { user_id }, used to build a Set of completed users.
@@ -170,6 +211,10 @@ export default async function handler(req, res) {
       ref_results: ref_results ?? [],
       u18_subs,
       media_subs,
+      regs_status: regs_status ?? [],
+      doubles_pairs: doubles_pairs ?? [],
+      triples_teams: triples_teams ?? [],
+      paid_cents_by_user,
     })
   }
 

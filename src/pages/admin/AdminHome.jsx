@@ -29,6 +29,15 @@ function fmt(d) {
   return formatDate(d, 'shortWithTime') || '—'
 }
 
+// "X / N (Y%)" — guards against divide-by-zero. Returns "X / 0" when N is 0.
+function ratioLabel(x, n) {
+  const num = x ?? 0
+  const denom = n ?? 0
+  if (denom <= 0) return `${num} / 0`
+  const pct = Math.round((num / denom) * 100)
+  return `${num} / ${denom} (${pct}%)`
+}
+
 export default function AdminHome() {
   const [stats, setStats] = useState({})
   const [activity, setActivity] = useState([])
@@ -36,57 +45,141 @@ export default function AdminHome() {
 
   useEffect(() => {
     async function load() {
+      // 1. Identify the active event first — most stats are scoped to it.
+      const { data: activeEvent } = await supabase
+        .from('zltac_events')
+        .select('id, name, year')
+        .eq('status', 'open')
+        .limit(1).maybeSingle()
+      const activeYear = activeEvent?.year ?? null
+      const activeEventId = activeEvent?.id ?? null
+      const eventLabel = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : '—'
+      const eventScope = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'No active event'
+
+      // 2. Top-line counts + raw rows we'll aggregate locally.
+      //    Year-scoped tiles require an active event; we still run the
+      //    queries even when there's none — they return 0 rows gracefully.
       const [
-        { count: memberCount },
-        { count: teamCount },
-        { count: playerCount },
-        { data: payments },
+        { count: totalUsers },
+        teamsRes,
+        { data: regsForYear },
+        { data: payRecsForYear },
+        { data: refResults },
+        { data: cocMediaAccs },
         { data: recentRegs },
-        { data: recentPayments },
+        { data: recentPayRecs },
         { data: recentCoc },
-        { count: refPassed },
-        { data: activeEvent },
       ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('teams').select('*', { count: 'exact', head: true }),
-        supabase.from('zltac_registrations').select('*', { count: 'exact', head: true }),
-        supabase.from('payments').select('amount').eq('status', 'paid'),
-        supabase.from('zltac_registrations').select('id, created_at, year, profiles!zltac_registrations_user_id_fkey(first_name, alias)').order('created_at', { ascending: false }).limit(5),
-        supabase.from('payments').select('amount, created_at, profiles(first_name, alias)').eq('status', 'paid').order('created_at', { ascending: false }).limit(5),
+        activeEventId
+          ? supabase.from('teams').select('*', { count: 'exact', head: true }).eq('event_id', activeEventId)
+          : Promise.resolve({ count: 0 }),
+        activeYear
+          ? supabase.from('zltac_registrations').select('id, user_id, amount_owing').eq('year', activeYear)
+          : Promise.resolve({ data: [] }),
+        activeYear
+          ? supabase.from('payment_records')
+              .select('registration_id, amount, zltac_registrations!inner(year)')
+              .eq('zltac_registrations.year', activeYear)
+          : Promise.resolve({ data: [] }),
+        supabase.from('referee_test_results').select('user_id, passed'),
+        activeYear
+          ? supabase.from('legal_acceptances')
+              .select('user_id, document:legal_documents!document_id(document_type)')
+              .eq('event_year', activeYear)
+          : Promise.resolve({ data: [] }),
+        supabase.from('zltac_registrations')
+          .select('id, created_at, year, profiles!zltac_registrations_user_id_fkey(first_name, alias)')
+          .order('created_at', { ascending: false }).limit(5),
+        // Recent payments (latest 5) — same shape as before, sourced from
+        // payment_records joined to profiles via the registration.
+        supabase.from('payment_records')
+          .select('amount, recorded_at, registration:zltac_registrations!inner(profiles!zltac_registrations_user_id_fkey(first_name, alias))')
+          .order('recorded_at', { ascending: false }).limit(5),
         supabase.from('legal_acceptances')
           .select('accepted_at, profiles!user_id(first_name, alias), document:legal_documents!document_id(document_type)')
-          .order('accepted_at', { ascending: false })
-          .limit(20),
-        supabase.from('referee_test_results').select('*', { count: 'exact', head: true }).eq('passed', true),
-        supabase.from('zltac_events').select('name, year').eq('status', 'open').limit(1).maybeSingle(),
+          .order('accepted_at', { ascending: false }).limit(20),
       ])
 
-      const totalRevenue = (payments ?? []).reduce((sum, p) => sum + (p.amount ?? 0), 0)
-      const eventLabel = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : '—'
+      const teamsForEvent = teamsRes.count ?? 0
+      const playersForEvent = (regsForYear ?? []).length
+
+      // 3. Payment totals: sum payment_records by registration, then per-reg
+      //    balance = amount_owing - amount_paid. Total amount-owing = sum of
+      //    positive balances only. "Payments Received" = sum of all amounts
+      //    (refund records are negative, so the total nets out correctly).
+      const paidByReg = {}
+      let paymentsReceivedCents = 0
+      for (const rec of (payRecsForYear ?? [])) {
+        paidByReg[rec.registration_id] = (paidByReg[rec.registration_id] ?? 0) + (rec.amount ?? 0)
+        paymentsReceivedCents += rec.amount ?? 0
+      }
+      let amountOwingCents = 0
+      for (const reg of (regsForYear ?? [])) {
+        const owing = reg.amount_owing ?? 0
+        const paid = paidByReg[reg.id] ?? 0
+        const balance = owing - paid
+        if (balance > 0) amountOwingCents += balance
+      }
+
+      // 4. Ratios — X / N (Y%) where N = playersForEvent. Each X is the
+      //    count of currently-registered players for the active year who
+      //    have completed the requirement.
+      const registeredUserIds = new Set((regsForYear ?? []).map(r => r.user_id))
+
+      const refPassedUserIds = new Set((refResults ?? []).filter(r => r.passed).map(r => r.user_id))
+      const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid)).length
+
+      const cocSignedUserIds = new Set(
+        (cocMediaAccs ?? [])
+          .filter(a => a.document?.document_type === 'code_of_conduct')
+          .map(a => a.user_id)
+      )
+      const mediaSignedUserIds = new Set(
+        (cocMediaAccs ?? [])
+          .filter(a => a.document?.document_type === 'media_release')
+          .map(a => a.user_id)
+      )
+      const cocSignedRegistered = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid)).length
+      const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid)).length
 
       setStats({
-        memberCount: memberCount ?? 0,
-        teamCount: teamCount ?? 0,
-        playerCount: playerCount ?? 0,
-        totalRevenue,
-        refPassed: refPassed ?? 0,
+        totalUsers: totalUsers ?? 0,
+        teamsForEvent,
+        playersForEvent,
+        paymentsReceivedCents,
+        amountOwingCents,
+        refRatio:   ratioLabel(refPassedRegistered,   playersForEvent),
+        cocRatio:   ratioLabel(cocSignedRegistered,   playersForEvent),
+        mediaRatio: ratioLabel(mediaSignedRegistered, playersForEvent),
         eventLabel,
+        eventScope,
+        eventName: activeEvent?.name ?? null,
+        eventYear: activeYear,
         eventOpen: !!activeEvent,
       })
 
+      // 5. Activity feed.
       const feed = []
       function displayName(profiles) {
         if (!profiles) return 'A player'
         return profiles.alias || profiles.first_name || 'A player'
       }
       for (const r of recentRegs ?? []) {
-        feed.push({ icon: '📋', text: `${displayName(r.profiles)} registered for ZLTAC ${r.year ?? '2027'}`, time: fmt(r.created_at), ts: r.created_at })
+        feed.push({ icon: '📋', text: `${displayName(r.profiles)} registered for ZLTAC ${r.year ?? activeYear ?? ''}`, time: fmt(r.created_at), ts: r.created_at })
       }
-      for (const p of recentPayments ?? []) {
-        feed.push({ icon: '💳', text: `${displayName(p.profiles)} paid ${dollars(p.amount)}`, time: fmt(p.created_at), ts: p.created_at })
+      for (const p of recentPayRecs ?? []) {
+        const prof = p.registration?.profiles
+        const isRefund = (p.amount ?? 0) < 0
+        feed.push({
+          icon: isRefund ? '↩️' : '💳',
+          text: isRefund
+            ? `${displayName(prof)} refunded ${dollars(Math.abs(p.amount))}`
+            : `${displayName(prof)} paid ${dollars(p.amount)}`,
+          time: fmt(p.recorded_at),
+          ts: p.recorded_at,
+        })
       }
-      // Show CoC acceptances only — matches the legacy widget's intent.
-      // Trim to 5 after filtering so we don't get crowded out by Media Release rows.
       const cocAcceptances = (recentCoc ?? [])
         .filter(a => a.document?.document_type === 'code_of_conduct')
         .slice(0, 5)
@@ -99,6 +192,11 @@ export default function AdminHome() {
     }
     load()
   }, [])
+
+  // Event-name-suffixed labels. When there's no active event, the scope
+  // label reads "No active event" so the user knows why counts are zero.
+  const teamsLabel   = `Teams Registered For ${stats.eventScope ?? ''}`
+  const playersLabel = `Players Registered For ${stats.eventScope ?? ''}`
 
   return (
     <div>
@@ -115,12 +213,30 @@ export default function AdminHome() {
         <>
           {/* Stats grid */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            <StatCard label="Total Members" value={stats.memberCount} color="text-white" />
-            <StatCard label="Teams Registered" value={stats.teamCount} color="text-brand" />
-            <StatCard label="Players Registered" value={stats.playerCount} color="text-white" />
-            <StatCard label="Payments Received" value={dollars(stats.totalRevenue)} sub={stats.eventLabel} color="text-brand" />
-            <StatCard label="Ref Tests Passed" value={stats.refPassed} color="text-white" />
-            <StatCard label="Active Event" value={stats.eventLabel} sub={stats.eventOpen ? 'Registration open' : 'No event open'} color="text-brand" />
+            <StatCard label="Total Website Users" value={stats.totalUsers} color="text-white" />
+            <StatCard label={teamsLabel} value={stats.teamsForEvent} color="text-brand" />
+            <StatCard label={playersLabel} value={stats.playersForEvent} color="text-white" />
+            <StatCard
+              label="Payments Received"
+              value={dollars(stats.paymentsReceivedCents ?? 0)}
+              sub={stats.eventScope}
+              color="text-brand"
+            />
+            <StatCard
+              label="Payment Amount Owing"
+              value={dollars(stats.amountOwingCents ?? 0)}
+              sub={stats.eventScope}
+              color={stats.amountOwingCents > 0 ? 'text-yellow-400' : 'text-white'}
+            />
+            <StatCard label="Ref Tests Passed"  value={stats.refRatio}   sub={stats.eventScope} color="text-white" />
+            <StatCard label="CoC's Signed"      value={stats.cocRatio}   sub={stats.eventScope} color="text-white" />
+            <StatCard label="Media Forms Signed" value={stats.mediaRatio} sub={stats.eventScope} color="text-white" />
+            <StatCard
+              label="Active Event"
+              value={stats.eventLabel}
+              sub={stats.eventOpen ? 'Registration open' : 'No event open'}
+              color="text-brand"
+            />
           </div>
 
           {/* Activity feed */}

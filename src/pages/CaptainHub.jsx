@@ -25,6 +25,92 @@ function Tick({ ok }) {
   )
 }
 
+// ── Status helpers ──────────────────────────────────────────────────────────
+//
+// derivePaymentStatus(reg, amountPaidCents) — single source of truth for the
+// player payment chip state. Returns 'unpaid' | 'partial' | 'paid' | 'overpaid'
+// from the registration's amount_owing (the cost of registration) minus the
+// sum of payment_records.amount for that registration (the running ledger).
+//
+//   balance < 0  → 'overpaid'
+//   balance == 0 → 'paid'
+//   balance > 0  AND any payment recorded → 'partial'
+//   balance > 0  AND no payments          → 'unpaid'
+//
+// The PaymentChip below reads only the returned status string; this helper
+// is the single point of change if the formula ever evolves.
+function derivePaymentStatus(reg, amountPaidCents) {
+  if (!reg || reg.amount_owing == null) return 'unpaid'
+  const owing = reg.amount_owing
+  const paid = amountPaidCents ?? 0
+  const balance = owing - paid
+  if (balance < 0) return 'overpaid'
+  if (balance === 0) return 'paid'
+  if (paid > 0) return 'partial'
+  return 'unpaid'
+}
+
+// deriveSideEventsStatus(reg, doublesPairs, triplesTeams) — boolean per player.
+// Requires (a) the player has confirmed their side-event selections, and
+// (b) for each partner-based event the player chose, the relevant
+// doubles_pairs / triples_teams row is confirmed.
+function deriveSideEventsStatus(reg, doublesPairs, triplesTeams) {
+  if (!reg) return false
+  if (!reg.has_confirmed_side_events) return false
+  const slugs = new Set(reg.side_events ?? [])
+  const uid = reg.user_id
+  if (slugs.has('doubles')) {
+    const pair = (doublesPairs ?? []).find(p => p.player1_id === uid || p.player2_id === uid)
+    if (!pair || !pair.confirmed) return false
+  }
+  if (slugs.has('triples')) {
+    const trip = (triplesTeams ?? []).find(t => t.player1_id === uid || t.player2_id === uid || t.player3_id === uid)
+    if (!trip || !trip.confirmed) return false
+  }
+  return true
+}
+
+// ── Status chips ────────────────────────────────────────────────────────────
+// Generic binary/N/A chip used for CoC, Ref Test, Media, Side Events, Extras.
+function StatusChip({ state, label, title }) {
+  // state: 'complete' | 'incomplete' | 'na'
+  const meta = state === 'complete'
+    ? { cls: 'bg-brand/10 text-brand border-brand/30', icon: '✓' }
+    : state === 'na'
+      ? { cls: 'bg-line/40 text-[#e5e5e5]/35 border-line', icon: '—' }
+      : { cls: 'bg-red-500/10 text-red-400 border-red-500/30', icon: '✗' }
+  return (
+    <span
+      title={title ?? label}
+      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${meta.cls}`}
+    >
+      <span aria-hidden>{meta.icon}</span>
+      <span>{label}</span>
+    </span>
+  )
+}
+
+// PaymentChip — takes a status string. Helper above is the only place that
+// inspects amount_owing. Add new states ('partial' etc.) by extending both.
+const PAYMENT_META = {
+  unpaid:   { cls: 'bg-red-500/10 text-red-400 border-red-500/30',     icon: '✗', label: 'Unpaid' },
+  partial:  { cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: '◐', label: 'Partial' },
+  paid:     { cls: 'bg-brand/10 text-brand border-brand/30',           icon: '✓', label: 'Paid' },
+  overpaid: { cls: 'bg-blue-500/10 text-blue-400 border-blue-500/30',  icon: '+', label: 'Overpaid' },
+}
+function PaymentChip({ status }) {
+  const meta = PAYMENT_META[status] ?? PAYMENT_META.unpaid
+  return (
+    <span
+      title={`Payment: ${meta.label}`}
+      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${meta.cls}`}
+    >
+      <span aria-hidden>{meta.icon}</span>
+      <span>{meta.label}</span>
+    </span>
+  )
+}
+
 function StatusBadge({ status }) {
   const map = {
     pending:  'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
@@ -75,6 +161,11 @@ export default function CaptainHub() {
   const [settingsForm, setSettingsForm] = useState({ name: '', state: '', home_venue: '' })
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsErr, setSettingsErr] = useState('')
+
+  // Logo upload
+  const logoInputRef = useRef(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
@@ -128,24 +219,33 @@ export default function CaptainHub() {
 
   async function loadCompletions(playerIds, eventYear) {
     if (!playerIds.length) return
-    const { coc_sigs, payments, ref_results, u18_subs, media_subs } = await apiFetch(
+    const {
+      coc_sigs, ref_results, u18_subs, media_subs,
+      regs_status, doubles_pairs, triples_teams,
+      paid_cents_by_user,
+    } = await apiFetch(
       '/api/captain',
       { method: 'POST', body: JSON.stringify({ action: 'team-completions', playerIds, eventYear }) },
     )
     const cocSet   = new Set((coc_sigs  ?? []).map(c => c.user_id))
-    const payMap   = Object.fromEntries((payments   ?? []).map(p => [p.user_id, p.status]))
     const testMap  = Object.fromEntries((ref_results ?? []).map(t => [t.user_id, t]))
     const u18Set   = new Set((u18_subs  ?? []).map(u => u.user_id))
     const mediaSet = new Set((media_subs ?? []).map(m => m.user_id))
+    const regsByUser = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, r]))
+    const paidByUser = paid_cents_by_user ?? {}
+
     const comp = {}
     playerIds.forEach(uid => {
+      const reg = regsByUser[uid]
       comp[uid] = {
-        coc:       cocSet.has(uid),
-        paid:      payMap[uid] === 'paid',
-        test:      testMap[uid]?.passed === true,
-        testScore: testMap[uid]?.score,
-        u18:       u18Set.has(uid),
-        media:     mediaSet.has(uid),
+        coc:           cocSet.has(uid),
+        test:          testMap[uid]?.passed === true,
+        testScore:     testMap[uid]?.score,
+        u18:           u18Set.has(uid),
+        media:         mediaSet.has(uid),
+        sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
+        extras:        !!reg?.has_confirmed_extras,
+        paymentStatus: derivePaymentStatus(reg, paidByUser[uid] ?? 0),
       }
     })
     setCompletionMap(comp)
@@ -279,6 +379,77 @@ export default function CaptainHub() {
   }
 
   // ── Team settings ─────────────────────────────────────────────────────────
+  // ── Logo upload ──────────────────────────────────────────────────────────
+  // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
+  // team_logos_captain_team_write RLS policy (see 20260520000000 migration).
+  // We do not delete the old file when replacing; orphaned files are cheap
+  // and audit-friendly. SVGs are allowed but rendered only via <img src>.
+  const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+  const LOGO_MAX_BYTES = 2 * 1024 * 1024 // 2 MB
+
+  function pickLogo() {
+    setLogoError('')
+    logoInputRef.current?.click()
+  }
+
+  async function onLogoFileChosen(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoError('')
+
+    if (!LOGO_ACCEPTED_TYPES.includes(file.type)) {
+      setLogoError('Unsupported file type. Use PNG, JPEG, WebP, or SVG.')
+      e.target.value = ''
+      return
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(2)
+      setLogoError(`File is ${mb} MB — max 2 MB.`)
+      e.target.value = ''
+      return
+    }
+    if (!team?.id) {
+      setLogoError('Team is not loaded yet.')
+      e.target.value = ''
+      return
+    }
+
+    setLogoUploading(true)
+    try {
+      const extFromName = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : null
+      const extFromMime = ({
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+        'image/svg+xml': 'svg',
+      })[file.type]
+      const ext = extFromName || extFromMime || 'bin'
+      const path = `${team.id}/${Date.now()}.${ext}`
+
+      const { data: up, error: upErr } = await supabase.storage
+        .from('team-logos')
+        .upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+
+      const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
+      const publicUrl = urlData.publicUrl
+
+      const { error: updErr } = await supabase
+        .from('teams')
+        .update({ logo_url: publicUrl })
+        .eq('id', team.id)
+      if (updErr) throw updErr
+
+      setTeam(t => ({ ...t, logo_url: publicUrl }))
+      showToast('Logo updated')
+    } catch (err) {
+      setLogoError(err?.message || 'Logo upload failed. Please try again.')
+    } finally {
+      setLogoUploading(false)
+      e.target.value = ''
+    }
+  }
+
   async function saveSettings() {
     if (!settingsForm.name.trim()) { setSettingsErr('Team name is required.'); return }
     setSavingSettings(true); setSettingsErr('')
@@ -304,9 +475,12 @@ export default function CaptainHub() {
       side_events: (r.side_events ?? []).join('; '),
       dinner_guests: r.dinner_guests ?? 0,
       status: r.status ?? '',
-      coc:      completionMap[r.user_id]?.coc  ? 'Yes' : 'No',
-      paid:     completionMap[r.user_id]?.paid ? 'Yes' : 'No',
-      ref_test: completionMap[r.user_id]?.test ? 'Yes' : 'No',
+      coc:         completionMap[r.user_id]?.coc       ? 'Yes' : 'No',
+      ref_test:    completionMap[r.user_id]?.test      ? 'Yes' : 'No',
+      media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
+      side_events: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
+      extras:      completionMap[r.user_id]?.extras    ? 'Yes' : 'No',
+      payment:     completionMap[r.user_id]?.paymentStatus ?? 'unpaid',
     }))
     const keys = Object.keys(rows[0])
     const csv = [keys.join(','), ...rows.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n')
@@ -318,7 +492,11 @@ export default function CaptainHub() {
     if (!c) return false
     const row = roster.find(r => r.user_id === uid)
     const u18needed = isUnder18(row?.profiles?.dob, event?.year)
-    return c.coc && c.paid && c.test && c.media && (!u18needed || c.u18)
+    return (
+      c.coc && c.test && c.media && c.sideEvents && c.extras &&
+      c.paymentStatus !== 'unpaid' &&
+      (!u18needed || c.u18)
+    )
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────
@@ -360,7 +538,7 @@ export default function CaptainHub() {
   const filteredRoster = roster.filter(r => {
     if (filter === 'ready') return isPlayerReady(r.user_id)
     if (filter === 'incomplete') return !isPlayerReady(r.user_id)
-    if (filter === 'unpaid') return !completionMap[r.user_id]?.paid
+    if (filter === 'unpaid') return completionMap[r.user_id]?.paymentStatus === 'unpaid'
     return true
   })
 
@@ -443,6 +621,12 @@ export default function CaptainHub() {
         {/* Header */}
         <div className="flex items-start gap-5 mb-6">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0" style={{ background: team.colour ?? '#00E6FF' }}>
+            {/* SAFETY: do not inline-render SVG logos — always use <img src>.
+                Inlining (e.g. dangerouslySetInnerHTML on fetched SVG markup)
+                would allow scripts in user-uploaded SVGs to execute in the
+                app's origin. <img src> isolates the SVG to the Storage CDN
+                origin. The legal-documents bucket and team-logos bucket both
+                permit SVG uploads; never render those inline. */}
             {team.logo_url
               ? <img src={team.logo_url} alt={team.name} className="w-full h-full object-contain rounded-xl" />
               : initials(team.name)
@@ -619,30 +803,40 @@ export default function CaptainHub() {
                             </span>
                           </div>
 
-                          {/* Completion ticks */}
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <div className="flex items-center gap-1.5">
-                              <Tick ok={comp.coc} />
-                              <span className="text-xs text-[#e5e5e5]/40">CoC</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Tick ok={comp.test} />
-                              <span className="text-xs text-[#e5e5e5]/40">Ref Test{comp.testScore != null ? ` (${comp.testScore}%)` : ''}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Tick ok={comp.paid} />
-                              <span className="text-xs text-[#e5e5e5]/40">Paid</span>
-                            </div>
-                            {u18 && (
-                              <div className="flex items-center gap-1.5">
-                                <Tick ok={comp.u18} />
-                                <span className="text-xs text-[#e5e5e5]/40">U18 Form</span>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-1.5">
-                              <Tick ok={comp.media} />
-                              <span className="text-xs text-[#e5e5e5]/40">Media</span>
-                            </div>
+                          {/* Completion chips — read-only.
+                              On narrow viewports the strip wraps; each chip
+                              still carries its full status word. */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <StatusChip
+                              state={comp.coc ? 'complete' : 'incomplete'}
+                              label="CoC"
+                              title={comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'}
+                            />
+                            <StatusChip
+                              state={comp.test ? 'complete' : 'incomplete'}
+                              label={comp.test && comp.testScore != null ? `Ref ${comp.testScore}%` : 'Ref Test'}
+                              title={comp.test
+                                ? `Referee Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}`
+                                : 'Referee Test: not yet passed'}
+                            />
+                            <StatusChip
+                              state={comp.media ? 'complete' : 'incomplete'}
+                              label="Media"
+                              title={comp.media ? 'Media Release: signed' : 'Media Release: not yet signed'}
+                            />
+                            <StatusChip
+                              state={comp.sideEvents ? 'complete' : 'incomplete'}
+                              label="Side"
+                              title={comp.sideEvents
+                                ? 'Side events: confirmed (and any doubles/triples partners confirmed)'
+                                : 'Side events: not confirmed, or a doubles/triples partner has not confirmed yet'}
+                            />
+                            <StatusChip
+                              state={comp.extras ? 'complete' : 'incomplete'}
+                              label="Extras"
+                              title={comp.extras ? 'Extras: confirmed' : 'Extras: not yet confirmed'}
+                            />
+                            <PaymentChip status={comp.paymentStatus} />
                           </div>
                         </div>
 
@@ -671,6 +865,54 @@ export default function CaptainHub() {
                 <button onClick={() => setEditingSettings(true)} className="text-xs text-brand/60 hover:text-brand transition-colors">Edit</button>
               )}
             </div>
+
+            {/* Logo row — always visible. Read-only display + upload control. */}
+            <div className="flex items-center gap-4 mb-5 pb-5 border-b border-line">
+              <div
+                className="w-20 h-20 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0 overflow-hidden"
+                style={{ background: team.colour ?? '#00E6FF' }}
+              >
+                {/* SAFETY: do not inline-render SVG logos — always use <img src>. */}
+                {team.logo_url
+                  ? <img src={team.logo_url} alt={`${team.name} logo`} className="w-full h-full object-contain" />
+                  : <span aria-hidden>{initials(team.name)}</span>
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1">Team Logo</p>
+                <p className="text-xs text-[#e5e5e5]/35 mb-2 leading-relaxed">
+                  PNG, JPEG, WebP, or SVG · max 2 MB
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={onLogoFileChosen}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={pickLogo}
+                    disabled={logoUploading}
+                    className="text-xs bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    {logoUploading
+                      ? 'Uploading…'
+                      : team.logo_url
+                        ? 'Replace logo'
+                        : 'Upload logo'}
+                  </button>
+                  {logoUploading && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/45">
+                      <span className="w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                      Uploading…
+                    </span>
+                  )}
+                </div>
+                {logoError && <p className="text-red-400 text-xs mt-2">{logoError}</p>}
+              </div>
+            </div>
+
             {editingSettings ? (
               <div className="space-y-4">
                 <div>
