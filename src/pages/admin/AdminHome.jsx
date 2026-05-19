@@ -53,7 +53,10 @@ export default function AdminHome() {
         supabase.from('payments').select('amount').eq('status', 'paid'),
         supabase.from('zltac_registrations').select('id, created_at, year, profiles!zltac_registrations_user_id_fkey(first_name, alias)').order('created_at', { ascending: false }).limit(5),
         supabase.from('payments').select('amount, created_at, profiles(first_name, alias)').eq('status', 'paid').order('created_at', { ascending: false }).limit(5),
-        supabase.from('code_of_conduct_signatures').select('signed_at, profiles(first_name, alias)').order('signed_at', { ascending: false }).limit(5),
+        supabase.from('legal_acceptances')
+          .select('accepted_at, profiles!user_id(first_name, alias), document:legal_documents!document_id(document_type)')
+          .order('accepted_at', { ascending: false })
+          .limit(20),
         supabase.from('referee_test_results').select('*', { count: 'exact', head: true }).eq('passed', true),
         supabase.from('zltac_events').select('name, year').eq('status', 'open').limit(1).maybeSingle(),
       ])
@@ -82,8 +85,13 @@ export default function AdminHome() {
       for (const p of recentPayments ?? []) {
         feed.push({ icon: '💳', text: `${displayName(p.profiles)} paid ${dollars(p.amount)}`, time: fmt(p.created_at), ts: p.created_at })
       }
-      for (const c of recentCoc ?? []) {
-        feed.push({ icon: '✍️', text: `${displayName(c.profiles)} signed the Code of Conduct`, time: fmt(c.signed_at), ts: c.signed_at })
+      // Show CoC acceptances only — matches the legacy widget's intent.
+      // Trim to 5 after filtering so we don't get crowded out by Media Release rows.
+      const cocAcceptances = (recentCoc ?? [])
+        .filter(a => a.document?.document_type === 'code_of_conduct')
+        .slice(0, 5)
+      for (const c of cocAcceptances) {
+        feed.push({ icon: '✍️', text: `${displayName(c.profiles)} signed the Code of Conduct`, time: fmt(c.accepted_at), ts: c.accepted_at })
       }
       feed.sort((a, b) => new Date(b.ts) - new Date(a.ts))
       setActivity(feed.slice(0, 12))

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import Footer from '../components/Footer'
 import StatsStrip from '../components/zltac/StatsStrip'
 import FormatEvolutionTimeline from '../components/zltac/FormatEvolutionTimeline'
@@ -21,6 +22,8 @@ export default function ZLTACLanding() {
   // State filter is lifted up so HostingGrid can drive YearExplorer.
   const [stateFilter, setStateFilter] = useState('all')
   const [committee, setCommittee] = useState([])
+  const [historyRows, setHistoryRows] = useState([])
+  const [placingRows, setPlacingRows] = useState([])
 
   useEffect(() => {
     let cancelled = false
@@ -30,6 +33,68 @@ export default function ZLTACLanding() {
       .catch(() => { if (!cancelled) setCommittee([]) })
     return () => { cancelled = true }
   }, [])
+
+  // Year-level metadata + all placings, fetched once at the page level and
+  // composed into the events shape consumed by YearExplorer / YearCard /
+  // FormatEvolutionTimeline (same shape the static file used).
+  useEffect(() => {
+    let cancelled = false
+
+    supabase
+      .from('zltac_event_history')
+      .select('year, team_count, location_city, location_state, location_venue, location_country, is_cancelled, is_upcoming, description, historic_note')
+      .order('year', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        setHistoryRows(error ? [] : (data ?? []))
+      })
+
+    supabase
+      .from('zltac_event_placings')
+      .select('tournament_year, division, rank, name, subtitle')
+      .order('tournament_year', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        setPlacingRows(error ? [] : (data ?? []))
+      })
+
+    return () => { cancelled = true }
+  }, [])
+
+  const events = useMemo(() => {
+    // Group placings: year → division → [{rank, name, subtitle}, …] sorted by rank.
+    const byYear = new Map()
+    for (const p of placingRows) {
+      let divs = byYear.get(p.tournament_year)
+      if (!divs) { divs = new Map(); byYear.set(p.tournament_year, divs) }
+      let list = divs.get(p.division)
+      if (!list) { list = []; divs.set(p.division, list) }
+      list.push({ rank: p.rank, name: p.name, subtitle: p.subtitle })
+    }
+    for (const divs of byYear.values()) {
+      for (const list of divs.values()) list.sort((a, b) => a.rank - b.rank)
+    }
+
+    return historyRows.map(h => {
+      const divs = byYear.get(h.year)
+      const divisions = divs
+        ? Object.fromEntries(Array.from(divs.entries()))
+        : undefined
+      return {
+        year: h.year,
+        teamCount: h.team_count,
+        location: h.location_venue,
+        city: h.location_city,
+        state: h.location_state,
+        country: h.location_country,
+        cancelled: !!h.is_cancelled,
+        upcoming: !!h.is_upcoming,
+        notes: h.description ?? null,
+        historicNote: h.historic_note ?? null,
+        divisions,
+      }
+    })
+  }, [historyRows, placingRows])
 
   function handleSelectRegion(region) {
     // Toggle off if already selected, otherwise apply the filter and scroll up.
@@ -77,7 +142,7 @@ export default function ZLTACLanding() {
       </section>
 
       <StatsStrip />
-      <FormatEvolutionTimeline />
+      <FormatEvolutionTimeline events={events} />
 
       {/* ── ZLTAC Committee ── */}
       <section className="bg-surface">
@@ -118,6 +183,7 @@ export default function ZLTACLanding() {
       </section>
 
       <YearExplorer
+        events={events}
         stateFilter={stateFilter}
         onStateFilterChange={setStateFilter}
       />

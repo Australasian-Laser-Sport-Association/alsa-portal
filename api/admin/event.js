@@ -72,10 +72,9 @@ export default async function handler(req, res) {
     // Wipe year-keyed satellite data first (no FK to zltac_events.year).
     // Order matters only for foreign-key chains; year-keyed deletes are independent.
     const yearScopedTables = [
-      'code_of_conduct_signatures',
+      'legal_acceptances',
+      'under_18_approvals',
       'payments',
-      'under18_submissions',
-      'media_release_submissions',
       'doubles_pairs',
       'triples_teams',
     ]

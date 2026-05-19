@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { zltacHistory } from '../../data/zltacHistory'
+import { zltacHistory } from '../../data/zltacHistory'  // formatEvolution only
 
 // ── Sparkline ────────────────────────────────────────────────────────────────
-function TournamentGrowthSparkline() {
-  const data = zltacHistory.events
+function TournamentGrowthSparkline({ events }) {
+  const data = events
     .filter(e => e.year >= 1999 && e.year <= 2026)
     .map(e => ({
       year: e.year,
@@ -13,6 +13,10 @@ function TournamentGrowthSparkline() {
       cancelled: !!e.cancelled,
     }))
     .sort((a, b) => a.year - b.year)
+
+  // Defer rendering until events have loaded — every callout below assumes
+  // the corresponding year is present in `data`.
+  if (data.length === 0) return null
 
   const xMin = 1999
   const xMax = 2026
@@ -334,7 +338,7 @@ function TournamentGrowthSparkline() {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
-export default function FormatEvolutionTimeline() {
+export default function FormatEvolutionTimeline({ events = [] }) {
   const milestones = zltacHistory.formatEvolution
 
   return (
@@ -420,7 +424,7 @@ export default function FormatEvolutionTimeline() {
           Tournament Growth
         </p>
         <div className="md:max-w-4xl md:mx-auto">
-          <TournamentGrowthSparkline />
+          <TournamentGrowthSparkline events={events} />
           <p className="text-[#e5e5e5]/40 text-[10px] uppercase tracking-widest text-center mt-3">
             Team count per year, 1999-2026
           </p>

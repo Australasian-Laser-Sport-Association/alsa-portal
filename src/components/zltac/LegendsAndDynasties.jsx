@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Star, Trophy } from 'lucide-react'
-import { zltacHistory } from '../../data/zltacHistory'
+import { supabase } from '../../lib/supabase'
 
 function LegendCard({ alias, titles, summary }) {
   return (
@@ -55,7 +56,45 @@ function DynastyCard({ team, years, note, tier }) {
 }
 
 export default function LegendsAndDynasties() {
-  const { legends, dynasties } = zltacHistory
+  const [legends, setLegends] = useState([])
+  const [dynasties, setDynasties] = useState({ threePeats: [], backToBack: [] })
+
+  useEffect(() => {
+    let cancelled = false
+
+    supabase
+      .from('zltac_legends')
+      .select('alias, titles, summary, display_order')
+      .eq('is_visible', true)
+      .order('display_order', { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        setLegends(error ? [] : (data ?? []))
+      })
+
+    supabase
+      .from('zltac_dynasties')
+      .select('team_name, category, years, note, display_order')
+      .eq('is_visible', true)
+      .order('display_order', { ascending: true })
+      .then(({ data, error }) => {
+        if (cancelled) return
+        if (error || !data) {
+          setDynasties({ threePeats: [], backToBack: [] })
+          return
+        }
+        const threePeats = []
+        const backToBack = []
+        for (const d of data) {
+          const row = { team: d.team_name, years: d.years, note: d.note }
+          if (d.category === 'three_peat') threePeats.push(row)
+          else if (d.category === 'back_to_back') backToBack.push(row)
+        }
+        setDynasties({ threePeats, backToBack })
+      })
+
+    return () => { cancelled = true }
+  }, [])
 
   return (
     <section className="max-w-7xl mx-auto px-6 py-20 md:py-24">

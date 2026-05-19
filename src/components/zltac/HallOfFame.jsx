@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { Award } from 'lucide-react'
-import { zltacHistory } from '../../data/zltacHistory'
+import { supabase } from '../../lib/supabase'
 
 function surname(realName) {
   const parts = (realName ?? '').trim().split(/\s+/)
@@ -44,12 +45,30 @@ function InducteeCard({ realName, alias, inductionYear, contribution }) {
 }
 
 export default function HallOfFame() {
-  // Alphabetical sort by surname (last word of realName), ascending.
-  // Computed in the component so the source data stays in chronological order
-  // for easier future editing.
-  const inductees = [...zltacHistory.hallOfFame].sort((a, b) =>
-    surname(a.realName).localeCompare(surname(b.realName))
-  )
+  const [rows, setRows] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('zltac_hall_of_fame')
+      .select('real_name, alias, induction_year, contribution')
+      .eq('is_visible', true)
+      .then(({ data, error }) => {
+        if (cancelled) return
+        setRows(error ? [] : (data ?? []))
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // Alphabetical sort by surname (last word of real_name), ascending.
+  const inductees = rows
+    .map(r => ({
+      realName: r.real_name,
+      alias: r.alias,
+      inductionYear: r.induction_year,
+      contribution: r.contribution ?? '',
+    }))
+    .sort((a, b) => surname(a.realName).localeCompare(surname(b.realName)))
 
   return (
     <section className="bg-surface border-y border-line">

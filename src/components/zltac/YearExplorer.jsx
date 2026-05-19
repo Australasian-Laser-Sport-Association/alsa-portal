@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { zltacHistory } from '../../data/zltacHistory'
 import YearCard from './YearCard'
 
 const DECADES = [
@@ -53,7 +52,7 @@ function Chip({ active, onClick, children }) {
   )
 }
 
-export default function YearExplorer({ stateFilter, onStateFilterChange }) {
+export default function YearExplorer({ events = [], stateFilter, onStateFilterChange }) {
   const [decadeFilter, setDecadeFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(() => new Set())
@@ -62,7 +61,7 @@ export default function YearExplorer({ stateFilter, onStateFilterChange }) {
   const isSearching = trimmedQuery.length > 0
 
   const { historicEvents, upcomingEvent, matchCount } = useMemo(() => {
-    const allEvents = zltacHistory.events
+    const allEvents = events
     const upcomingEvent = allEvents.find(e => e.upcoming) ?? null
 
     // Render newest first; exclude the upcoming tile from the main grid
@@ -86,7 +85,7 @@ export default function YearExplorer({ stateFilter, onStateFilterChange }) {
 
     const matchCount = isSearching ? filtered.length : null
     return { historicEvents: filtered, upcomingEvent, matchCount }
-  }, [decadeFilter, stateFilter, isSearching, trimmedQuery])
+  }, [events, decadeFilter, stateFilter, isSearching, trimmedQuery])
 
   function toggleExpanded(year) {
     setExpanded(prev => {

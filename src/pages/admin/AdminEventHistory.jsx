@@ -1,28 +1,26 @@
-﻿import { useState, useEffect, useRef } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
-const TABS = ['Event Details', 'Results', 'Notes']
+// "Extras" editor for zltac_event_history — limited to the legacy fields
+// that don't live on the modern ZLTAC Results page (/admin/zltac-results).
+//
+// Public-page podium and side events render from zltac_event_placings, not
+// from the champion_* / runner_up_* / third_place_* / side_event_results
+// columns edited here. Those columns are retained for historical records
+// and any future hand-curated content.
+//
+// To edit year metadata, MVP, cancelled/upcoming flags, team_count, country,
+// or the placings that drive the public page → ZLTAC Results.
 
-function emptyEvent() {
+const TABS = ['Artwork', 'Legacy Results', 'Notes']
+
+function emptyEditableExtras() {
   return {
-    year: new Date().getFullYear() - 1,
-    name: '',
-    location_city: '',
-    location_state: '',
-    location_venue: '',
-    start_date: '',
-    end_date: '',
-    description: '',
     logo_url: '',
     champion_team: '',
-    champion_state: '',
     runner_up_team: '',
-    runner_up_state: '',
     third_place_team: '',
-    third_place_state: '',
-    mvp_name: '',
-    mvp_alias: '',
     side_event_results: [],
     full_results_text: '',
     photo_urls: [],
@@ -40,8 +38,9 @@ const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracki
 export default function AdminEventHistory() {
   useOutletContext()
   const [events, setEvents] = useState([])
-  const [selected, setSelected] = useState(null)
-  const [form, setForm] = useState(emptyEvent())
+  const [selected, setSelected] = useState(null) // row id or null
+  const [selectedMeta, setSelectedMeta] = useState(null) // { year, name } — read-only header
+  const [form, setForm] = useState(emptyEditableExtras())
   const [activeTab, setActiveTab] = useState(0)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
@@ -63,23 +62,22 @@ export default function AdminEventHistory() {
 
   async function selectEvent(ev) {
     setSelected(ev.id)
+    setSelectedMeta({ year: ev.year, name: ev.name, location_city: ev.location_city, location_state: ev.location_state })
     const { data } = await supabase.from('zltac_event_history').select('*').eq('id', ev.id).single()
     if (data) {
       setForm({
-        ...emptyEvent(),
-        ...data,
-        start_date: data.start_date ?? '',
-        end_date: data.end_date ?? '',
+        ...emptyEditableExtras(),
+        logo_url: data.logo_url ?? '',
+        champion_team: data.champion_team ?? '',
+        runner_up_team: data.runner_up_team ?? '',
+        third_place_team: data.third_place_team ?? '',
         side_event_results: data.side_event_results ?? [],
+        full_results_text: data.full_results_text ?? '',
         photo_urls: data.photo_urls ?? [],
+        internal_notes: data.internal_notes ?? '',
       })
+      setSelectedMeta(m => ({ ...m, year: data.year, name: data.name, location_city: data.location_city, location_state: data.location_state }))
     }
-    setActiveTab(0)
-  }
-
-  function startNew() {
-    setSelected('new')
-    setForm(emptyEvent())
     setActiveTab(0)
   }
 
@@ -93,48 +91,24 @@ export default function AdminEventHistory() {
   }
 
   async function save() {
-    if (!form.year || !form.name) return
+    if (!selected) return
     setSaving(true)
     const payload = {
-      year: parseInt(form.year),
-      name: form.name,
-      location_city: form.location_city || null,
-      location_state: form.location_state || null,
-      location_venue: form.location_venue || null,
-      start_date: form.start_date || null,
-      end_date: form.end_date || null,
-      description: form.description || null,
       logo_url: form.logo_url || null,
       champion_team: form.champion_team || null,
-      champion_state: form.champion_state || null,
       runner_up_team: form.runner_up_team || null,
-      runner_up_state: form.runner_up_state || null,
       third_place_team: form.third_place_team || null,
-      third_place_state: form.third_place_state || null,
-      mvp_name: form.mvp_name || null,
-      mvp_alias: form.mvp_alias || null,
       side_event_results: form.side_event_results?.length > 0 ? form.side_event_results : null,
       full_results_text: form.full_results_text || null,
       photo_urls: form.photo_urls?.length > 0 ? form.photo_urls : null,
       internal_notes: form.internal_notes || null,
       updated_at: new Date().toISOString(),
     }
-
-    let error, newId
-    if (selected === 'new') {
-      const res = await supabase.from('zltac_event_history').insert(payload).select('id').single()
-      error = res.error
-      newId = res.data?.id
-    } else {
-      const res = await supabase.from('zltac_event_history').update(payload).eq('id', selected)
-      error = res.error
-    }
-
+    const { error } = await supabase.from('zltac_event_history').update(payload).eq('id', selected)
     setSaving(false)
     if (error) {
       showToast(error.message, 'error')
     } else {
-      if (newId) setSelected(newId)
       showToast('Saved successfully')
       loadEvents()
     }
@@ -143,7 +117,7 @@ export default function AdminEventHistory() {
   async function uploadLogo(file) {
     setLogoUploading(true)
     const ext = file.name.split('.').pop()
-    const path = `history/${form.year}-logo-${Date.now()}.${ext}`
+    const path = `history/${selectedMeta?.year ?? 'unknown'}-logo-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('event-logos').upload(path, file, { upsert: true })
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('event-logos').getPublicUrl(path)
@@ -155,7 +129,7 @@ export default function AdminEventHistory() {
   async function uploadPhoto(file) {
     setPhotoUploading(true)
     const ext = file.name.split('.').pop()
-    const path = `history/${form.year}-${Date.now()}.${ext}`
+    const path = `history/${selectedMeta?.year ?? 'unknown'}-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
@@ -188,7 +162,7 @@ export default function AdminEventHistory() {
   }
 
   return (
-    <div className="flex gap-6" style={{ minHeight: 'calc(100vh - 10rem)' }}>
+    <div className="flex flex-col md:flex-row gap-6" style={{ minHeight: 'calc(100vh - 10rem)' }}>
       {/* Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-xl border ${
@@ -199,18 +173,16 @@ export default function AdminEventHistory() {
       )}
 
       {/* Left: event list */}
-      <div className="w-72 flex-shrink-0 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-black text-white">Event History</h1>
-          <button
-            onClick={startNew}
-            className="text-xs bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 px-3 py-1.5 rounded-lg font-medium transition-colors"
-          >
-            + Add past event
-          </button>
+      <div className="w-full md:w-72 flex-shrink-0 flex flex-col gap-3">
+        <div>
+          <h1 className="text-lg font-black text-white">Event History (extras)</h1>
+          <p className="text-xs text-[#e5e5e5]/40 mt-1 leading-relaxed">
+            Legacy/optional fields only. Year metadata, MVP, flags, and the public-facing placings are managed on{' '}
+            <Link to="/admin/zltac-results" className="text-brand/80 hover:text-brand">ZLTAC Results</Link>.
+          </p>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 max-h-[60vh] md:max-h-none overflow-y-auto pr-1">
           {events.length === 0 && (
             <p className="text-[#e5e5e5]/30 text-sm text-center py-10">No history records yet.</p>
           )}
@@ -226,7 +198,6 @@ export default function AdminEventHistory() {
             >
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <span className="font-black text-brand text-sm">{ev.year}</span>
-                <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/35 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">archived</span>
               </div>
               <p className={`text-sm font-semibold truncate ${selected === ev.id ? 'text-white' : 'text-[#e5e5e5]/70'}`}>
                 {ev.name || `ZLTAC ${ev.year}`}
@@ -244,6 +215,22 @@ export default function AdminEventHistory() {
       {/* Right: edit panel */}
       {selected ? (
         <div className="flex-1 bg-surface border border-line rounded-2xl flex flex-col overflow-hidden">
+          {/* Read-only context header */}
+          <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3 flex-shrink-0">
+            <div className="min-w-0">
+              <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider">Editing extras for</p>
+              <p className="text-white font-bold text-sm truncate">
+                <span className="text-brand">{selectedMeta?.year}</span> · {selectedMeta?.name || `ZLTAC ${selectedMeta?.year ?? ''}`}
+              </p>
+            </div>
+            <Link
+              to="/admin/zltac-results"
+              className="text-xs text-brand/80 hover:text-brand font-medium flex-shrink-0"
+            >
+              Edit year metadata, placings, MVP, flags on ZLTAC Results →
+            </Link>
+          </div>
+
           {/* Tabs */}
           <div className="flex border-b border-line px-6 flex-shrink-0">
             {TABS.map((tab, i) => (
@@ -261,129 +248,79 @@ export default function AdminEventHistory() {
 
           <div className="flex-1 overflow-y-auto p-6">
 
-            {/* TAB 1 — Event Details */}
+            {/* TAB 1 — Artwork (logo only) */}
             {activeTab === 0 && (
               <div className="space-y-5 max-w-2xl">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Event Name</label>
-                    <input className={inputClass} value={form.name} onChange={e => setField('name', e.target.value)} placeholder="ZLTAC 2019" />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Year</label>
-                    <input className={inputClass} type="number" value={form.year} onChange={e => setField('year', e.target.value)} placeholder="2019" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>City</label>
-                    <input className={inputClass} value={form.location_city} onChange={e => setField('location_city', e.target.value)} placeholder="Melbourne" />
-                  </div>
-                  <div>
-                    <label className={labelClass}>State / Country</label>
-                    <input className={inputClass} value={form.location_state} onChange={e => setField('location_state', e.target.value)} placeholder="VIC" />
-                  </div>
-                </div>
                 <div>
-                  <label className={labelClass}>Venue Name</label>
-                  <input className={inputClass} value={form.location_venue} onChange={e => setField('location_venue', e.target.value)} placeholder="Venue name" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass}>Start Date</label>
-                    <input className={inputClass} type="date" value={form.start_date} onChange={e => setField('start_date', e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>End Date</label>
-                    <input className={inputClass} type="date" value={form.end_date} onChange={e => setField('end_date', e.target.value)} />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Short Description</label>
-                  <textarea
-                    className={`${inputClass} resize-none`}
-                    rows={3}
-                    value={form.description}
-                    onChange={e => setField('description', e.target.value)}
-                    placeholder="A brief summary of this event..."
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Event Logo / Photo</label>
+                  <label className={labelClass}>Event Logo</label>
                   {form.logo_url && (
                     <div className="mb-3">
                       <img src={form.logo_url} alt="logo" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
                     </div>
                   )}
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
                     <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files[0] && uploadLogo(e.target.files[0])} />
                     <button
                       onClick={() => logoRef.current?.click()}
                       disabled={logoUploading}
-                      className="text-xs border border-line bg-[#191919] hover:bg-line text-[#e5e5e5]/60 hover:text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0"
+                      className="text-xs border border-line bg-[#191919] hover:bg-line text-[#e5e5e5]/60 hover:text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0 self-start"
                     >
                       {logoUploading ? 'Uploading…' : 'Upload image'}
                     </button>
                     <input
-                      className={`${inputClass} flex-1`}
+                      className={`${inputClass} xl:flex-1 xl:min-w-0`}
                       value={form.logo_url}
                       onChange={e => setField('logo_url', e.target.value)}
                       placeholder="or paste image URL"
                     />
                   </div>
                 </div>
-                <div className="pt-2">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-[#191919] rounded-lg border border-line">
-                    <svg className="w-3.5 h-3.5 text-[#e5e5e5]/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-xs text-[#e5e5e5]/30">All records in Event History are archived by default and visible publicly.</p>
-                  </div>
-                </div>
               </div>
             )}
 
-            {/* TAB 2 — Results */}
+            {/* TAB 2 — Legacy Results */}
             {activeTab === 1 && (
               <div className="space-y-8 max-w-2xl">
 
+                {/* Advisory */}
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 flex items-start gap-2">
+                  <svg className="w-4 h-4 text-amber-400/70 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-xs text-amber-400/80 leading-relaxed">
+                    The public-page podium is rendered from the placings editor on{' '}
+                    <Link to="/admin/zltac-results" className="underline">ZLTAC Results</Link>.
+                    These legacy podium / side-event fields are kept for historical data only and are{' '}
+                    <strong>not displayed publicly</strong>.
+                  </p>
+                </div>
+
                 {/* Team podium */}
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-brand mb-4">Team Results</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-brand mb-4">Team Results (legacy)</p>
                   <div className="space-y-3">
                     {[
-                      { label: '🥇 Champion', teamKey: 'champion_team', stateKey: 'champion_state' },
-                      { label: '🥈 Runner Up', teamKey: 'runner_up_team', stateKey: 'runner_up_state' },
-                      { label: '🥉 Third Place', teamKey: 'third_place_team', stateKey: 'third_place_state' },
-                    ].map(({ label, teamKey, stateKey }) => (
-                      <div key={teamKey} className="flex items-center gap-3">
-                        <span className="text-sm text-[#e5e5e5]/50 w-28 flex-shrink-0">{label}</span>
-                        <input className={`${inputClass} flex-1`} value={form[teamKey]} onChange={e => setField(teamKey, e.target.value)} placeholder="Team name" />
-                        <input className={`${inputClass} w-24`} value={form[stateKey]} onChange={e => setField(stateKey, e.target.value)} placeholder="State" />
+                      { label: '🥇 Champion', teamKey: 'champion_team' },
+                      { label: '🥈 Runner Up', teamKey: 'runner_up_team' },
+                      { label: '🥉 Third Place', teamKey: 'third_place_team' },
+                    ].map(({ label, teamKey }) => (
+                      <div key={teamKey} className="flex flex-col gap-2 xl:flex-row xl:items-center xl:gap-3">
+                        <span className="text-sm text-[#e5e5e5]/50 xl:w-28 xl:flex-shrink-0">{label}</span>
+                        <input
+                          className={`${inputClass} xl:flex-1 xl:min-w-0`}
+                          value={form[teamKey]}
+                          onChange={e => setField(teamKey, e.target.value)}
+                          placeholder="Team name"
+                        />
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* MVP */}
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-brand mb-4">MVP / Player of the Tournament</p>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className={labelClass}>Full Name</label>
-                      <input className={inputClass} value={form.mvp_name} onChange={e => setField('mvp_name', e.target.value)} placeholder="Player name" />
-                    </div>
-                    <div className="w-44">
-                      <label className={labelClass}>Alias / Callsign</label>
-                      <input className={inputClass} value={form.mvp_alias} onChange={e => setField('mvp_alias', e.target.value)} placeholder="Alias" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Side event results */}
+                {/* Side event results (legacy JSONB) */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-brand">Side Event Results</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-brand">Side Event Results (legacy JSONB)</p>
                     <button
                       onClick={addSideEvent}
                       className="text-xs bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 px-3 py-1.5 rounded-lg font-medium transition-colors"
@@ -396,14 +333,14 @@ export default function AdminEventHistory() {
                   )}
                   {(form.side_event_results ?? []).map((se, idx) => (
                     <div key={idx} className="bg-[#191919] border border-line rounded-xl p-4 mb-3">
-                      <div className="flex items-center gap-3 mb-4">
+                      <div className="flex flex-col gap-3 mb-4 xl:flex-row xl:items-center">
                         <input
-                          className={`${inputClass} flex-1 font-medium`}
+                          className={`${inputClass} font-medium xl:flex-1 xl:min-w-0`}
                           value={se.name}
                           onChange={e => updateSideEvent(idx, 'name', e.target.value)}
                           placeholder="Side event name (e.g. Solos, Doubles)"
                         />
-                        <button onClick={() => removeSideEvent(idx)} className="text-xs text-red-400/50 hover:text-red-400 transition-colors flex-shrink-0">
+                        <button onClick={() => removeSideEvent(idx)} className="text-xs text-red-400/50 hover:text-red-400 transition-colors flex-shrink-0 self-end xl:self-auto">
                           Remove
                         </button>
                       </div>
@@ -510,25 +447,33 @@ export default function AdminEventHistory() {
 
           {/* Footer / Save */}
           <div className="px-6 py-4 border-t border-line flex items-center justify-between flex-shrink-0">
-            <p className="text-xs text-[#e5e5e5]/30 truncate">{form.name || `ZLTAC ${form.year}`}</p>
+            <p className="text-xs text-[#e5e5e5]/30 truncate">
+              {selectedMeta?.name || `ZLTAC ${selectedMeta?.year ?? ''}`}
+            </p>
             <button
               onClick={save}
-              disabled={saving || !form.year || !form.name}
+              disabled={saving}
               className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-all"
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? 'Saving…' : 'Save extras'}
             </button>
           </div>
         </div>
       ) : (
-        <div className="flex-1 bg-surface border border-line rounded-2xl flex items-center justify-center">
-          <div className="text-center">
+        <div className="flex-1 bg-surface border border-line rounded-2xl flex items-center justify-center min-h-[300px]">
+          <div className="text-center px-6">
             <div className="w-14 h-14 bg-[#191919] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <svg className="w-7 h-7 text-[#e5e5e5]/15" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">Select an event from the list<br />or click <span className="text-brand/60">+ Add past event</span> to create one.</p>
+            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">
+              Select an event from the list to edit its legacy/extra fields.<br />
+              <span className="text-[#e5e5e5]/40 text-xs mt-2 block">
+                To create a new tournament year, use{' '}
+                <Link to="/admin/zltac-results" className="text-brand/70 hover:text-brand">ZLTAC Results</Link>.
+              </span>
+            </p>
           </div>
         </div>
       )}

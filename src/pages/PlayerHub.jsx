@@ -110,52 +110,86 @@ function ChecklistItem({ status, label, children }) {
   )
 }
 
+// ── Helpers shared by legal-doc panels ─────────────────────────────────────
+const LEGAL_BUCKET = 'legal-documents'
+function legalDocUrl(filePath) {
+  if (!filePath) return null
+  return supabase.storage.from(LEGAL_BUCKET).getPublicUrl(filePath).data.publicUrl
+}
+const DOC_LABELS = {
+  code_of_conduct: 'Code of Conduct',
+  media_release:   'Media Release',
+  under_18_form:   'Under 18 Parental Consent Form',
+}
+
+function PdfLink({ doc, label = 'View PDF' }) {
+  if (!doc?.file_path) return null
+  return (
+    <a
+      href={legalDocUrl(doc.file_path)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand-hover font-medium"
+    >
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+      {label} ↗
+    </a>
+  )
+}
+
 // ── CoC Panel ───────────────────────────────────────────────────────────────
-function CoCPanel({ userId, eventYear, content, onSigned }) {
+function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
   const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  if (!activeDoc) {
+    return (
+      <p className="text-[#e5e5e5]/50 italic text-xs">
+        Code of Conduct is not yet available — contact the committee.
+      </p>
+    )
+  }
+
   async function sign() {
     if (!agreed) return
     setSaving(true)
-    const { data: existing, error: checkErr } = await supabase
-      .from('code_of_conduct_signatures')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('event_year', eventYear)
-      .maybeSingle()
-    if (checkErr) { setSaving(false); setError(checkErr.message); return }
-    const signedAt = new Date().toISOString()
-    let saveError
-    if (existing) {
-      ;({ error: saveError } = await supabase.from('code_of_conduct_signatures')
-        .update({ signed_at: signedAt })
-        .eq('user_id', userId)
-        .eq('event_year', eventYear))
-    } else {
-      ;({ error: saveError } = await supabase.from('code_of_conduct_signatures')
-        .insert({ user_id: userId, event_year: eventYear, signed_at: signedAt }))
-    }
+    const { error: insErr } = await supabase.from('legal_acceptances').insert({
+      user_id: userId,
+      document_id: activeDoc.id,
+      event_year: eventYear,
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    })
     setSaving(false)
-    if (saveError) { setError(saveError.message); return }
-    onSigned()
+    if (insErr) { setError(insErr.message); return }
+    onAccepted()
   }
 
   return (
-    <div>
-      <div className="bg-base border border-line rounded-xl p-4 h-48 overflow-y-auto mb-4">
-        {content ? (
-          <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{content}</pre>
-        ) : (
-          <p className="text-[#e5e5e5]/60 italic text-xs">Code of Conduct content is not yet available — contact the committee.</p>
-        )}
+    <div className="space-y-3">
+      {stale && (
+        <div className="bg-amber-500/5 border border-amber-500/30 text-amber-400/80 rounded-lg px-3 py-2 text-xs">
+          The Code of Conduct has been updated. Please review and re-accept.
+        </div>
+      )}
+      <div className="bg-base border border-line rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-[#e5e5e5]/60">
+          <p className="font-bold text-white">{activeDoc.original_filename}</p>
+          <p className="mt-0.5">
+            v{activeDoc.version} · Effective {formatDate(activeDoc.effective_date)}
+          </p>
+        </div>
+        <PdfLink doc={activeDoc} />
       </div>
-      <label className="flex items-start gap-3 cursor-pointer mb-3">
+      <label className="flex items-start gap-3 cursor-pointer">
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
-        <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">I have read and agree to the ALSA Code of Conduct</span>
+        <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">
+          I have read and agree to the {DOC_LABELS.code_of_conduct} dated {formatDate(activeDoc.effective_date)}.
+        </span>
       </label>
-      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+      {error && <p className="text-red-400 text-xs">{error}</p>}
       <button
         onClick={sign}
         disabled={!agreed || saving}
@@ -168,127 +202,147 @@ function CoCPanel({ userId, eventYear, content, onSigned }) {
 }
 
 // ── Under 18 Panel ──────────────────────────────────────────────────────────
-function Under18Panel({ userId, eventYear, playerName, formContent, onSubmitted }) {
-  const [parentName, setParentName] = useState('')
-  const [relationship, setRelationship] = useState('Parent')
-  const [parentPhone, setParentPhone] = useState('')
-  const [parentEmail, setParentEmail] = useState('')
-  const [agreed, setAgreed] = useState(false)
+// New model: player downloads the PDF, fills it out offline, emails it to
+// committee, and clicks "I've emailed the form" to flag the submission.
+// Committee then reviews and changes status to approved / rejected via the
+// AdminUnder18Approvals page.
+function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  async function submit() {
-    if (!parentName.trim() || !parentPhone.trim()) { setError('Parent/Guardian name and phone are required.'); return }
-    if (!agreed) { setError('Guardian consent is required.'); return }
+  async function flagSubmitted() {
     setSaving(true)
-    const { error: submitError } = await supabase.from('under18_submissions').upsert({
+    setError('')
+    const nowIso = new Date().toISOString()
+    const { error: upErr } = await supabase.from('under_18_approvals').upsert({
       user_id: userId,
       event_year: eventYear,
-      parent_name: parentName.trim(),
-      relationship,
-      parent_phone: parentPhone.trim(),
-      parent_email: parentEmail.trim() || null,
-      submitted_at: new Date().toISOString(),
+      status: 'pending',
+      submitted_at: nowIso,
     }, { onConflict: 'user_id,event_year' })
     setSaving(false)
-    if (submitError) { setError(submitError.message); return }
+    if (upErr) { setError(upErr.message); return }
     onSubmitted()
   }
 
+  const status = approval?.status ?? null
+  const statusMeta = {
+    pending:  { label: 'Pending committee review', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+    approved: { label: 'Approved',                 cls: 'bg-brand/15 text-brand border-brand/30' },
+    rejected: { label: 'Rejected',                 cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
+  }
+  const meta = statusMeta[status]
+
   return (
-    <div>
-      <div className="bg-base border border-line rounded-xl p-4 h-40 overflow-y-auto mb-4">
-        {formContent ? (
-          <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{formContent}</pre>
-        ) : (
-          <p className="text-[#e5e5e5]/60 italic text-xs">Under-18 form is not yet available — contact the committee.</p>
-        )}
+    <div className="space-y-3">
+      {activeDoc ? (
+        <div className="bg-base border border-line rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs text-[#e5e5e5]/60">
+            <p className="font-bold text-white">{activeDoc.original_filename}</p>
+            <p className="mt-0.5">
+              v{activeDoc.version} · Effective {formatDate(activeDoc.effective_date)}
+            </p>
+          </div>
+          <PdfLink doc={activeDoc} label="Download form" />
+        </div>
+      ) : (
+        <p className="text-[#e5e5e5]/50 italic text-xs">
+          Under 18 form is not yet available — contact the committee.
+        </p>
+      )}
+
+      <div className="text-xs text-[#e5e5e5]/55 leading-relaxed bg-base border border-line rounded-xl px-4 py-3">
+        <p className="font-bold text-white/80 mb-1">How to submit</p>
+        <ol className="list-decimal list-inside space-y-0.5">
+          <li>Download the form above and have your parent/guardian complete it.</li>
+          <li>Email the signed form to the ALSA committee.</li>
+          <li>Click <em>I&rsquo;ve emailed the form</em> below to flag your submission for review.</li>
+        </ol>
       </div>
-      <div className="space-y-3 mb-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/40 mb-1">Parent / Guardian Name *</label>
-            <input type="text" value={parentName} onChange={e => setParentName(e.target.value)} placeholder="Full name" className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand" />
-          </div>
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/40 mb-1">Relationship</label>
-            <select value={relationship} onChange={e => setRelationship(e.target.value)} className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-brand">
-              {['Parent', 'Legal Guardian', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/40 mb-1">Phone *</label>
-            <input type="tel" value={parentPhone} onChange={e => setParentPhone(e.target.value)} placeholder="04XX XXX XXX" className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand" />
-          </div>
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/40 mb-1">Email</label>
-            <input type="email" value={parentEmail} onChange={e => setParentEmail(e.target.value)} placeholder="guardian@email.com" className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand" />
-          </div>
-        </div>
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
-          <span className="text-[#e5e5e5]/60 text-xs leading-relaxed">
-            I give consent for <strong className="text-white">{playerName}</strong> to participate in ZLTAC {eventYear} and all associated events.
+
+      {meta && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${meta.cls}`}>
+            {meta.label}
           </span>
-        </label>
-      </div>
-      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
-      <button
-        onClick={submit}
-        disabled={saving}
-        className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
-      >
-        {saving ? 'Submitting…' : 'Submit Under 18 Form'}
-      </button>
+          {approval?.submitted_at && (
+            <span className="text-[#e5e5e5]/40">flagged {formatDate(approval.submitted_at)}</span>
+          )}
+          {approval?.approved_at && status === 'approved' && (
+            <span className="text-[#e5e5e5]/40">approved {formatDate(approval.approved_at)}</span>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+
+      {status !== 'approved' && (
+        <button
+          onClick={flagSubmitted}
+          disabled={saving}
+          className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
+        >
+          {saving ? 'Saving…' : status ? 'Re-flag — I\'ve emailed the form again' : 'I\'ve emailed the form'}
+        </button>
+      )}
     </div>
   )
 }
 
 // ── Media Release Panel ─────────────────────────────────────────────────────
-function MediaReleasePanel({ userId, eventYear, formContent, onSubmitted }) {
-  const [consents, setConsents] = useState(null) // null | true | false
+function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
+  const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  if (!activeDoc) {
+    return (
+      <p className="text-[#e5e5e5]/50 italic text-xs">
+        Media Release is not yet available — contact the committee.
+      </p>
+    )
+  }
+
   async function submit() {
-    if (consents === null) { setError('Please select an option.'); return }
+    if (!agreed) return
     setSaving(true)
-    const { error: submitError } = await supabase.from('media_release_submissions').upsert({
+    const { error: insErr } = await supabase.from('legal_acceptances').insert({
       user_id: userId,
+      document_id: activeDoc.id,
       event_year: eventYear,
-      consents,
-      submitted_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,event_year' })
+      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    })
     setSaving(false)
-    if (submitError) { setError(submitError.message); return }
-    onSubmitted(consents)
+    if (insErr) { setError(insErr.message); return }
+    onAccepted()
   }
 
   return (
-    <div>
-      <div className="bg-base border border-line rounded-xl p-4 h-36 overflow-y-auto mb-4">
-        {formContent ? (
-          <pre className="text-[#e5e5e5]/50 text-xs leading-relaxed whitespace-pre-wrap font-sans">{formContent}</pre>
-        ) : (
-          <p className="text-[#e5e5e5]/60 italic text-xs">Media release form is not yet available — contact the committee.</p>
-        )}
+    <div className="space-y-3">
+      {stale && (
+        <div className="bg-amber-500/5 border border-amber-500/30 text-amber-400/80 rounded-lg px-3 py-2 text-xs">
+          The Media Release has been updated. Please review and re-accept.
+        </div>
+      )}
+      <div className="bg-base border border-line rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs text-[#e5e5e5]/60">
+          <p className="font-bold text-white">{activeDoc.original_filename}</p>
+          <p className="mt-0.5">
+            v{activeDoc.version} · Effective {formatDate(activeDoc.effective_date)}
+          </p>
+        </div>
+        <PdfLink doc={activeDoc} />
       </div>
-      <div className="space-y-2 mb-4">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="radio" name="media" checked={consents === true} onChange={() => setConsents(true)} className="accent-[#00FF41]" />
-          <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">I consent to photos/video being used for ALSA promotional purposes</span>
-        </label>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="radio" name="media" checked={consents === false} onChange={() => setConsents(false)} className="accent-[#00FF41]" />
-          <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">I do not consent to my image being used</span>
-        </label>
-      </div>
-      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+      <label className="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
+        <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">
+          I have read and agree to the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)}.
+        </span>
+      </label>
+      {error && <p className="text-red-400 text-xs">{error}</p>}
       <button
         onClick={submit}
-        disabled={saving || consents === null}
+        disabled={!agreed || saving}
         className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
       >
         {saving ? 'Submitting…' : 'Submit Media Release'}
@@ -646,14 +700,15 @@ export default function PlayerHub() {
   const [profile, setProfile] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [team, setTeam] = useState(null)
-  const [cocContent, setCocContent] = useState('')
-  const [cocSig, setCocSig] = useState(null) // null = not signed, { signed_at } = signed
+  // Legal documents (PDF model). One active document per type; one acceptance
+  // per (user, document, event_year). Phase 3 swap: replaces the old
+  // code_of_conduct_versions / code_of_conduct_signatures / media_release_* /
+  // under18_* tables.
+  const [activeDocs, setActiveDocs] = useState({})       // { code_of_conduct: row, media_release: row, under_18_form: row }
+  const [acceptances, setAcceptances] = useState({})     // { code_of_conduct: acceptanceRowWithJoinedDoc, media_release: ... }
+  const [u18Approval, setU18Approval] = useState(null)   // approval row or null
   const [testResult, setTestResult] = useState(null)
   const [paymentRecords, setPaymentRecords] = useState([])
-  const [u18Sub, setU18Sub] = useState(null) // null = not submitted
-  const [u18FormContent, setU18FormContent] = useState('')
-  const [mediaSub, setMediaSub] = useState(null) // null = not submitted, { consents } = submitted
-  const [mediaFormContent, setMediaFormContent] = useState('')
 
   // Doubles / triples state
   const [doublesRecord, setDoublesRecord] = useState(null)
@@ -700,41 +755,55 @@ export default function PlayerHub() {
     const [
       { data: prof },
       { data: reg },
-      { data: cocVersion, error: cocVersionErr },
-      { data: cocSigData },
+      { data: docs, error: docsErr },
+      { data: accs, error: accsErr },
       { data: testData },
-      { data: u18Data },
-      { data: u18Version, error: under18VersionErr },
-      { data: mediaData },
-      { data: mediaVersion, error: mediaVersionErr },
+      { data: u18ApprovalData },
     ] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('zltac_registrations')
         .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
         .eq('user_id', user.id).eq('year', eventYear).maybeSingle(),
-      supabase.from('code_of_conduct_versions').select('content').eq('is_published', true).maybeSingle(),
-      supabase.from('code_of_conduct_signatures').select('signed_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
+      supabase.from('legal_documents')
+        .select('id, document_type, version, file_path, original_filename, effective_date, requires_reacceptance')
+        .eq('is_active', true)
+        .in('document_type', ['code_of_conduct', 'media_release', 'under_18_form']),
+      supabase.from('legal_acceptances')
+        .select('id, document_id, accepted_at, document:legal_documents!document_id(id, document_type, version, requires_reacceptance, file_path, original_filename, effective_date)')
+        .eq('user_id', user.id)
+        .eq('event_year', eventYear)
+        .order('accepted_at', { ascending: false }),
       supabase.from('referee_test_results').select('passed, score').eq('user_id', user.id).maybeSingle(),
-      supabase.from('under18_submissions').select('submitted_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
-      supabase.from('under18_form_versions').select('content').eq('is_published', true).maybeSingle(),
-      supabase.from('media_release_submissions').select('consents, submitted_at').eq('user_id', user.id).eq('event_year', eventYear).maybeSingle(),
-      supabase.from('media_release_versions').select('content').eq('is_published', true).maybeSingle(),
+      supabase.from('under_18_approvals')
+        .select('id, status, submitted_at, approved_at, notes')
+        .eq('user_id', user.id)
+        .eq('event_year', eventYear)
+        .maybeSingle(),
     ])
 
-    if (cocVersionErr) console.error('PlayerHub: code_of_conduct_versions query failed:', cocVersionErr)
-    if (under18VersionErr) console.error('PlayerHub: under18_form_versions query failed:', under18VersionErr)
-    if (mediaVersionErr) console.error('PlayerHub: media_release_versions query failed:', mediaVersionErr)
+    if (docsErr) console.error('PlayerHub: legal_documents query failed:', docsErr)
+    if (accsErr) console.error('PlayerHub: legal_acceptances query failed:', accsErr)
 
     setProfile(prof)
     setRegistration(reg)
     if (reg?.teams) setTeam(reg.teams)
-    setCocContent(cocVersion?.content ?? '')
-    setCocSig(cocSigData ?? null)
+
+    // Index active docs by type
+    const activeMap = {}
+    for (const d of (docs ?? [])) activeMap[d.document_type] = d
+    setActiveDocs(activeMap)
+
+    // Group acceptances by document_type; keep the most recent per type
+    // (.order accepted_at desc already arranged this).
+    const accMap = {}
+    for (const a of (accs ?? [])) {
+      const t = a.document?.document_type
+      if (t && !accMap[t]) accMap[t] = a
+    }
+    setAcceptances(accMap)
+
+    setU18Approval(u18ApprovalData ?? null)
     setTestResult(testData ?? null)
-    setU18Sub(u18Data ?? null)
-    setU18FormContent(u18Version?.content ?? '')
-    setMediaSub(mediaData ?? null)
-    setMediaFormContent(mediaVersion?.content ?? '')
 
     if (reg) {
       setSelectedSlugs(new Set(reg.side_events ?? []))
@@ -916,6 +985,26 @@ export default function PlayerHub() {
   const isRegistered = !!registration
   const u18Required = isUnder18(profile?.dob, eventYear)
   const memberId = user.id.split('-')[0].toUpperCase()
+
+  // Legal-doc status per type. Returns 'current' (accepted active version,
+  // or accepted an earlier version where neither side requires re-acceptance),
+  // 'stale' (accepted older version that needs re-accept), or 'none'.
+  function legalStatus(docType) {
+    const active = activeDocs[docType]
+    const acc = acceptances[docType]
+    if (!acc) return 'none'
+    if (!active) return acc ? 'current' : 'none'
+    if (acc.document_id === active.id) return 'current'
+    const oldVersionDoc = acc.document
+    const requiresReaccept = !!(active.requires_reacceptance || oldVersionDoc?.requires_reacceptance)
+    return requiresReaccept ? 'stale' : 'current'
+  }
+
+  const cocStatus = legalStatus('code_of_conduct')
+  const mediaStatus = legalStatus('media_release')
+  const cocSigned = cocStatus === 'current'
+  const mediaSubmitted = mediaStatus === 'current'
+  const u18Submitted = !!u18Approval && u18Approval.status !== 'rejected'
 
   // Side events from event JSONB
   const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled && se.slug !== 'presentation-dinner')
@@ -1178,14 +1267,14 @@ export default function PlayerHub() {
           <PlayerHubProgress
             eventName={event.name}
             hasTeam={hasTeam}
-            cocSigned={!!cocSig}
+            cocSigned={cocSigned}
             refPassed={!!testResult?.passed}
-            mediaSubmitted={!!mediaSub}
+            mediaSubmitted={mediaSubmitted}
             paid={isPaidInFull}
             sideEventsConfirmed={sideEventsConfirmed}
             extrasConfirmed={extrasConfirmed}
             u18Required={u18Required}
-            u18Submitted={!!u18Sub}
+            u18Submitted={u18Submitted}
           />
         )}
 
@@ -1240,15 +1329,22 @@ export default function PlayerHub() {
             </ChecklistItem>
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : cocSig ? 'done' : 'error'}
-              label={cocSig ? `Code of Conduct — signed ${formatDate(cocSig.signed_at)}` : 'Code of Conduct — not yet signed'}
+              status={!isRegistered ? 'pending' : cocStatus === 'current' ? 'done' : 'error'}
+              label={
+                cocStatus === 'current'
+                  ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
+                  : cocStatus === 'stale'
+                    ? 'Code of Conduct — updated, please re-accept'
+                    : 'Code of Conduct — not yet signed'
+              }
             >
-              {isRegistered && !cocSig && (
+              {isRegistered && cocStatus !== 'current' && (
                 <CoCPanel
                   userId={user.id}
                   eventYear={eventYear}
-                  content={cocContent}
-                  onSigned={() => setCocSig({ signed_at: new Date().toISOString() })}
+                  activeDoc={activeDocs.code_of_conduct}
+                  stale={cocStatus === 'stale'}
+                  onAccepted={load}
                 />
               )}
             </ChecklistItem>
@@ -1278,19 +1374,22 @@ export default function PlayerHub() {
             </ChecklistItem>
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : mediaSub ? 'done' : 'error'}
+              status={!isRegistered ? 'pending' : mediaStatus === 'current' ? 'done' : 'error'}
               label={
-                mediaSub
-                  ? `Media Release — ${mediaSub.consents ? 'Consented' : 'Declined'}`
-                  : 'Media Release — not yet submitted'
+                mediaStatus === 'current'
+                  ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
+                  : mediaStatus === 'stale'
+                    ? 'Media Release — updated, please re-accept'
+                    : 'Media Release — not yet submitted'
               }
             >
-              {isRegistered && !mediaSub && (
+              {isRegistered && mediaStatus !== 'current' && (
                 <MediaReleasePanel
                   userId={user.id}
                   eventYear={eventYear}
-                  formContent={mediaFormContent}
-                  onSubmitted={c => setMediaSub({ consents: c, submitted_at: new Date().toISOString() })}
+                  activeDoc={activeDocs.media_release}
+                  stale={mediaStatus === 'stale'}
+                  onAccepted={load}
                 />
               )}
             </ChecklistItem>
@@ -1319,16 +1418,29 @@ export default function PlayerHub() {
 
             {u18Required && (
               <ChecklistItem
-                status={!isRegistered ? 'pending' : u18Sub ? 'done' : 'error'}
-                label={u18Sub ? `Under 18 Parental Consent — submitted ${formatDate(u18Sub.submitted_at)}` : 'Under 18 Parental Consent — not yet submitted'}
+                status={
+                  !isRegistered ? 'pending'
+                    : u18Approval?.status === 'approved' ? 'done'
+                    : u18Approval ? 'error'
+                    : 'error'
+                }
+                label={
+                  u18Approval?.status === 'approved'
+                    ? `Under 18 Parental Consent — approved ${formatDate(u18Approval.approved_at)}`
+                    : u18Approval?.status === 'pending'
+                      ? `Under 18 Parental Consent — submitted ${formatDate(u18Approval.submitted_at)} (awaiting committee)`
+                      : u18Approval?.status === 'rejected'
+                        ? 'Under 18 Parental Consent — rejected, contact committee'
+                        : 'Under 18 Parental Consent — not yet submitted'
+                }
               >
-                {isRegistered && !u18Sub && (
+                {isRegistered && u18Approval?.status !== 'approved' && (
                   <Under18Panel
                     userId={user.id}
                     eventYear={eventYear}
-                    playerName={`${firstName} ${lastName}`}
-                    formContent={u18FormContent}
-                    onSubmitted={() => setU18Sub({ submitted_at: new Date().toISOString() })}
+                    activeDoc={activeDocs.under_18_form}
+                    approval={u18Approval}
+                    onSubmitted={load}
                   />
                 )}
               </ChecklistItem>

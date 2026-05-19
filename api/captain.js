@@ -126,29 +126,50 @@ export default async function handler(req, res) {
       })
     }
 
+    // Legal acceptances + under-18 approvals come from the unified Phase 1/2/3
+    // tables. Acceptances are joined to legal_documents to filter by document_type.
     const [
-      { data: coc_sigs, error: e1 },
+      { data: acceptances, error: e1 },
       { data: payments, error: e2 },
       { data: ref_results, error: e3 },
-      { data: u18_subs, error: e4 },
-      { data: media_subs, error: e5 },
+      { data: u18_approvals, error: e4 },
     ] = await Promise.all([
-      supabaseAdmin.from('code_of_conduct_signatures').select('user_id').in('user_id', playerIds),
+      supabaseAdmin
+        .from('legal_acceptances')
+        .select('user_id, document:legal_documents!document_id(document_type)')
+        .in('user_id', playerIds)
+        .eq('event_year', eventYear),
       supabaseAdmin.from('payments').select('user_id, status').in('user_id', playerIds).eq('event_year', eventYear),
       supabaseAdmin.from('referee_test_results').select('user_id, passed, score').in('user_id', playerIds),
-      supabaseAdmin.from('under18_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
-      supabaseAdmin.from('media_release_submissions').select('user_id').in('user_id', playerIds).eq('event_year', eventYear),
+      supabaseAdmin
+        .from('under_18_approvals')
+        .select('user_id, status')
+        .in('user_id', playerIds)
+        .eq('event_year', eventYear),
     ])
 
-    const errs = [e1, e2, e3, e4, e5].filter(Boolean)
+    const errs = [e1, e2, e3, e4].filter(Boolean)
     if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
 
+    // Preserve the response shape that CaptainHub.jsx already consumes:
+    // each array is just rows of { user_id }, used to build a Set of completed users.
+    const coc_sigs = (acceptances ?? [])
+      .filter(a => a.document?.document_type === 'code_of_conduct')
+      .map(a => ({ user_id: a.user_id }))
+    const media_subs = (acceptances ?? [])
+      .filter(a => a.document?.document_type === 'media_release')
+      .map(a => ({ user_id: a.user_id }))
+    // u18_subs: any approval row that isn't rejected counts as "submitted".
+    const u18_subs = (u18_approvals ?? [])
+      .filter(a => a.status !== 'rejected')
+      .map(a => ({ user_id: a.user_id }))
+
     return res.json({
-      coc_sigs: coc_sigs ?? [],
+      coc_sigs,
       payments: payments ?? [],
       ref_results: ref_results ?? [],
-      u18_subs: u18_subs ?? [],
-      media_subs: media_subs ?? [],
+      u18_subs,
+      media_subs,
     })
   }
 

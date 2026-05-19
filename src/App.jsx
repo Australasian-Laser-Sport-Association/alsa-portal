@@ -33,12 +33,13 @@ import AdminHome from './pages/admin/AdminHome'
 import AdminEvent from './pages/admin/AdminEvent'
 import AdminEventHistory from './pages/admin/AdminEventHistory'
 import AdminRegistrations from './pages/admin/AdminRegistrations'
-import AdminCoC from './pages/admin/AdminCoC'
 import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminMembers from './pages/admin/AdminMembers'
-import AdminUnder18Form from './pages/admin/AdminUnder18Form'
-import AdminMediaRelease from './pages/admin/AdminMediaRelease'
+import AdminLegalDocuments from './pages/admin/AdminLegalDocuments'
+import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
+import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
+import AdminZLTACResults from './pages/admin/AdminZLTACResults'
 // ZLTAC history
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
@@ -99,13 +100,14 @@ function App() {
             <Route index element={<AdminHome />} />
             <Route path="event" element={<AdminEvent />} />
             <Route path="event-history" element={<AdminEventHistory />} />
+            <Route path="zltac-results" element={<AdminZLTACResults />} />
+            <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
             <Route path="registrations" element={<AdminRegistrations />} />
-            <Route path="coc" element={<AdminCoC />} />
+            <Route path="legal-documents" element={<AdminLegalDocuments />} />
+            <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
             <Route path="referee-test" element={<AdminRefereeTest />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="members" element={<AdminMembers />} />
-            <Route path="under18-form" element={<AdminUnder18Form />} />
-            <Route path="media-release" element={<AdminMediaRelease />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

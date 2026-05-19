@@ -1,8 +1,19 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
+
+const SIDE_EVENT_LABELS = {
+  solos:   'Solos',
+  doubles: 'Doubles',
+  triples: 'Triples',
+  masters: 'Masters',
+  womens:  'Womens',
+  juniors: 'Juniors',
+  lotr:    'Lord of the Rings',
+}
+const SIDE_EVENT_ORDER = ['solos', 'doubles', 'triples', 'masters', 'womens', 'juniors', 'lotr']
 
 function PhotoLightbox({ urls, startIndex, onClose }) {
   const [current, setCurrent] = useState(startIndex)
@@ -53,20 +64,58 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
 export default function ZLTACYearDetail() {
   const { year } = useParams()
   const [event, setEvent] = useState(null)
+  const [placings, setPlacings] = useState([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState(null) // index or null
 
   useEffect(() => {
-    supabase
-      .from('zltac_event_history')
-      .select('*')
-      .eq('year', parseInt(year))
-      .maybeSingle()
-      .then(({ data }) => {
-        setEvent(data)
-        setLoading(false)
-      })
+    let cancelled = false
+    const y = parseInt(year)
+
+    Promise.all([
+      supabase
+        .from('zltac_event_history')
+        .select('*')
+        .eq('year', y)
+        .maybeSingle(),
+      supabase
+        .from('zltac_event_placings')
+        .select('division, rank, name, subtitle')
+        .eq('tournament_year', y)
+        .order('rank', { ascending: true }),
+    ]).then(([eventRes, placingsRes]) => {
+      if (cancelled) return
+      setEvent(eventRes.data ?? null)
+      setPlacings(placingsRes.data ?? [])
+      setLoading(false)
+    })
+
+    return () => { cancelled = true }
   }, [year])
+
+  const teamPodium = useMemo(() => {
+    const byRank = { 1: null, 2: null, 3: null }
+    for (const p of placings) {
+      if (p.division === 'team' && (p.rank === 1 || p.rank === 2 || p.rank === 3)) {
+        byRank[p.rank] = p
+      }
+    }
+    return byRank
+  }, [placings])
+
+  const sideEventGroups = useMemo(() => {
+    const byDivision = new Map()
+    for (const p of placings) {
+      if (p.division === 'team') continue
+      let list = byDivision.get(p.division)
+      if (!list) { list = []; byDivision.set(p.division, list) }
+      list.push(p)
+    }
+    for (const list of byDivision.values()) list.sort((a, b) => a.rank - b.rank)
+    return SIDE_EVENT_ORDER
+      .filter(div => byDivision.has(div))
+      .map(div => ({ division: div, label: SIDE_EVENT_LABELS[div], entries: byDivision.get(div) }))
+  }, [placings])
 
   if (loading) {
     return (
@@ -88,8 +137,8 @@ export default function ZLTACYearDetail() {
   }
 
   const location = [event.location_city, event.location_state].filter(Boolean).join(', ')
-  const hasPodium = event.champion_team || event.runner_up_team || event.third_place_team
-  const hasSideEvents = event.side_event_results?.length > 0
+  const hasPodium = !!(teamPodium[1] || teamPodium[2] || teamPodium[3])
+  const hasSideEvents = sideEventGroups.length > 0
   const hasPhotos = event.photo_urls?.length > 0
 
   const dateRange = event.start_date
@@ -167,43 +216,34 @@ export default function ZLTACYearDetail() {
             <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-8 text-center">Final Podium</p>
             <div className="flex items-end justify-center gap-4">
               {/* Runner up — left */}
-              {event.runner_up_team ? (
+              {teamPodium[2] ? (
                 <div className="flex-1 max-w-[220px]">
                   <div className="bg-surface border border-line rounded-2xl p-6 text-center">
                     <div className="text-3xl mb-3">🥈</div>
                     <p className="text-[10px] text-[#e5e5e5]/30 uppercase tracking-wider mb-1">Runner Up</p>
-                    <p className="text-white font-bold text-lg leading-tight">{event.runner_up_team}</p>
-                    {event.runner_up_state && (
-                      <span className="inline-block mt-2 text-xs bg-[#191919] border border-line text-[#e5e5e5]/40 px-2 py-0.5 rounded-full">{event.runner_up_state}</span>
-                    )}
+                    <p className="text-white font-bold text-lg leading-tight">{teamPodium[2].name}</p>
                   </div>
                 </div>
               ) : <div className="flex-1 max-w-[220px]" />}
 
               {/* Champion — centre, elevated */}
-              {event.champion_team && (
+              {teamPodium[1] && (
                 <div className="flex-1 max-w-[260px] -mb-4">
                   <div className="bg-brand/5 border-2 border-brand/40 rounded-2xl p-7 text-center shadow-[0_0_40px_rgba(0,255,65,0.08)]">
                     <div className="text-4xl mb-3">🥇</div>
                     <p className="text-[10px] text-brand/60 uppercase tracking-wider mb-1">Champion</p>
-                    <p className="text-white font-black text-xl leading-tight">{event.champion_team}</p>
-                    {event.champion_state && (
-                      <span className="inline-block mt-2 text-xs bg-brand/10 border border-brand/20 text-brand/70 px-2 py-0.5 rounded-full">{event.champion_state}</span>
-                    )}
+                    <p className="text-white font-black text-xl leading-tight">{teamPodium[1].name}</p>
                   </div>
                 </div>
               )}
 
               {/* Third place — right */}
-              {event.third_place_team ? (
+              {teamPodium[3] ? (
                 <div className="flex-1 max-w-[220px]">
                   <div className="bg-surface border border-line rounded-2xl p-6 text-center">
                     <div className="text-3xl mb-3">🥉</div>
                     <p className="text-[10px] text-[#e5e5e5]/30 uppercase tracking-wider mb-1">Third Place</p>
-                    <p className="text-white font-bold text-lg leading-tight">{event.third_place_team}</p>
-                    {event.third_place_state && (
-                      <span className="inline-block mt-2 text-xs bg-[#191919] border border-line text-[#e5e5e5]/40 px-2 py-0.5 rounded-full">{event.third_place_state}</span>
-                    )}
+                    <p className="text-white font-bold text-lg leading-tight">{teamPodium[3].name}</p>
                   </div>
                 </div>
               ) : <div className="flex-1 max-w-[220px]" />}
@@ -225,21 +265,20 @@ export default function ZLTACYearDetail() {
           <section>
             <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-6">Side Event Results</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {event.side_event_results.map((se, i) => (
-                <div key={i} className="bg-surface border border-line rounded-2xl p-5">
-                  <p className="text-white font-bold mb-4">{se.name}</p>
+              {sideEventGroups.map(group => (
+                <div key={group.division} className="bg-surface border border-line rounded-2xl p-5">
+                  <p className="text-white font-bold mb-4">{group.label}</p>
                   <div className="space-y-2">
-                    {[
-                      { medal: '🥇', name: se.first_name, alias: se.first_alias },
-                      { medal: '🥈', name: se.second_name, alias: se.second_alias },
-                      { medal: '🥉', name: se.third_name, alias: se.third_alias },
-                    ].filter(p => p.name).map(({ medal, name, alias }) => (
-                      <div key={medal} className="flex items-center gap-3 text-sm">
-                        <span className="text-base">{medal}</span>
-                        <span className="text-[#e5e5e5]/70 font-medium">{name}</span>
-                        {alias && <span className="text-[#e5e5e5]/35 text-xs">({alias})</span>}
-                      </div>
-                    ))}
+                    {group.entries.map(({ rank, name, subtitle }) => {
+                      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
+                      return (
+                        <div key={rank} className="flex items-center gap-3 text-sm">
+                          <span className="text-base">{medal}</span>
+                          <span className="text-[#e5e5e5]/70 font-medium">{name}</span>
+                          {subtitle && <span className="text-[#e5e5e5]/35 text-xs">({subtitle})</span>}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
