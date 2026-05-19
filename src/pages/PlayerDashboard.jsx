@@ -229,6 +229,110 @@ function ProfileCard({ profile, userId, userEmail, membership, onUpdated }) {
   )
 }
 
+// ── Password Card ────────────────────────────────────────────────────────────
+// Change-password flow. Re-authenticates with current password (via
+// signInWithPassword) before calling updateUser, per spec — protects against
+// a hijacked session changing the password without the original credential.
+function PasswordCard({ userEmail }) {
+  const [open, setOpen] = useState(false)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  function reset() {
+    setCurrentPw(''); setNewPw(''); setConfirmPw(''); setMsg(null)
+  }
+
+  async function submit(e) {
+    e.preventDefault()
+    setMsg(null)
+    if (newPw !== confirmPw) { setMsg({ type: 'error', text: 'New passwords do not match.' }); return }
+    if (newPw.length < 6)     { setMsg({ type: 'error', text: 'New password must be at least 6 characters.' }); return }
+    if (newPw === currentPw)  { setMsg({ type: 'error', text: 'New password must be different from current.' }); return }
+
+    setSaving(true)
+    // Re-auth with current password.
+    const { error: signinErr } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: currentPw,
+    })
+    if (signinErr) {
+      setSaving(false)
+      setMsg({ type: 'error', text: 'Current password is incorrect.' })
+      return
+    }
+    // Apply new password.
+    const { error: updErr } = await supabase.auth.updateUser({ password: newPw })
+    setSaving(false)
+    if (updErr) {
+      setMsg({ type: 'error', text: updErr.message })
+      return
+    }
+    setMsg({ type: 'ok', text: 'Password updated.' })
+    setCurrentPw(''); setNewPw(''); setConfirmPw('')
+    setTimeout(() => { setOpen(false); setMsg(null) }, 1500)
+  }
+
+  if (!open) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-white font-bold text-base mb-1">Password</h2>
+          <p className="text-[#e5e5e5]/50 text-sm">Change your account password.</p>
+        </div>
+        <button
+          onClick={() => { reset(); setOpen(true) }}
+          className="flex-shrink-0 text-sm bg-line hover:bg-[#374056] text-white font-semibold px-4 py-2 rounded-xl transition-colors"
+        >
+          Change password
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-6">
+      <h2 className="text-white font-bold text-base mb-1">Change password</h2>
+      <p className="text-[#e5e5e5]/50 text-sm mb-5">Re-enter your current password to confirm the change.</p>
+
+      <form onSubmit={submit} className="space-y-4">
+        <Input label="Current Password" type="password" value={currentPw} onChange={setCurrentPw} placeholder="••••••••" />
+        <Input label="New Password" type="password" value={newPw} onChange={setNewPw} placeholder="At least 6 characters" />
+        <Input label="Confirm New Password" type="password" value={confirmPw} onChange={setConfirmPw} placeholder="Repeat new password" />
+
+        {msg && (
+          <p className={`text-sm rounded-lg px-4 py-2 border ${
+            msg.type === 'error'
+              ? 'text-red-400 bg-red-400/10 border-red-400/30'
+              : 'text-brand bg-brand/10 border-brand/30'
+          }`}>
+            {msg.text}
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button
+            type="submit"
+            disabled={saving || !currentPw || !newPw || !confirmPw}
+            className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all"
+          >
+            {saving ? 'Saving…' : 'Update password'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { reset(); setOpen(false) }}
+            className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 // ── Registration Card ─────────────────────────────────────────────────────────
 function RegistrationCard({ registration, openEvent }) {
   if (registration) {
@@ -405,6 +509,9 @@ export default function PlayerDashboard() {
           membership={membership}
           onUpdated={load}
         />
+
+        {/* Password card */}
+        <PasswordCard userEmail={user.email} />
 
         {/* Registration card */}
         <RegistrationCard registration={registration} openEvent={openEvent} />

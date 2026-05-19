@@ -28,10 +28,14 @@ function sortSideEvents(events) {
 }
 
 // ── Team Card ──────────────────────────────────────────────────────────────
+// `team.profiles` is the captain's profile when fetched via the authenticated
+// path. For anonymous viewers we deliberately don't fetch captain profile
+// data, so first_name/last_name are absent — show "—" rather than leak
+// "undefined undefined". Captain real name is intentionally hidden from anon.
 function TeamCard({ team, players }) {
-  const captainName = team.profiles
-    ? `${team.profiles.first_name} ${team.profiles.last_name}`
-    : '—'
+  const captainRealName = [team.profiles?.first_name, team.profiles?.last_name]
+    .filter(Boolean).join(' ') || null
+  const captainName = captainRealName ?? '—'
   const teamState = team.profiles?.state ?? null
 
   return (
@@ -69,17 +73,23 @@ function TeamCard({ team, players }) {
             Roster · {players.length} Player{players.length !== 1 ? 's' : ''}
           </p>
           {players.map(p => {
-            const name = p.profiles ? `${p.profiles.first_name} ${p.profiles.last_name}` : '—'
+            // Anon viewers get profile rows with alias + state only (no real
+            // name, no user_id). Prefer alias as primary in that case;
+            // otherwise show real name with alias quoted alongside.
+            const realName = [p.profiles?.first_name, p.profiles?.last_name]
+              .filter(Boolean).join(' ') || null
             const alias = p.profiles?.alias
             const state = p.profiles?.state
+            const primary = realName || alias || '—'
+            const secondary = realName ? alias : null
             const confirmed = p.status === 'confirmed'
             return (
-              <div key={p.id} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
+              <div key={p.id ?? p._key} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white text-sm font-semibold">{name}</span>
-                    {alias && (
-                      <span className="text-brand text-xs font-semibold">"{alias}"</span>
+                    <span className="text-white text-sm font-semibold">{primary}</span>
+                    {secondary && (
+                      <span className="text-brand text-xs font-semibold">"{secondary}"</span>
                     )}
                     {state && (
                       <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">
@@ -139,20 +149,18 @@ function SideEventPanel({ sideEvent, entries }) {
           ) : (
             <div className="space-y-1">
               {entries.map(reg => {
-                const name = reg.profiles
-                  ? `${reg.profiles.first_name} ${reg.profiles.last_name}`
-                  : '—'
+                const realName = [reg.profiles?.first_name, reg.profiles?.last_name]
+                  .filter(Boolean).join(' ') || null
                 const alias = reg.profiles?.alias
+                const primary = realName || alias || '—'
+                const secondary = realName ? alias : null
                 return (
-                  <div key={reg.id} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white text-sm font-semibold">{name}</span>
-                        {alias && (
-                          <span className="text-brand text-xs font-semibold">"{alias}"</span>
-                        )}
-                      </div>
-                      <p className="text-[#e5e5e5]/35 text-xs mt-0.5">{reg.teamName ?? 'Independent'}</p>
+                  <div key={reg.id ?? reg._key} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-white text-sm font-semibold">{primary}</span>
+                      {secondary && (
+                        <span className="text-brand text-xs font-semibold">"{secondary}"</span>
+                      )}
                     </div>
                   </div>
                 )
@@ -393,6 +401,105 @@ export default function EventPage() {
   const [lightboxUrl, setLightboxUrl] = useState(null)
 
   useEffect(() => {
+    async function loadAuthenticatedRoster(yearInt) {
+      const [{ data: teamsData }, { data: regsData }] = await Promise.all([
+        supabase
+          .from('teams')
+          .select('id, name, status, logo_url, captain_id, manager_id')
+          .eq('status', 'approved')
+          .order('name'),
+        supabase
+          .from('zltac_registrations')
+          .select('id, user_id, team_id, side_events, status')
+          .eq('year', yearInt),
+      ])
+      const rawTeams = teamsData ?? []
+      const rawRegs = regsData ?? []
+
+      const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
+      const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
+      const allIds = [...new Set([...playerIds, ...captainIds])]
+
+      let profileMap = {}
+      if (allIds.length > 0) {
+        const { profiles: profileData } = await apiFetch('/api/profiles', {
+          method: 'POST',
+          body: JSON.stringify({ ids: allIds }),
+        })
+        profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
+      }
+
+      setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
+      setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
+
+      let doublesData = []
+      let triplesData = []
+      try {
+        const result = await apiFetch(`/api/public?resource=event&year=${yearInt}`)
+        doublesData = result.doubles ?? []
+        triplesData = result.triples ?? []
+      } catch (err) {
+        console.error('EventPage: /api/public?resource=event failed, falling back to empty doubles/triples:', err)
+      }
+      setDoublesPairs(doublesData)
+      setTriplesTeams(triplesData)
+
+      const pairIds = new Set()
+      doublesData.forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
+      triplesData.forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
+      const missingIds = [...pairIds].filter(id => !profileMap[id])
+      let fullPairMap = { ...profileMap }
+      if (missingIds.length > 0) {
+        const { profiles: extraProfs } = await apiFetch('/api/profiles', {
+          method: 'POST',
+          body: JSON.stringify({ ids: missingIds }),
+        })
+        ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
+      }
+      setPairProfileMap(fullPairMap)
+    }
+
+    async function loadPublicRoster(yearInt) {
+      // Anonymous fetch: teams (RLS allows public read) and the masked
+      // public_event_roster view (alias + state only). DoublesEntriesSection
+      // and TriplesEntriesSection are hidden client-side for anon viewers
+      // because the spec excludes partner pairings.
+      const [{ data: teamsData }, { data: rosterData }] = await Promise.all([
+        supabase
+          .from('teams')
+          .select('id, name, status, logo_url, captain_id, manager_id')
+          .eq('status', 'approved')
+          .order('name'),
+        supabase
+          .from('public_event_roster')
+          .select('team_id, year, side_events, alias, state')
+          .eq('year', yearInt),
+      ])
+
+      const rawTeams = teamsData ?? []
+      const rawRoster = rosterData ?? []
+
+      // Synthesize a roster-row shape compatible with the existing render
+      // code: { id, team_id, side_events, status:null, profiles:{ alias, state } }.
+      // status is null so the "confirmed" tick is hidden for anon — by design
+      // (completion status is private).
+      const synthRegs = rawRoster.map((r, idx) => ({
+        id: `anon-${r.team_id ?? 'none'}-${idx}`,
+        _key: `anon-${idx}`,
+        team_id: r.team_id,
+        side_events: r.side_events,
+        status: null,
+        profiles: { alias: r.alias, state: r.state },
+      }))
+
+      // Captain profile is intentionally not fetched (real names hidden).
+      setTeams(rawTeams.map(t => ({ ...t, profiles: null })))
+      setRegs(synthRegs)
+      setDoublesPairs([])
+      setTriplesTeams([])
+      setPairProfileMap({})
+    }
+
     async function load() {
       try {
         const yearInt = parseInt(year)
@@ -414,66 +521,16 @@ export default function EventPage() {
 
         // Load registration data for non-draft events
         if (ev && ev.status !== 'draft') {
-          // Fetch teams and registrations without profile joins (RLS blocks other users' profiles)
-          const [{ data: teamsData }, { data: regsData }] = await Promise.all([
-            supabase
-              .from('teams')
-              .select('id, name, status, logo_url, captain_id, manager_id')
-              .eq('status', 'approved')
-              .order('name'),
-            supabase
-              .from('zltac_registrations')
-              .select('id, user_id, team_id, side_events, status')
-              .eq('year', parseInt(year)),
-          ])
-          const rawTeams = teamsData ?? []
-          const rawRegs = regsData ?? []
-
-          // Collect all user IDs (players + captains) and fetch profiles via API
-          const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
-          const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
-          const allIds = [...new Set([...playerIds, ...captainIds])]
-
-          let profileMap = {}
-          if (allIds.length > 0) {
-            const { profiles: profileData } = await apiFetch('/api/profiles', {
-              method: 'POST',
-              body: JSON.stringify({ ids: allIds }),
-            })
-            profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
+          if (user) {
+            // Authenticated path — fetches richer profile data (first_name,
+            // last_name, etc.) and the confirmed doubles/triples pairings.
+            await loadAuthenticatedRoster(yearInt)
+          } else {
+            // Anonymous path — fetches only the masked public_event_roster
+            // (alias + state). Captain real names, partner pairings,
+            // completion data, and personal contact info are all withheld.
+            await loadPublicRoster(yearInt)
           }
-
-          setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
-          setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
-
-          // /api/public?resource=event (confirmed doubles/triples) is non-critical for page render —
-          // if it 500s, fall back to empty arrays so the rest of the page still renders.
-          let doublesData = []
-          let triplesData = []
-          try {
-            const result = await apiFetch(`/api/public?resource=event&year=${parseInt(year)}`)
-            doublesData = result.doubles ?? []
-            triplesData = result.triples ?? []
-          } catch (err) {
-            console.error('EventPage: /api/public?resource=event failed, falling back to empty doubles/triples:', err)
-          }
-          setDoublesPairs(doublesData)
-          setTriplesTeams(triplesData)
-
-          // Collect all pair/team player IDs and fetch any missing profiles
-          const pairIds = new Set()
-          doublesData.forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
-          triplesData.forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
-          const missingIds = [...pairIds].filter(id => !profileMap[id])
-          let fullPairMap = { ...profileMap }
-          if (missingIds.length > 0) {
-            const { profiles: extraProfs } = await apiFetch('/api/profiles', {
-              method: 'POST',
-              body: JSON.stringify({ ids: missingIds }),
-            })
-            ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
-          }
-          setPairProfileMap(fullPairMap)
         }
       } catch (err) {
         console.error('EventPage load failed:', err)
@@ -828,7 +885,9 @@ export default function EventPage() {
           {enabledSideEvents.length > 0 && (
             <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={regs} teams={teams} />
           )}
-          {(doublesPairs.length > 0 || triplesTeams.length > 0) && (
+          {/* Partner pairings (doubles/triples) are intentionally hidden from
+              anonymous viewers — spec calls them out as private. */}
+          {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
             <>
               <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
               <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />

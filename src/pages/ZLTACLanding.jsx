@@ -7,6 +7,7 @@ import YearExplorer from '../components/zltac/YearExplorer'
 import HostingGrid from '../components/zltac/HostingGrid'
 import LegendsAndDynasties from '../components/zltac/LegendsAndDynasties'
 import HallOfFame from '../components/zltac/HallOfFame'
+import DougBurbidgeReference from '../components/DougBurbidgeReference'
 
 function memberInitials(p) {
   const a = (p.first_name?.[0] ?? '').toUpperCase()
@@ -187,6 +188,7 @@ export default function ZLTACLanding() {
         stateFilter={stateFilter}
         onStateFilterChange={setStateFilter}
       />
+      <DougBurbidgeReference />
       <HostingGrid
         selectedRegion={stateFilter === 'all' ? null : stateFilter}
         onSelectRegion={handleSelectRegion}

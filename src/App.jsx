@@ -14,6 +14,8 @@ import EventPage from './pages/EventPage'
 // Auth pages
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 
 // Authenticated pages
 import PlayerDashboard from './pages/PlayerDashboard'
@@ -90,6 +92,8 @@ function App() {
           {/* Auth */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Authenticated */}
           <Route path="/dashboard" element={<ProtectedRoute><PlayerDashboard /></ProtectedRoute>} />
