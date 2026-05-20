@@ -6,8 +6,15 @@ import { COMMITTEE_EMAIL } from '../lib/eventPhase'
 //
 // Use the `phase` prop ('locked' | 'closed') to vary the copy. Renders
 // nothing for 'open'.
-export default function LockedRegistrationBanner({ phase, className = '' }) {
+//
+// `email` is the event's configurable committee_email (from the event row).
+// When unset, falls back to the app-level COMMITTEE_EMAIL default. The parent
+// already has the event row, so it passes the value down — the banner never
+// fetches it itself.
+export default function LockedRegistrationBanner({ phase, email, className = '' }) {
   if (phase !== 'locked' && phase !== 'closed') return null
+
+  const committeeEmail = email || COMMITTEE_EMAIL
 
   const headline = phase === 'closed'
     ? 'Registration is closed'
@@ -25,10 +32,10 @@ export default function LockedRegistrationBanner({ phase, className = '' }) {
         <p className="text-yellow-200/80 mt-1 leading-relaxed">
           {subline}{' '}
           <a
-            href={`mailto:${COMMITTEE_EMAIL}`}
+            href={`mailto:${committeeEmail}`}
             className="underline hover:text-yellow-100"
           >
-            {COMMITTEE_EMAIL}
+            {committeeEmail}
           </a>
         </p>
       </div>

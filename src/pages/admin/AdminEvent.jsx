@@ -113,7 +113,7 @@ export default function AdminEvent() {
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
   const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
-  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false })
+  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '' })
 
   // Logo
   const [logoFile, setLogoFile] = useState(null)
@@ -187,6 +187,7 @@ export default function AdminEvent() {
       require_payment: ev.require_payment ?? true,
       allow_side_events_only: ev.allow_side_events_only ?? false,
       enable_waitlist: ev.enable_waitlist ?? false,
+      committee_email: ev.committee_email ?? '',
     })
     setLogoFile(null)
     setLogoPreview(ev.logo_url ?? null)
@@ -288,6 +289,7 @@ export default function AdminEvent() {
       require_payment: settings.require_payment,
       allow_side_events_only: settings.allow_side_events_only,
       enable_waitlist: settings.enable_waitlist,
+      committee_email: settings.committee_email.trim() || null,
       updated_at: new Date().toISOString(),
     }
 
@@ -824,6 +826,15 @@ export default function AdminEvent() {
                 {hint && <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">{hint}</p>}
               </div>
             ))}
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Committee Email</label>
+            <input type="email" value={settings.committee_email ?? ''} disabled={isArchived} placeholder="committee@lasersport.org.au"
+              onChange={e => setSettings(s => ({ ...s, committee_email: e.target.value || '' }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+            />
+            <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">Email shown to players for change requests after lock. Leave blank to use committee@lasersport.org.au.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

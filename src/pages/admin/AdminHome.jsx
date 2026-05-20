@@ -76,7 +76,7 @@ export default function AdminHome() {
           ? supabase.from('teams').select('*', { count: 'exact', head: true }).eq('event_id', activeEventId)
           : Promise.resolve({ count: 0 }),
         activeYear
-          ? supabase.from('zltac_registrations').select('id, user_id, amount_owing').eq('year', activeYear)
+          ? supabase.from('zltac_registrations').select('id, user_id, amount_owing, admin_override_coc, admin_override_media, admin_override_ref_test').eq('year', activeYear)
           : Promise.resolve({ data: [] }),
         activeYear
           ? supabase.from('payment_records')
@@ -128,8 +128,14 @@ export default function AdminHome() {
       //    have completed the requirement.
       const registeredUserIds = new Set((regsForYear ?? []).map(r => r.user_id))
 
+      // Committee manual overrides count toward a satisfied concern, matching
+      // the rule used in CaptainHub / AdminRegistrations: normalCheck || override.
+      const overrideCocUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_coc).map(r => r.user_id))
+      const overrideMediaUsers = new Set((regsForYear ?? []).filter(r => r.admin_override_media).map(r => r.user_id))
+      const overrideRefUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_ref_test).map(r => r.user_id))
+
       const refPassedUserIds = new Set((refResults ?? []).filter(r => r.passed).map(r => r.user_id))
-      const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid)).length
+      const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid) || overrideRefUsers.has(uid)).length
 
       const cocSignedUserIds = new Set(
         (cocMediaAccs ?? [])
@@ -141,8 +147,8 @@ export default function AdminHome() {
           .filter(a => a.document?.document_type === 'media_release')
           .map(a => a.user_id)
       )
-      const cocSignedRegistered = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid)).length
-      const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid)).length
+      const cocSignedRegistered = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid) || overrideCocUsers.has(uid)).length
+      const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid) || overrideMediaUsers.has(uid)).length
 
       // Per-event toggles. When a requirement is disabled the corresponding
       // tile renders "N/A" instead of a value — surfacing that the dashboard

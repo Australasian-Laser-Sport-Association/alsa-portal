@@ -135,9 +135,11 @@ export default function AdminRegistrations() {
   const players = regs.map(reg => {
     const profile = profMap[reg.user_id] ?? null
     const team    = teamMap[reg.team_id] ?? null
-    const coc     = cocSet.has(reg.user_id)
-    const ref     = refMap[reg.user_id] ?? null
-    const media   = mediaSet.has(reg.user_id)
+    // Committee manual overrides count as satisfied: normalCheck || override.
+    const coc       = cocSet.has(reg.user_id) || !!reg.admin_override_coc
+    const ref       = refMap[reg.user_id] ?? null
+    const refPassed = ref?.passed === true || !!reg.admin_override_ref_test
+    const media     = mediaSet.has(reg.user_id) || !!reg.admin_override_media
     const payRecords  = recordsByReg[reg.id] ?? []
     const amountOwing = reg.amount_owing ?? 0
     const amountPaid  = payRecords.reduce((s, r) => s + r.amount, 0)
@@ -145,17 +147,17 @@ export default function AdminRegistrations() {
     const payStatus   = balance < 0 ? 'overpaid' : balance === 0 ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
     const paid        = balance <= 0
     const cocOk    = !cocRequired || coc
-    const refOk    = !refRequired || ref?.passed === true
+    const refOk    = !refRequired || refPassed
     const paidOk   = !paymentRequired || paid
     const complete = cocOk && refOk && media && paidOk
     const checks = [
       ...(cocRequired ? [coc] : []),
-      ...(refRequired ? [ref?.passed] : []),
+      ...(refRequired ? [refPassed] : []),
       media,
       ...(paymentRequired ? [paid] : []),
     ]
     const doneCount = checks.filter(Boolean).length
-    return { ...reg, profile, team, coc, ref, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
+    return { ...reg, profile, team, coc, ref, refPassed, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
 
   // Phase + needs-follow-up derivation.
@@ -394,7 +396,7 @@ export default function AdminRegistrations() {
                   <thead>
                     <tr className="border-b border-line">
                       {['Name', 'Alias', 'State', 'Team', 'CoC', 'Ref Test', 'Media', 'Owing', 'Paid', 'Balance', 'Payment', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        <th key={h} className={`px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap ${h === 'Actions' ? 'sticky right-0 bg-surface border-l border-line' : ''}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -433,11 +435,11 @@ export default function AdminRegistrations() {
                           </td>
                           {/* Ref Test */}
                           <td className="px-4 py-3">
-                            {p.ref
-                              ? p.ref.passed
-                                ? <Pill color="green">Passed ({p.ref.score}%)</Pill>
-                                : <Pill color="amber">Failed ({p.ref.score}%)</Pill>
-                              : <Pill color="grey">Not taken</Pill>}
+                            {p.refPassed
+                              ? <Pill color="green">Passed{p.ref?.score != null ? ` (${p.ref.score}%)` : ''}</Pill>
+                              : p.ref
+                                ? <Pill color="amber">Failed ({p.ref.score}%)</Pill>
+                                : <Pill color="grey">Not taken</Pill>}
                           </td>
                           {/* Media */}
                           <td className="px-4 py-3">
@@ -463,24 +465,25 @@ export default function AdminRegistrations() {
                               ? <Pill color="green">Complete</Pill>
                               : <Pill color="red">{p.doneCount}/{p.totalChecks}</Pill>}
                           </td>
-                          {/* Actions */}
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          {/* Actions — sticky to the right so the buttons stay
+                              reachable while the wide table scrolls horizontally. */}
+                          <td className="px-4 py-3 whitespace-nowrap sticky right-0 bg-surface border-l border-line">
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => setEditModal({ registration: p, profile: p.profile })}
-                                className="text-xs text-[#e5e5e5]/60 hover:text-white hover:bg-line font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-blue-500/15 border-blue-500/30 text-blue-300 hover:bg-blue-500/25 transition-colors"
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
-                                className="text-xs text-brand/70 hover:text-brand hover:bg-brand/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-green-500/15 border-green-500/30 text-green-300 hover:bg-green-500/25 transition-colors"
                               >
                                 Record Payment / Refund
                               </button>
                               <button
                                 onClick={() => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias })}
-                                className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-red-500/15 border-red-500/30 text-red-300 hover:bg-red-500/25 transition-colors"
                               >
                                 Remove
                               </button>

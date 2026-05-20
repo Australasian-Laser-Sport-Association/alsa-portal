@@ -233,7 +233,7 @@ export default async function handler(req, res) {
         .eq('event_year', eventYear),
       supabaseAdmin
         .from('zltac_registrations')
-        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing')
+        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18')
         .in('user_id', playerIds)
         .eq('year', eventYear),
       supabaseAdmin
@@ -281,6 +281,16 @@ export default async function handler(req, res) {
       .filter(a => a.status !== 'rejected')
       .map(a => ({ user_id: a.user_id }))
 
+    // Committee manual overrides per user, from the registration row. The
+    // client ORs these into the completion map so a waived/offline-verified
+    // concern reads as satisfied (CoC, Media, Ref Test, U18).
+    const overrides = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, {
+      coc:      r.admin_override_coc === true,
+      media:    r.admin_override_media === true,
+      ref_test: r.admin_override_ref_test === true,
+      u18:      r.admin_override_u18 === true,
+    }]))
+
     return res.json({
       coc_sigs,
       payments: payments ?? [],
@@ -291,6 +301,7 @@ export default async function handler(req, res) {
       doubles_pairs: doubles_pairs ?? [],
       triples_teams: triples_teams ?? [],
       paid_cents_by_user,
+      overrides,
     })
   }
 

@@ -2,15 +2,48 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
-import { requireOpenPhase } from './_lib/eventPhase.js'
+import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
 
 // Helper: returns true and writes a 403 to res when the event for the
-// given year is not in 'open' phase. Player-mutation actions early-return
-// after this check.
+// given year is not in 'open' phase. Used only by price-bearing player
+// mutations (registration cancel). Partner-pairing actions (doubles/triples)
+// are intentionally NOT guarded — shuffling partners within already-committed
+// side events doesn't change anyone's amount_owing, so it stays editable
+// after lock. The price-bearing writes (side_events array, extras, team
+// membership) remain frozen: side_events/extras via the client confirm
+// buttons + locked state, team membership via api/captain.js.
 async function denyIfLocked(res, year) {
   const guard = await requireOpenPhase(year)
   if (guard.ok) return false
   res.status(guard.status).json({ error: guard.error, phase: guard.phase })
+  return true
+}
+
+// Partner invites/confirms auto-add the relevant side event ('doubles' /
+// 'triples') to the target player's side_events when they don't already
+// have it. In 'open' phase that's fine. After lock it would silently raise
+// that player's amount_owing, breaking price stability — so block it.
+// Returns true (and writes a 400) when, in a non-open phase, the target
+// player doesn't yet have `slug` selected. In 'open' phase always returns
+// false (auto-add behaviour unchanged).
+async function denyIfWouldAddSideEventAfterLock(res, year, targetUserId, slug) {
+  const { phase } = await getEventPhase(year)
+  if (phase === 'open') return false
+
+  const { data: reg } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('side_events')
+    .eq('user_id', targetUserId)
+    .eq('year', year)
+    .maybeSingle()
+
+  if ((reg?.side_events ?? []).includes(slug)) return false
+
+  const label = slug === 'doubles' ? 'Doubles' : slug === 'triples' ? 'Triples' : slug
+  res.status(400).json({
+    error: `This player isn't registered for ${label}. They need to add it themselves before the lock, or contact committee.`,
+    phase,
+  })
   return true
 }
 
@@ -97,20 +130,23 @@ async function handleDoubles(req, res, user) {
     const profIds = profs.map(p => p.id)
     const { data: teamRegs, error: teamRegsErr } = await supabaseAdmin
       .from('zltac_registrations')
-      .select('user_id, teams(name)')
+      .select('user_id, side_events, teams(name)')
       .eq('year', eventYear)
       .in('user_id', profIds)
 
     if (teamRegsErr) return res.status(500).json({ error: teamRegsErr.message })
 
     const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null })) })
+    // sideEvents lets the client grey out players who haven't selected
+    // 'doubles' once registration is locked (price-stability guard mirror).
+    const sideMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.side_events ?? []]))
+    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null, sideEvents: sideMap[p.id] ?? [] })) })
   }
 
   if (action === 'create') {
     const { eventYear, partnerId } = body
     if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })
-    if (await denyIfLocked(res, eventYear)) return
+    if (await denyIfWouldAddSideEventAfterLock(res, eventYear, partnerId, 'doubles')) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('doubles_pairs')
@@ -150,7 +186,7 @@ async function handleDoubles(req, res, user) {
     if (pairErr) return res.status(500).json({ error: pairErr.message })
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player2_id !== user.id) return res.status(403).json({ error: 'Not a party to this pair' })
-    if (await denyIfLocked(res, pair.event_year)) return
+    if (await denyIfWouldAddSideEventAfterLock(res, pair.event_year, user.id, 'doubles')) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('doubles_pairs')
@@ -173,7 +209,6 @@ async function handleDoubles(req, res, user) {
     if (pair.player1_id !== user.id && pair.player2_id !== user.id) {
       return res.status(403).json({ error: 'Not a party to this pair' })
     }
-    if (await denyIfLocked(res, pair.event_year)) return
 
     const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })
@@ -238,20 +273,23 @@ async function handleTriples(req, res, user) {
     const profIds = profs.map(p => p.id)
     const { data: teamRegs, error: teamRegsErr } = await supabaseAdmin
       .from('zltac_registrations')
-      .select('user_id, teams(name)')
+      .select('user_id, side_events, teams(name)')
       .eq('year', eventYear)
       .in('user_id', profIds)
 
     if (teamRegsErr) return res.status(500).json({ error: teamRegsErr.message })
 
     const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null })) })
+    // sideEvents lets the client grey out players who haven't selected
+    // 'triples' once registration is locked (price-stability guard mirror).
+    const sideMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.side_events ?? []]))
+    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null, sideEvents: sideMap[p.id] ?? [] })) })
   }
 
   if (action === 'create') {
     const { eventYear, slot, partnerId } = body
     if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })
-    if (await denyIfLocked(res, eventYear)) return
+    if (await denyIfWouldAddSideEventAfterLock(res, eventYear, partnerId, 'triples')) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('triples_teams')
@@ -279,7 +317,7 @@ async function handleTriples(req, res, user) {
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
-    if (await denyIfLocked(res, existing.event_year ?? eventYear)) return
+    if (await denyIfWouldAddSideEventAfterLock(res, existing.event_year ?? eventYear, partnerId, 'triples')) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -301,7 +339,7 @@ async function handleTriples(req, res, user) {
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
-    if (await denyIfLocked(res, existing.event_year)) return
+    if (await denyIfWouldAddSideEventAfterLock(res, existing.event_year, user.id, 'triples')) return
 
     const myField = `player${mySlot}_confirmed`
     const otherSlot = mySlot === 2 ? 3 : 2
@@ -331,7 +369,6 @@ async function handleTriples(req, res, user) {
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
-    if (await denyIfLocked(res, existing.event_year)) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -359,7 +396,6 @@ async function handleTriples(req, res, user) {
 
     const isParty = [existing.player1_id, existing.player2_id, existing.player3_id].includes(user.id)
     if (!isParty) return res.status(403).json({ error: 'Not a party to this team' })
-    if (await denyIfLocked(res, existing.event_year)) return
 
     const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })

@@ -4,8 +4,11 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
+import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import CommitteeBadge from '../components/CommitteeBadge'
+import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import LockedNotice from '../components/LockedNotice'
 import { TeamShieldIcon } from '../components/icons.jsx'
 
 function isUnder18(dob, eventYear) {
@@ -183,7 +186,7 @@ export default function CaptainHub() {
   // ── Load data ─────────────────────────────────────────────────────────────
   async function load() {
     const [{ data: ev }, { data: t }] = await Promise.all([
-      supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment').eq('status', 'open').maybeSingle(),
+      supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment, reg_close_date, event_starts_at, committee_email').eq('status', 'open').maybeSingle(),
       supabase.from('teams').select('id, name, state, home_venue, colour, invite_code, status, rejection_reason, logo_url').eq('captain_id', user.id).maybeSingle(),
     ])
     setEvent(ev)
@@ -224,7 +227,7 @@ export default function CaptainHub() {
     const {
       coc_sigs, ref_results, u18_subs, media_subs,
       regs_status, doubles_pairs, triples_teams,
-      paid_cents_by_user,
+      paid_cents_by_user, overrides,
     } = await apiFetch(
       '/api/captain',
       { method: 'POST', body: JSON.stringify({ action: 'team-completions', playerIds, eventYear }) },
@@ -235,16 +238,20 @@ export default function CaptainHub() {
     const mediaSet = new Set((media_subs ?? []).map(m => m.user_id))
     const regsByUser = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, r]))
     const paidByUser = paid_cents_by_user ?? {}
+    const overridesByUser = overrides ?? {}
 
     const comp = {}
     playerIds.forEach(uid => {
       const reg = regsByUser[uid]
+      // Committee manual overrides fold in here: a concern reads satisfied
+      // when the normal check passes OR the override is set.
+      const ov = overridesByUser[uid] ?? {}
       comp[uid] = {
-        coc:           cocSet.has(uid),
-        test:          testMap[uid]?.passed === true,
+        coc:           cocSet.has(uid) || ov.coc,
+        test:          testMap[uid]?.passed === true || ov.ref_test,
         testScore:     testMap[uid]?.score,
-        u18:           u18Set.has(uid),
-        media:         mediaSet.has(uid),
+        u18:           u18Set.has(uid) || ov.u18,
+        media:         mediaSet.has(uid) || ov.media,
         sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
         extras:        !!reg?.has_confirmed_extras,
         paymentStatus: derivePaymentStatus(reg, paidByUser[uid] ?? 0),
@@ -474,7 +481,7 @@ export default function CaptainHub() {
       alias: r.profiles?.alias ?? '',
       state: r.profiles?.state ?? '',
       dob: r.profiles?.dob ?? '',
-      side_events: (r.side_events ?? []).join('; '),
+      side_event_entries: (r.side_events ?? []).join('; '),
       dinner_guests: r.dinner_guests ?? 0,
       status: r.status ?? '',
       coc:         !isCocRequired(event)
@@ -484,7 +491,7 @@ export default function CaptainHub() {
                     ? 'N/A'
                     : completionMap[r.user_id]?.test   ? 'Yes' : 'No',
       media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
-      side_events: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
+      side_events_complete: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
       extras:      completionMap[r.user_id]?.extras    ? 'Yes' : 'No',
       payment:     !isPaymentRequired(event)
                     ? 'N/A'
@@ -547,6 +554,13 @@ export default function CaptainHub() {
   }
 
   const eventYear = event?.year
+  // Once registration locks, the roster is frozen: captains can't add/remove
+  // players or disband. Server-side add-player / disband-team are already
+  // phase-guarded (api/captain.js); this gates the UI so controls don't
+  // invite a click that 403s. Cosmetic team settings (name/logo/venue) stay
+  // editable — they don't affect registration, fees, or eligibility.
+  const phase = eventPhase(event)
+  const locked = phase !== 'open'
   const inviteUrl = event ? `${window.location.origin}/events/${eventYear}/player-register` : ''
   const filteredRoster = roster.filter(r => {
     if (filter === 'ready') return isPlayerReady(r.user_id)
@@ -672,6 +686,9 @@ export default function CaptainHub() {
           </div>
         )}
 
+        {/* Registration lock banner — roster changes go via the committee. */}
+        {locked && <LockedRegistrationBanner phase={phase} email={event?.committee_email} className="mb-5" />}
+
         <div className="space-y-5">
 
           {/* ── Add Players ───────────────────────────────────────────────── */}
@@ -679,57 +696,63 @@ export default function CaptainHub() {
             <h2 className="text-white font-bold mb-1">Add Players to Team</h2>
             <p className="text-[#e5e5e5]/40 text-xs mb-4">Search for players who have registered for ZLTAC {eventYear} but are not yet on a team.</p>
 
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => onSearchChange(e.target.value)}
-                placeholder="Search by name or alias…"
-                className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors"
-              />
-              {searching && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                  <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-            </div>
-
-            {/* Search feedback */}
-            {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
-              <p className="text-[#e5e5e5]/35 text-xs mt-3">Type at least 3 characters to search</p>
-            )}
-
-            {searchDone && !searching && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
-              <p className="text-[#e5e5e5]/35 text-xs mt-3">
-                No registered ZLTAC {eventYear} players found matching that search. They may not have registered for ZLTAC yet — share your invite link so they can register.
-              </p>
-            )}
-
-            {searchResults.length > 0 && (
-              <div className="mt-2 border border-line rounded-xl overflow-hidden">
-                {searchResults.map((p, i) => {
-                  const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'
-                  return (
-                    <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${i !== 0 ? 'border-t border-line' : ''} hover:bg-line/30 transition-colors`}>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>
-                        {initials(name)}
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                        <span className="text-white text-sm font-semibold">{name}</span>
-                        {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
-                        <CommitteeBadge roles={p.roles} size="xs" />
-                        {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/50 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
-                      </div>
-                      <button
-                        onClick={() => addPlayer(p)}
-                        className="flex-shrink-0 text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        Add to Team
-                      </button>
+            {locked ? (
+              <LockedNotice email={event?.committee_email} />
+            ) : (
+              <>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => onSearchChange(e.target.value)}
+                    placeholder="Search by name or alias…"
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors"
+                  />
+                  {searching && (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                     </div>
-                  )
-                })}
-              </div>
+                  )}
+                </div>
+
+                {/* Search feedback */}
+                {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
+                  <p className="text-[#e5e5e5]/35 text-xs mt-3">Type at least 3 characters to search</p>
+                )}
+
+                {searchDone && !searching && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
+                  <p className="text-[#e5e5e5]/35 text-xs mt-3">
+                    No registered ZLTAC {eventYear} players found matching that search. They may not have registered for ZLTAC yet — share your invite link so they can register.
+                  </p>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="mt-2 border border-line rounded-xl overflow-hidden">
+                    {searchResults.map((p, i) => {
+                      const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'
+                      return (
+                        <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${i !== 0 ? 'border-t border-line' : ''} hover:bg-line/30 transition-colors`}>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>
+                            {initials(name)}
+                          </div>
+                          <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                            <span className="text-white text-sm font-semibold">{name}</span>
+                            {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
+                            <CommitteeBadge roles={p.roles} size="xs" />
+                            {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/50 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
+                          </div>
+                          <button
+                            onClick={() => addPlayer(p)}
+                            className="flex-shrink-0 text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Add to Team
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -873,11 +896,13 @@ export default function CaptainHub() {
                           </div>
                         </div>
 
-                        {/* Remove button */}
+                        {/* Remove button — frozen once registration locks. */}
                         {!isMe && (
                           <button
                             onClick={() => setRemoveConfirm({ regId: r.id, userId: r.user_id, alias: alias || name })}
-                            className="flex-shrink-0 text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors"
+                            disabled={locked}
+                            title={locked ? 'Locked — contact the committee to change the roster' : undefined}
+                            className="flex-shrink-0 text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-red-400/50 disabled:cursor-default"
                           >
                             Remove
                           </button>
@@ -989,12 +1014,16 @@ export default function CaptainHub() {
 
             {!editingSettings && (
               <div className="mt-5 pt-4 border-t border-line">
-                <button
-                  onClick={() => { setDisbandError(''); setDisbandOpen(true) }}
-                  className="text-red-400 hover:text-red-300 text-xs font-semibold transition-colors"
-                >
-                  Disband team
-                </button>
+                {locked ? (
+                  <LockedNotice email={event?.committee_email} />
+                ) : (
+                  <button
+                    onClick={() => { setDisbandError(''); setDisbandOpen(true) }}
+                    className="text-red-400 hover:text-red-300 text-xs font-semibold transition-colors"
+                  >
+                    Disband team
+                  </button>
+                )}
               </div>
             )}
           </div>

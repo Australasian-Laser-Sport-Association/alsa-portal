@@ -766,7 +766,7 @@ export default function EventPage() {
         const phase = eventPhase(event)
         return phase !== 'open' ? (
           <section className="max-w-5xl mx-auto px-6 pt-6">
-            <LockedRegistrationBanner phase={phase} />
+            <LockedRegistrationBanner phase={phase} email={event.committee_email} />
           </section>
         ) : null
       })()}

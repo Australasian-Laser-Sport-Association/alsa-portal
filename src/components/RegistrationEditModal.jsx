@@ -2,21 +2,45 @@ import { useState, useMemo } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
 import { dollars } from '../lib/pricing.js'
 
-// Admin-only modal for editing a single zltac_registrations row. Bypasses
-// the player-side phase guard (admin can edit in any phase). Supports:
-//   - side event slug selections (checkbox grid)
-//   - team membership (dropdown of approved teams + "no team")
-//   - doubles partner (dropdown of other registered players)
-//   - triples partners (two dropdowns)
-//   - admin_note textarea
+// Admin-only modal for editing a single zltac_registrations row (plus a couple
+// of profile fields). Bypasses the player-side phase guard — admin can edit in
+// any phase. Organised into sections:
+//   - Player identity:   alias, state (profiles), emergency contact (reg)
+//   - Registration:      side events, team, doubles/triples partners,
+//                        dinner guests, status
+//   - Manual overrides:  CoC / Media / Ref Test / U18 — "committee verified
+//                        outside the system" fast-path (see migration
+//                        20260520050000). Reads satisfied as normalCheck||override.
+//   - Confirmation flags: has_confirmed_side_events / _extras
+//   - Admin note:        free-text audit trail
 //
-// On save, calls PATCH /api/admin/registrations and surfaces the new
-// balance in the success toast.
+// On save, calls PATCH /api/admin/registrations (which recomputes amount_owing
+// and writes the profile fields) and surfaces the new balance in the toast.
+
+const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
 function displayName(p) {
   if (!p) return 'Unknown'
   const full = [p.first_name, p.last_name].filter(Boolean).join(' ')
   return full || p.alias || 'Unknown'
+}
+
+function SectionHeader({ children }) {
+  return (
+    <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3 pt-1">{children}</p>
+  )
+}
+
+function CheckRow({ checked, onChange, label, hint }) {
+  return (
+    <label className="flex items-start gap-3 cursor-pointer bg-base border border-line rounded-lg px-3 py-2.5">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="w-4 h-4 accent-brand mt-0.5" />
+      <span className="min-w-0">
+        <span className="text-sm text-white block">{label}</span>
+        {hint && <span className="text-[10px] text-[#e5e5e5]/35 block mt-0.5">{hint}</span>}
+      </span>
+    </label>
+  )
 }
 
 export default function RegistrationEditModal({
@@ -30,12 +54,19 @@ export default function RegistrationEditModal({
   onClose,
   onSaved,             // (summary: { amountOwing, amountPaid, balance }) => void
 }) {
-  // Side event selections
+  // Player identity (alias/state live on profiles; emergency contact on the reg)
+  const [alias, setAlias] = useState(profile?.alias ?? '')
+  const [stateVal, setStateVal] = useState(profile?.state ?? '')
+  const [ecName, setEcName] = useState(registration.emergency_contact_name ?? '')
+  const [ecPhone, setEcPhone] = useState(registration.emergency_contact_phone ?? '')
+
+  // Registration
   const [selectedSlugs, setSelectedSlugs] = useState(
     () => new Set(registration.side_events ?? [])
   )
   const [teamId, setTeamId] = useState(registration.team_id ?? '')
-  const [adminNote, setAdminNote] = useState(registration.admin_note ?? '')
+  const [dinnerGuests, setDinnerGuests] = useState(registration.dinner_guests ?? 0)
+  const [status, setStatus] = useState(registration.status ?? 'pending')
 
   // Doubles partner — initialised to whichever player in the pair ISN'T this user.
   const initialDoublesPartner = (() => {
@@ -55,6 +86,18 @@ export default function RegistrationEditModal({
   })()
   const [triplesP2, setTriplesP2] = useState(initialTriplesPartners[0])
   const [triplesP3, setTriplesP3] = useState(initialTriplesPartners[1])
+
+  // Manual overrides
+  const [ovCoc, setOvCoc] = useState(!!registration.admin_override_coc)
+  const [ovMedia, setOvMedia] = useState(!!registration.admin_override_media)
+  const [ovRef, setOvRef] = useState(!!registration.admin_override_ref_test)
+  const [ovU18, setOvU18] = useState(!!registration.admin_override_u18)
+
+  // Confirmation flags (player self-attestation; committee can flip)
+  const [confirmedSide, setConfirmedSide] = useState(!!registration.has_confirmed_side_events)
+  const [confirmedExtras, setConfirmedExtras] = useState(!!registration.has_confirmed_extras)
+
+  const [adminNote, setAdminNote] = useState(registration.admin_note ?? '')
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -84,10 +127,27 @@ export default function RegistrationEditModal({
     try {
       const body = {
         registrationId: registration.id,
+        // identity
+        alias: alias.trim() || null,
+        state: stateVal || null,
+        emergency_contact_name: ecName.trim() || null,
+        emergency_contact_phone: ecPhone.trim() || null,
+        // registration
         side_events: [...selectedSlugs],
         team_id: teamId || null,
         doubles_partner_id: doublesPartnerId || null,
         triples_partner_ids: [triplesP2 || null, triplesP3 || null],
+        dinner_guests: parseInt(dinnerGuests) || 0,
+        status,
+        // confirmation flags
+        has_confirmed_side_events: confirmedSide,
+        has_confirmed_extras: confirmedExtras,
+        // manual overrides
+        admin_override_coc: ovCoc,
+        admin_override_media: ovMedia,
+        admin_override_ref_test: ovRef,
+        admin_override_u18: ovU18,
+        // audit
         admin_note: adminNote.trim() || null,
       }
       const result = await apiFetch('/api/admin/registrations', {
@@ -104,6 +164,9 @@ export default function RegistrationEditModal({
 
   const playerName = displayName(profile)
   const enabledSlugs = (enabledSideEvents ?? []).filter(se => se.slug !== 'presentation-dinner')
+
+  const inputCls = 'w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand'
+  const labelCls = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
@@ -126,9 +189,41 @@ export default function RegistrationEditModal({
         )}
 
         <div className="p-6 space-y-5">
-          {/* Side events */}
+          {/* ── Player identity ── */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Side events</label>
+            <SectionHeader>Player identity</SectionHeader>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Alias</label>
+                <input type="text" value={alias} onChange={e => setAlias(e.target.value)} className={inputCls} placeholder="—" />
+              </div>
+              <div>
+                <label className={labelCls}>State</label>
+                <select value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
+                  <option value="">—</option>
+                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Emergency contact name</label>
+                <input type="text" value={ecName} onChange={e => setEcName(e.target.value)} className={inputCls} placeholder="—" />
+              </div>
+              <div>
+                <label className={labelCls}>Emergency contact phone</label>
+                <input type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="—" />
+              </div>
+            </div>
+            <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Alias and state are saved to the player's profile.</p>
+          </div>
+
+          <div className="border-t border-line" />
+
+          {/* ── Registration ── */}
+          <div>
+            <SectionHeader>Registration</SectionHeader>
+
+            {/* Side events */}
+            <label className={labelCls}>Side events</label>
             {enabledSlugs.length === 0 ? (
               <p className="text-[#e5e5e5]/40 text-xs italic">No side events configured for this event.</p>
             ) : (
@@ -146,73 +241,112 @@ export default function RegistrationEditModal({
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Team */}
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team</label>
-            <select
-              value={teamId}
-              onChange={e => setTeamId(e.target.value)}
-              className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-            >
-              <option value="">No team (side events only)</option>
-              {(teams ?? []).map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Doubles partner */}
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Doubles partner</label>
-            <select
-              value={doublesPartnerId}
-              onChange={e => setDoublesPartnerId(e.target.value)}
-              className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-            >
-              <option value="">No doubles partner</option>
-              {partnerOptions.map(p => (
-                <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
-              ))}
-            </select>
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Replacing a partnership will clear any existing pairing for either player.</p>
-          </div>
-
-          {/* Triples partners */}
-          <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Triples partners</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: triplesP2, set: setTriplesP2, label: 'Player 2' },
-                { value: triplesP3, set: setTriplesP3, label: 'Player 3' },
-              ].map(({ value, set, label }) => (
-                <div key={label}>
-                  <p className="text-[10px] text-[#e5e5e5]/35 mb-1">{label}</p>
-                  <select
-                    value={value}
-                    onChange={e => set(e.target.value)}
-                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-                  >
-                    <option value="">—</option>
-                    {partnerOptions.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+            {/* Team */}
+            <div className="mt-4">
+              <label className={labelCls}>Team</label>
+              <select value={teamId} onChange={e => setTeamId(e.target.value)} className={inputCls}>
+                <option value="">No team (side events only)</option>
+                {(teams ?? []).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
             </div>
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Editing the triples team will clear any existing team containing this player.</p>
+
+            {/* Doubles partner */}
+            <div className="mt-4">
+              <label className={labelCls}>Doubles partner</label>
+              <select value={doublesPartnerId} onChange={e => setDoublesPartnerId(e.target.value)} className={inputCls}>
+                <option value="">No doubles partner</option>
+                {partnerOptions.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Replacing a partnership will clear any existing pairing for either player.</p>
+            </div>
+
+            {/* Triples partners */}
+            <div className="mt-4">
+              <label className={labelCls}>Triples partners</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: triplesP2, set: setTriplesP2, label: 'Player 2' },
+                  { value: triplesP3, set: setTriplesP3, label: 'Player 3' },
+                ].map(({ value, set, label }) => (
+                  <div key={label}>
+                    <p className="text-[10px] text-[#e5e5e5]/35 mb-1">{label}</p>
+                    <select value={value} onChange={e => set(e.target.value)} className={inputCls}>
+                      <option value="">—</option>
+                      {partnerOptions.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Editing the triples team will clear any existing team containing this player.</p>
+            </div>
+
+            {/* Dinner guests + status */}
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div>
+                <label className={labelCls}>Dinner guests</label>
+                <input type="number" min={0} value={dinnerGuests}
+                  onChange={e => setDinnerGuests(e.target.value)} className={inputCls} />
+                <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Affects amount owing — recomputed on save.</p>
+              </div>
+              <div>
+                <label className={labelCls}>Status</label>
+                <select value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
           </div>
 
-          {/* Admin note */}
+          <div className="border-t border-line" />
+
+          {/* ── Manual overrides ── */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Reason for change (optional)</label>
+            <SectionHeader>Manual overrides</SectionHeader>
+            <p className="text-[10px] text-[#e5e5e5]/40 mb-3 leading-relaxed">
+              Use when the committee has verified a requirement outside the system. An override
+              marks the concern satisfied without creating a (player-signed) record — record the
+              reason in the admin note below.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <CheckRow checked={ovCoc}   onChange={setOvCoc}   label="Code of Conduct" />
+              <CheckRow checked={ovMedia} onChange={setOvMedia} label="Media Release" />
+              <CheckRow checked={ovRef}   onChange={setOvRef}   label="Referee Test" />
+              <CheckRow checked={ovU18}   onChange={setOvU18}   label="Under-18 Approval" />
+            </div>
+          </div>
+
+          <div className="border-t border-line" />
+
+          {/* ── Confirmation flags ── */}
+          <div>
+            <SectionHeader>Confirmation flags</SectionHeader>
+            <div className="grid grid-cols-2 gap-2">
+              <CheckRow checked={confirmedSide}   onChange={setConfirmedSide}
+                label="Side events confirmed" hint="Player self-attestation" />
+              <CheckRow checked={confirmedExtras} onChange={setConfirmedExtras}
+                label="Extras confirmed" hint="Player self-attestation" />
+            </div>
+          </div>
+
+          <div className="border-t border-line" />
+
+          {/* ── Admin note ── */}
+          <div>
+            <SectionHeader>Admin note</SectionHeader>
             <textarea
               rows={2}
               value={adminNote}
               onChange={e => setAdminNote(e.target.value)}
-              placeholder="e.g. Partner withdrew, swapped at player's request"
+              placeholder="Reason for any change or override — e.g. CoC signed on paper at venue, partner withdrew"
               className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand resize-none"
             />
             <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Stored on the registration as audit trail; never shown to the player.</p>

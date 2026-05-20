@@ -10,6 +10,7 @@ import PlayerHubProgress from '../components/PlayerHubProgress'
 import JoinTeamModal from '../components/JoinTeamModal'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import LockedNotice from '../components/LockedNotice'
 import { eventPhase } from '../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
@@ -355,7 +356,7 @@ function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) 
 }
 
 // ── Doubles Partner Selector ─────────────────────────────────────────────────
-function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdate }) {
+function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdate, locked }) {
   const [search, setSearch] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
@@ -451,8 +452,12 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       {searching && <p className="text-[#e5e5e5]/30 text-xs">Searching…</p>}
       {results.length > 0 && (
         <div className="space-y-1 mt-1">
-          {results.map(p => (
-            <div key={p.id} className="flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line">
+          {results.map(p => {
+            // After lock, you can only pair with someone already registered for
+            // Doubles — inviting otherwise would raise their owing. Grey them out.
+            const ineligible = locked && !(p.sideEvents ?? []).includes('doubles')
+            return (
+            <div key={p.id} className={`flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line ${ineligible ? 'opacity-50' : ''}`}>
               <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
                 {((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase()}
               </div>
@@ -461,18 +466,20 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
                   <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
+                  {ineligible && <span className="text-[#e5e5e5]/40 font-normal ml-1.5">(not in Doubles)</span>}
                 </p>
                 <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
                   {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
                 </p>
               </div>
-              <button onClick={() => invite(p.id)} disabled={saving}
-                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0">
+              <button onClick={() => invite(p.id)} disabled={saving || ineligible}
+                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-default flex-shrink-0">
                 Invite
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {search.trim().length >= 2 && !searching && results.length === 0 && (
@@ -484,7 +491,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 }
 
 // ── Triples Partner Selector ─────────────────────────────────────────────────
-function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdate }) {
+function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdate, locked }) {
   const [searchSlot, setSearchSlot] = useState(null)
   const [search, setSearch] = useState('')
   const [results, setResults] = useState([])
@@ -654,8 +661,12 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       </div>
       {searchSlot && results.length > 0 && (
         <div className="mt-2 space-y-1">
-          {results.map(p => (
-            <div key={p.id} className="flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line">
+          {results.map(p => {
+            // After lock, you can only add someone already registered for
+            // Triples — adding otherwise would raise their owing. Grey them out.
+            const ineligible = locked && !(p.sideEvents ?? []).includes('triples')
+            return (
+            <div key={p.id} className={`flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line ${ineligible ? 'opacity-50' : ''}`}>
               <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
                 {((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase()}
               </div>
@@ -664,18 +675,20 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
                   <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
+                  {ineligible && <span className="text-[#e5e5e5]/40 font-normal ml-1.5">(not in Triples)</span>}
                 </p>
                 <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
                   {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
                 </p>
               </div>
-              <button onClick={() => inviteToSlot(searchSlot, p.id)} disabled={saving}
-                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0">
+              <button onClick={() => inviteToSlot(searchSlot, p.id)} disabled={saving || ineligible}
+                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-default flex-shrink-0">
                 Invite
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {searching && <p className="text-[#e5e5e5]/30 text-xs mt-2">Searching…</p>}
@@ -746,7 +759,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name')
+      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -982,11 +995,15 @@ export default function PlayerHub() {
   }
 
   const eventYear = event.year
-  // Phase gates self-service edits. When 'locked' or 'closed', the
-  // Confirm-Side-Events and Confirm-Extras buttons disable and the locked
-  // banner pins above the checklist. Other player-mutation paths (partner
-  // pickers, team join/leave) are blocked server-side via the phase guard
-  // in api/player.js / api/captain.js — they'll surface a 403 toast.
+  // Phase gates the price-bearing self-service edits. When 'locked' or
+  // 'closed', the side-event Select toggles, the Extras dinner stepper, and
+  // the Confirm-Side-Events / Confirm-Extras buttons all disable, and the
+  // locked banner pins above the checklist — these change amount_owing, so
+  // they're frozen to protect price stability. Partner pickers
+  // (doubles/triples) stay editable after lock: shuffling partners within
+  // already-committed events doesn't change anyone's owing, so api/player.js
+  // allows them. Team membership (join/leave) is still blocked server-side
+  // via the phase guard in api/captain.js — it affects team_fee.
   const phase = eventPhase(event)
   const locked = phase !== 'open'
   const firstName = profile?.first_name ?? 'Player'
@@ -1326,7 +1343,7 @@ export default function PlayerHub() {
           {/* Phase banner — visible to player when registration is locked or
               fully closed. */}
           {locked && (
-            <LockedRegistrationBanner phase={phase} className="mb-2" />
+            <LockedRegistrationBanner phase={phase} email={event.committee_email} className="mb-2" />
           )}
 
           {/* ── Registration Checklist ── */}
@@ -1576,7 +1593,8 @@ export default function PlayerHub() {
                           </div>
                           <button
                             onClick={() => toggleSideEvent(se.slug)}
-                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50 hover:border-brand/30 hover:text-white'}`}
+                            disabled={locked}
+                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
                           >
                             {active ? 'Selected ✓' : 'Select'}
                           </button>
@@ -1606,7 +1624,8 @@ export default function PlayerHub() {
                             </div>
                             <button
                               onClick={() => toggleSideEvent(se.slug)}
-                              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50 hover:border-brand/30 hover:text-white'}`}
+                              disabled={locked}
+                              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
                             >
                               {active ? 'Selected ✓' : 'Select'}
                             </button>
@@ -1619,6 +1638,7 @@ export default function PlayerHub() {
                                   eventYear={eventYear}
                                   record={doublesRecord}
                                   partnerProfileMap={partnerProfileMap}
+                                  locked={locked}
                                   onUpdate={(rec, newProfs) => {
                                     setDoublesRecord(rec)
                                     if (newProfs) setPartnerProfileMap(prev => ({ ...prev, ...newProfs }))
@@ -1630,6 +1650,7 @@ export default function PlayerHub() {
                                   eventYear={eventYear}
                                   record={triplesRecord}
                                   partnerProfileMap={partnerProfileMap}
+                                  locked={locked}
                                   onUpdate={(rec, newProfs) => {
                                     setTriplesRecord(rec)
                                     if (newProfs) setPartnerProfileMap(prev => ({ ...prev, ...newProfs }))
@@ -1647,14 +1668,17 @@ export default function PlayerHub() {
 
               {/* Confirm side events button */}
               <div className="mt-5 border-t border-line pt-5">
-                <button
-                  onClick={confirmSideEvents}
-                  disabled={sideConfirmDisabled || savingConfirm || locked}
-                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${(sideConfirmDisabled || locked) ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
-                  title={locked ? 'Registration is locked. Contact the committee.' : undefined}
-                >
-                  {locked ? 'Locked — contact committee' : savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
-                </button>
+                {locked ? (
+                  <LockedNotice email={event.committee_email} />
+                ) : (
+                  <button
+                    onClick={confirmSideEvents}
+                    disabled={sideConfirmDisabled || savingConfirm}
+                    className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${sideConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                  >
+                    {savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1671,9 +1695,9 @@ export default function PlayerHub() {
                 <p className="text-[#e5e5e5]/40 text-xs mb-1">All registered players are included in the presentation dinner. Add extra guests below.</p>
                 {dinnerPrice > 0 && <p className="text-brand font-black text-sm mb-3">{dollars(dinnerPrice)} per guest</p>}
                 <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.max(0, d - 1))} className="w-8 h-8 rounded-lg bg-line hover:bg-[#374056] text-white font-bold transition-colors">−</button>
+                  <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.max(0, d - 1))} disabled={locked} className={`w-8 h-8 rounded-lg bg-line text-white font-bold transition-colors ${locked ? 'cursor-default opacity-50' : 'hover:bg-[#374056]'}`}>−</button>
                   <span className="text-white font-bold w-6 text-center">{dinnerGuestsDraft}</span>
-                  <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.min(10, d + 1))} className="w-8 h-8 rounded-lg bg-line hover:bg-[#374056] text-white font-bold transition-colors">+</button>
+                  <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.min(10, d + 1))} disabled={locked} className={`w-8 h-8 rounded-lg bg-line text-white font-bold transition-colors ${locked ? 'cursor-default opacity-50' : 'hover:bg-[#374056]'}`}>+</button>
                   {dinnerGuestsDraft > 0 && dinnerPrice > 0 && (
                     <span className="text-[#e5e5e5]/40 text-xs ml-1">{dinnerGuestsDraft} × {dollars(dinnerPrice)} = {dollars(dinnerGuestsDraft * dinnerPrice)}</span>
                   )}
@@ -1681,14 +1705,17 @@ export default function PlayerHub() {
               </div>
 
               {/* Confirm extras button */}
-              <button
-                onClick={confirmExtras}
-                disabled={extrasConfirmDisabled || savingExtrasConfirm || locked}
-                className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${(extrasConfirmDisabled || locked) ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
-                title={locked ? 'Registration is locked. Contact the committee.' : undefined}
-              >
-                {locked ? 'Locked — contact committee' : savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
-              </button>
+              {locked ? (
+                <LockedNotice email={event.committee_email} />
+              ) : (
+                <button
+                  onClick={confirmExtras}
+                  disabled={extrasConfirmDisabled || savingExtrasConfirm}
+                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${extrasConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                >
+                  {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
+                </button>
+              )}
             </div>
           )}
 

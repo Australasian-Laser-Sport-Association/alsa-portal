@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       { data: doubles, error: e8 },
       { data: triples, error: e9 },
     ] = await Promise.all([
-      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference').eq('year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state'),
       supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),
       supabaseAdmin
@@ -74,6 +74,18 @@ export default async function handler(req, res) {
     //     team_id?: uuid | null,            // null = no team
     //     doubles_partner_id?: uuid | null, // null = no doubles partner
     //     triples_partner_ids?: [p2: uuid|null, p3: uuid|null],
+    //     dinner_guests?: number,           // price-bearing → recompute
+    //     status?: 'pending'|'confirmed'|'cancelled',
+    //     has_confirmed_side_events?: boolean,
+    //     has_confirmed_extras?: boolean,
+    //     admin_override_coc?: boolean,
+    //     admin_override_media?: boolean,
+    //     admin_override_ref_test?: boolean,
+    //     admin_override_u18?: boolean,
+    //     emergency_contact_name?: string | null,
+    //     emergency_contact_phone?: string | null,
+    //     alias?: string | null,            // profiles (cross-table)
+    //     state?: string | null,            // profiles (cross-table)
     //     admin_note?: string | null,
     //   }
     const body = req.body ?? {}
@@ -89,10 +101,23 @@ export default async function handler(req, res) {
     if (regErr) return res.status(500).json({ error: regErr.message })
     if (!reg) return res.status(404).json({ error: 'Registration not found' })
 
+    if ('status' in body && !['pending', 'confirmed', 'cancelled'].includes(body.status)) {
+      return res.status(400).json({ error: 'Invalid status' })
+    }
+
     const updates = {}
     if (Array.isArray(body.side_events)) updates.side_events = body.side_events
     if ('team_id' in body) updates.team_id = body.team_id || null
     if ('admin_note' in body) updates.admin_note = body.admin_note?.trim() || null
+    if ('dinner_guests' in body) updates.dinner_guests = Math.max(0, parseInt(body.dinner_guests) || 0)
+    if ('status' in body) updates.status = body.status
+    if ('has_confirmed_side_events' in body) updates.has_confirmed_side_events = !!body.has_confirmed_side_events
+    if ('has_confirmed_extras' in body) updates.has_confirmed_extras = !!body.has_confirmed_extras
+    if ('emergency_contact_name' in body) updates.emergency_contact_name = body.emergency_contact_name?.trim() || null
+    if ('emergency_contact_phone' in body) updates.emergency_contact_phone = body.emergency_contact_phone?.trim() || null
+    for (const k of ['admin_override_coc', 'admin_override_media', 'admin_override_ref_test', 'admin_override_u18']) {
+      if (k in body) updates[k] = !!body[k]
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: updErr } = await supabaseAdmin
@@ -100,6 +125,19 @@ export default async function handler(req, res) {
         .update(updates)
         .eq('id', registrationId)
       if (updErr) return res.status(500).json({ error: updErr.message })
+    }
+
+    // Profile fields (alias / state) live on profiles, not the registration —
+    // separate cross-table write keyed by the registration's user_id.
+    const profileUpdates = {}
+    if ('alias' in body) profileUpdates.alias = body.alias?.trim() || null
+    if ('state' in body) profileUpdates.state = body.state || null
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profErr } = await supabaseAdmin
+        .from('profiles')
+        .update(profileUpdates)
+        .eq('id', reg.user_id)
+      if (profErr) return res.status(500).json({ error: `profile: ${profErr.message}` })
     }
 
     // Doubles partner sync. Clear-and-replace semantics: any existing pair
