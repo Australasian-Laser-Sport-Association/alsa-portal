@@ -9,6 +9,7 @@ import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 import JoinTeamModal from '../components/JoinTeamModal'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
 import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
 
@@ -725,6 +726,11 @@ export default function EventPage() {
             </p>
           )}
         </div>
+      </section>
+
+      {/* Event lifecycle countdown — public, shown right after the hero */}
+      <section className="max-w-5xl mx-auto px-6 pt-10">
+        <EventLifecycleCountdown event={event} />
       </section>
 
       {/* Hero text — shows hero_text if set, otherwise falls back to description */}

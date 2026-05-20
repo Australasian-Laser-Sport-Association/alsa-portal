@@ -11,9 +11,12 @@ import JoinTeamModal from '../components/JoinTeamModal'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
+import VolunteerSection from '../components/VolunteerSection'
+import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
+import { ClipboardCheck } from 'lucide-react'
 
 function dollars(cents) {
   return `$${((cents ?? 0) / 100).toFixed(2)}`
@@ -724,6 +727,7 @@ export default function PlayerHub() {
   const [acceptances, setAcceptances] = useState({})     // { code_of_conduct: acceptanceRowWithJoinedDoc, media_release: ... }
   const [u18Approval, setU18Approval] = useState(null)   // approval row or null
   const [testResult, setTestResult] = useState(null)
+  const [testSettings, setTestSettings] = useState(null) // referee_test_settings (null = loading)
   const [paymentRecords, setPaymentRecords] = useState([])
 
   // Doubles / triples state
@@ -755,7 +759,21 @@ export default function PlayerHub() {
     load()
   }, [authLoading, user, navigate])
 
-  async function load() {
+  // Refetch when the tab regains focus/visibility so committee-side changes
+  // (status, admin overrides, etc.) appear without a manual reload. Preserves
+  // in-progress edit drafts (side-event selections, dinner guests).
+  useEffect(() => {
+    function refetch() { if (user && !document.hidden) load({ preserveDrafts: true }) }
+    window.addEventListener('focus', refetch)
+    document.addEventListener('visibilitychange', refetch)
+    return () => {
+      window.removeEventListener('focus', refetch)
+      document.removeEventListener('visibilitychange', refetch)
+    }
+  }, [user]) // eslint-disable-line
+
+  async function load(opts) {
+    const preserveDrafts = opts?.preserveDrafts === true
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
@@ -775,6 +793,7 @@ export default function PlayerHub() {
       { data: accs, error: accsErr },
       { data: testData },
       { data: u18ApprovalData },
+      { data: settingsData },
     ] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('zltac_registrations')
@@ -789,12 +808,13 @@ export default function PlayerHub() {
         .eq('user_id', user.id)
         .eq('event_year', eventYear)
         .order('accepted_at', { ascending: false }),
-      supabase.from('referee_test_results').select('passed, score').eq('user_id', user.id).maybeSingle(),
+      supabase.from('referee_test_results').select('passed, score, taken_at').eq('user_id', user.id).maybeSingle(),
       supabase.from('under_18_approvals')
         .select('id, status, submitted_at, approved_at, notes')
         .eq('user_id', user.id)
         .eq('event_year', eventYear)
         .maybeSingle(),
+      supabase.from('referee_test_settings').select('*').limit(1).maybeSingle(),
     ])
 
     if (docsErr) console.error('PlayerHub: legal_documents query failed:', docsErr)
@@ -820,8 +840,10 @@ export default function PlayerHub() {
 
     setU18Approval(u18ApprovalData ?? null)
     setTestResult(testData ?? null)
+    setTestSettings(settingsData ?? {})
 
-    if (reg) {
+    // Skip on a draft-preserving refresh so an in-progress edit isn't clobbered.
+    if (reg && !preserveDrafts) {
       setSelectedSlugs(new Set(reg.side_events ?? []))
       setDinnerGuests(reg.dinner_guests ?? 0)
       setDinnerGuestsDraft(reg.dinner_guests ?? 0)
@@ -1033,6 +1055,18 @@ export default function PlayerHub() {
   const mediaSubmitted = mediaStatus === 'current'
   const u18Submitted = !!u18Approval && u18Approval.status !== 'rejected'
 
+  // Committee manual overrides (from zltac_registrations). A concern reads
+  // satisfied when the normal check passes OR its override is set — the same
+  // rule used in CaptainHub / AdminRegistrations / AdminHome.
+  const ovCoc = registration?.admin_override_coc === true
+  const ovMedia = registration?.admin_override_media === true
+  const ovRef = registration?.admin_override_ref_test === true
+  const ovU18 = registration?.admin_override_u18 === true
+  const cocSatisfied = cocSigned || ovCoc
+  const mediaSatisfied = mediaSubmitted || ovMedia
+  const refSatisfied = !!testResult?.passed || ovRef
+  const u18Satisfied = u18Submitted || ovU18
+
   // Side events from event JSONB
   const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled && se.slug !== 'presentation-dinner')
   const individualSideEvents = enabledSideEvents.filter(se => ['lord-of-the-rings', 'solos'].includes(se.slug))
@@ -1167,6 +1201,9 @@ export default function PlayerHub() {
           </div>
         </div>
 
+        {/* Event lifecycle countdown */}
+        <EventLifecycleCountdown event={event} className="mb-8" />
+
         {/* Header */}
         <div className="mb-8">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">ZLTAC {eventYear} · Player Hub</p>
@@ -1295,16 +1332,16 @@ export default function PlayerHub() {
             eventName={event.name}
             hasTeam={hasTeam}
             cocRequired={isCocRequired(event)}
-            cocSigned={cocSigned}
+            cocSigned={cocSatisfied}
             refRequired={isRefTestRequired(event)}
-            refPassed={!!testResult?.passed}
-            mediaSubmitted={mediaSubmitted}
+            refPassed={refSatisfied}
+            mediaSubmitted={mediaSatisfied}
             paymentRequired={isPaymentRequired(event)}
             paid={isPaidInFull}
             sideEventsConfirmed={sideEventsConfirmed}
             extrasConfirmed={extrasConfirmed}
             u18Required={u18Required}
-            u18Submitted={u18Submitted}
+            u18Submitted={u18Satisfied}
           />
         )}
 
@@ -1368,16 +1405,18 @@ export default function PlayerHub() {
                 toggle is off. */}
             {isCocRequired(event) && (
               <ChecklistItem
-                status={!isRegistered ? 'pending' : cocStatus === 'current' ? 'done' : 'error'}
+                status={!isRegistered ? 'pending' : cocSatisfied ? 'done' : 'error'}
                 label={
                   cocStatus === 'current'
                     ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
-                    : cocStatus === 'stale'
-                      ? 'Code of Conduct — updated, please re-accept'
-                      : 'Code of Conduct — not yet signed'
+                    : ovCoc
+                      ? 'Code of Conduct — recorded by committee'
+                      : cocStatus === 'stale'
+                        ? 'Code of Conduct — updated, please re-accept'
+                        : 'Code of Conduct — not yet signed'
                 }
               >
-                {isRegistered && cocStatus !== 'current' && (
+                {isRegistered && cocStatus !== 'current' && !ovCoc && (
                   <CoCPanel
                     userId={user.id}
                     eventYear={eventYear}
@@ -1392,42 +1431,69 @@ export default function PlayerHub() {
             {/* Ref-test row is hidden entirely when the event's require_ref_test
                 toggle is off. Otherwise behaves as before. */}
             {isRefTestRequired(event) && (
-              <ChecklistItem
-                status={!isRegistered ? 'pending' : testResult?.passed ? 'done' : testResult ? 'error' : 'error'}
-                label={
-                  testResult?.passed
-                    ? `Rules Test — Passed (${testResult.score}%)`
-                    : testResult
-                      ? 'Rules Test — Failed — retake required'
-                      : 'Rules Test — Not yet taken'
-                }
-              >
-                {isRegistered && (
-                  <div>
-                    {testResult?.passed && (
-                      <p className="text-yellow-400/80 text-xs mb-2">
-                        You have already passed the rules test ({testResult.score}%). Retaking will replace your current score.
-                      </p>
-                    )}
-                    <Link to="/referee-test" className="text-brand text-xs hover:underline">
-                      {testResult?.passed ? 'Retake Test →' : testResult ? 'Retake test →' : 'Take the Rules Test →'}
-                    </Link>
+              testSettings == null ? (
+                /* Settings still loading — skeleton, never "undefined questions". */
+                <div className="rounded-2xl border border-line bg-surface p-5 animate-pulse">
+                  <div className="h-5 w-40 bg-line rounded mb-3" />
+                  <div className="h-3 w-56 bg-line rounded mb-2" />
+                  <div className="h-3 w-52 bg-line rounded mb-4" />
+                  <div className="h-9 w-32 bg-line rounded-xl" />
+                </div>
+              ) : (() => {
+                // Card-style Rules Test CTA. Status from testResult / override;
+                // breakdown from referee_test_settings (same source as the test).
+                const safetyQ = testSettings.safety_questions_per_test ?? 10
+                const safetyP = testSettings.safety_pass_score ?? 100
+                const generalQ = testSettings.general_questions_per_test ?? 20
+                const generalP = testSettings.general_pass_score ?? 70
+                // Passed players are locked (no retake); others who can act get the button.
+                const showButton = isRegistered && !testResult?.passed && !ovRef
+                return (
+                  <div className="rounded-2xl border border-brand/30 bg-brand/[0.04] p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center flex-shrink-0">
+                        <ClipboardCheck className="h-5 w-5 text-brand" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
+                          <h3 className="text-white font-bold">Take Rules Test</h3>
+                          {testResult?.passed
+                            ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Passed ({testResult.score}%)</span>
+                            : ovRef
+                              ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Recorded by committee</span>
+                              : testResult
+                                ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">✗ Failed</span>
+                                : null}
+                        </div>
+                        <p className="text-[#e5e5e5]/70 text-xs leading-relaxed">Safety: {safetyQ} question{safetyQ === 1 ? '' : 's'}, {safetyP}% pass required</p>
+                        <p className="text-[#e5e5e5]/70 text-xs leading-relaxed">General: {generalQ} question{generalQ === 1 ? '' : 's'}, {generalP}% pass required</p>
+                        {testResult?.passed ? (
+                          <p className="mt-3 text-brand text-sm font-semibold">✓ Passed on {formatDate(testResult.taken_at)}</p>
+                        ) : showButton && (
+                          <Link to="/referee-test" className="inline-block mt-3 bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
+                            {testResult ? 'Retake Test →' : 'Begin Test →'}
+                          </Link>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </ChecklistItem>
+                )
+              })()
             )}
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : mediaStatus === 'current' ? 'done' : 'error'}
+              status={!isRegistered ? 'pending' : mediaSatisfied ? 'done' : 'error'}
               label={
                 mediaStatus === 'current'
                   ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
-                  : mediaStatus === 'stale'
-                    ? 'Media Release — updated, please re-accept'
-                    : 'Media Release — not yet submitted'
+                  : ovMedia
+                    ? 'Media Release — recorded by committee'
+                    : mediaStatus === 'stale'
+                      ? 'Media Release — updated, please re-accept'
+                      : 'Media Release — not yet submitted'
               }
             >
-              {isRegistered && mediaStatus !== 'current' && (
+              {isRegistered && mediaStatus !== 'current' && !ovMedia && (
                 <MediaReleasePanel
                   userId={user.id}
                   eventYear={eventYear}
@@ -1464,21 +1530,23 @@ export default function PlayerHub() {
               <ChecklistItem
                 status={
                   !isRegistered ? 'pending'
-                    : u18Approval?.status === 'approved' ? 'done'
+                    : (u18Approval?.status === 'approved' || ovU18) ? 'done'
                     : u18Approval ? 'error'
                     : 'error'
                 }
                 label={
                   u18Approval?.status === 'approved'
                     ? `Under 18 Parental Consent — approved ${formatDate(u18Approval.approved_at)}`
-                    : u18Approval?.status === 'pending'
-                      ? `Under 18 Parental Consent — submitted ${formatDate(u18Approval.submitted_at)} (awaiting committee)`
-                      : u18Approval?.status === 'rejected'
-                        ? 'Under 18 Parental Consent — rejected, contact committee'
-                        : 'Under 18 Parental Consent — not yet submitted'
+                    : ovU18
+                      ? 'Under 18 Parental Consent — recorded by committee'
+                      : u18Approval?.status === 'pending'
+                        ? `Under 18 Parental Consent — submitted ${formatDate(u18Approval.submitted_at)} (awaiting committee)`
+                        : u18Approval?.status === 'rejected'
+                          ? 'Under 18 Parental Consent — rejected, contact committee'
+                          : 'Under 18 Parental Consent — not yet submitted'
                 }
               >
-                {isRegistered && u18Approval?.status !== 'approved' && (
+                {isRegistered && u18Approval?.status !== 'approved' && !ovU18 && (
                   <Under18Panel
                     userId={user.id}
                     eventYear={eventYear}
@@ -1717,6 +1785,16 @@ export default function PlayerHub() {
                 </button>
               )}
             </div>
+          )}
+
+          {/* ── Volunteering ── */}
+          {isRegistered && (
+            <VolunteerSection
+              mode="hub"
+              eventId={event.id}
+              registrationId={registration.id}
+              teamId={registration.team_id ?? null}
+            />
           )}
 
           {/* ── Payment Details ── */}

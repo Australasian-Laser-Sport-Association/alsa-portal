@@ -38,6 +38,7 @@ import AdminRegistrations from './pages/admin/AdminRegistrations'
 import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminMembers from './pages/admin/AdminMembers'
+import AdminVolunteers from './pages/admin/AdminVolunteers'
 import AdminLegalDocuments from './pages/admin/AdminLegalDocuments'
 import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
 import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
@@ -110,6 +111,7 @@ function App() {
             <Route path="legal-documents" element={<AdminLegalDocuments />} />
             <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
             <Route path="referee-test" element={<AdminRefereeTest />} />
+            <Route path="volunteers" element={<AdminVolunteers />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="members" element={<AdminMembers />} />
           </Route>

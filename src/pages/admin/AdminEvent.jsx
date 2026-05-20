@@ -330,7 +330,7 @@ export default function AdminEvent() {
     setArchiving(true)
     setArchiveError('')
     try {
-      const result = await apiFetch('/api/admin/event', {
+      const result = await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
         body: JSON.stringify({ action: 'archive', eventId: event.id, year: event.year }),
       })
@@ -375,7 +375,7 @@ export default function AdminEvent() {
     setDeleting(true)
     setDeleteError('')
     try {
-      await apiFetch('/api/admin/event', {
+      await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
         body: JSON.stringify({ action: 'delete', eventId: event.id, year: event.year }),
       })

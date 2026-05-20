@@ -46,7 +46,7 @@ export default function RecordPaymentModal({ registration, profile, records, pro
   async function postRecord(cents, type) {
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/payments', {
+      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
         method: 'POST',
         body: JSON.stringify({
           registrationId: registration.id,
@@ -117,7 +117,7 @@ export default function RecordPaymentModal({ registration, profile, records, pro
     if (cents === null || cents === 0) { setError('Amount must be a non-zero dollar value.'); return }
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/payments', {
+      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
         method: 'PATCH',
         body: JSON.stringify({
           id: editForm.id,
@@ -139,7 +139,7 @@ export default function RecordPaymentModal({ registration, profile, records, pro
     setError('')
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/payments', {
+      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
         method: 'DELETE',
         body: JSON.stringify({ id }),
       })

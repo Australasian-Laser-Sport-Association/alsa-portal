@@ -87,6 +87,15 @@ const NAV_ITEMS = [
     label: 'Rules Test',
   },
   {
+    to: '/admin/volunteers',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5a1.5 1.5 0 00-3 0v2a6 6 0 006 6h2.5a6 6 0 006-6V8a1.5 1.5 0 00-3 0m-6 1.5V5a1.5 1.5 0 013 0v4.5m0 0V6.5a1.5 1.5 0 013 0V11" />
+      </svg>
+    ),
+    label: 'Volunteers',
+  },
+  {
     to: '/admin/users',
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

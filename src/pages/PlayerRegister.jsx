@@ -1,10 +1,11 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import Footer from '../components/Footer'
+import VolunteerSection from '../components/VolunteerSection'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -28,6 +29,10 @@ export default function PlayerRegister() {
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // Volunteer opt-in is held locally by VolunteerSection and reported up here;
+  // it's persisted after the registration row is created (below).
+  const volunteerRef = useRef({ isVolunteering: false, role_ids: [], notes: '' })
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
@@ -57,6 +62,9 @@ export default function PlayerRegister() {
     e.preventDefault()
     if (!firstName.trim() || !lastName.trim()) { setError('Full name is required.'); return }
     if (!dob) { setError('Date of birth is required.'); return }
+    if (volunteerRef.current.isVolunteering && !(volunteerRef.current.role_ids?.length)) {
+      setError('Select at least one volunteer role, or turn off volunteering.'); return
+    }
 
     setSubmitting(true)
     setError('')
@@ -106,6 +114,19 @@ export default function PlayerRegister() {
 
     if (regError) { setSubmitting(false); setError(regError.message); return }
     if (regRow?.id) await recomputeOwing(regRow.id)
+
+    // Persist volunteer opt-in now the registration row exists. Non-fatal:
+    // registration already succeeded, and the Player Hub lets them retry.
+    if (regRow?.id && volunteerRef.current.isVolunteering && volunteerRef.current.role_ids?.length) {
+      try {
+        await apiFetch(`/api/volunteer-signup?registration_id=${regRow.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ role_ids: volunteerRef.current.role_ids, notes: volunteerRef.current.notes }),
+        })
+      } catch (err) {
+        console.error('[PlayerRegister] volunteer signup failed:', err)
+      }
+    }
 
     setSubmitting(false)
     navigate(`/player-hub`)
@@ -262,6 +283,18 @@ export default function PlayerRegister() {
               </p>
             </div>
           </div>
+
+          {/* Volunteering — held locally; persisted after the registration row
+              is created in handleSubmit. */}
+          {event?.id && (
+            <VolunteerSection
+              mode="registration"
+              eventId={event.id}
+              registrationId={null}
+              teamId={null}
+              onChange={v => { volunteerRef.current = v }}
+            />
+          )}
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 

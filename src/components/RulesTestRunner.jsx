@@ -277,10 +277,10 @@ export default function RulesTestRunner({
             <ShieldAlert className="h-14 w-14 sm:h-16 sm:w-16 text-yellow-300 mx-auto mb-5" strokeWidth={1.75} />
             <p className="text-yellow-300/70 text-[11px] font-black uppercase tracking-widest mb-2">Section 1</p>
             <h1 className="text-2xl sm:text-3xl font-black text-white mb-3">Safety Section</h1>
-            <p className="text-white text-sm sm:text-base font-semibold mb-4 leading-relaxed">
+            <p className="text-sm sm:text-base font-semibold mb-4 leading-relaxed" style={{ color: '#ffffff' }}>
               The Safety Questions Section of This Test Requires {cfg.safetyPass}% Pass Rate
             </p>
-            <p className="text-[#e5e5e5]/60 text-sm mb-8">
+            <p className="text-white text-sm mb-8">
               {safetyCount} safety question{safetyCount === 1 ? '' : 's'}{cfg.safetyPass >= 100 ? ' — every answer must be correct' : ''}
             </p>
             <button
@@ -351,7 +351,7 @@ export default function RulesTestRunner({
             <BookOpen className="h-14 w-14 sm:h-16 sm:w-16 text-brand mx-auto mb-5" strokeWidth={1.75} />
             <p className="text-brand/70 text-[11px] font-black uppercase tracking-widest mb-2">Section 2</p>
             <h1 className="text-2xl sm:text-3xl font-black text-white mb-3">General Rules &amp; Regulations</h1>
-            <p className="text-[#e5e5e5]/60 text-sm mb-8">
+            <p className="text-white text-sm mb-8">
               {generalCount} question{generalCount === 1 ? '' : 's'} — requires {cfg.generalPass}% to pass
             </p>
             <button

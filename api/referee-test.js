@@ -62,10 +62,17 @@ export default async function handler(req, res) {
 
   const { data: existing, error: existingErr } = await supabaseAdmin
     .from('referee_test_results')
-    .select('id')
+    .select('id, passed')
     .eq('user_id', user.id)
     .maybeSingle()
   if (existingErr) return res.status(500).json({ error: existingErr.message })
+
+  // Once a player has passed, the result is locked — no retakes/resubmissions.
+  // The committee can clear the row or set admin_override_ref_test. Defence in
+  // depth: the client also hides the test for passed players.
+  if (existing?.passed === true) {
+    return res.status(403).json({ error: "You've already passed the Rules Test. Contact the committee for retake." })
+  }
 
   const { error: saveErr } = existing
     ? await supabaseAdmin.from('referee_test_results').update(payload).eq('user_id', user.id)

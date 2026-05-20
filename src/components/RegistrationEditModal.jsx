@@ -14,7 +14,7 @@ import { dollars } from '../lib/pricing.js'
 //   - Confirmation flags: has_confirmed_side_events / _extras
 //   - Admin note:        free-text audit trail
 //
-// On save, calls PATCH /api/admin/registrations (which recomputes amount_owing
+// On save, calls PATCH /api/admin/event?resource=registrations (which recomputes amount_owing
 // and writes the profile fields) and surfaces the new balance in the toast.
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
@@ -150,7 +150,7 @@ export default function RegistrationEditModal({
         // audit
         admin_note: adminNote.trim() || null,
       }
-      const result = await apiFetch('/api/admin/registrations', {
+      const result = await apiFetch('/api/admin/event?resource=registrations', {
         method: 'PATCH',
         body: JSON.stringify(body),
       })
