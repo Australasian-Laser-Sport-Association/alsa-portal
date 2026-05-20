@@ -66,8 +66,8 @@ export default function PlayerHubProgress({
     { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Use a captain\'s invite code or start a new team.', done: hasTeam },
     // CoC step only appears when the event requires it.
     ...(cocRequired ? [{ Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct.', done: cocSigned }] : []),
-    // Ref-test step only appears when the event requires it.
-    ...(refRequired ? [{ Icon: RefTestIcon, label: 'Pass the Ref Test', description: 'Complete the referee knowledge test.', done: refPassed }] : []),
+    // Rules-test step only appears when the event requires it.
+    ...(refRequired ? [{ Icon: RefTestIcon, label: 'Pass the Rules Test', description: 'Complete the rules knowledge test.', done: refPassed }] : []),
     { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.', done: mediaSubmitted },
     { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).', done: sideEventsConfirmed },
     { Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.', done: extrasConfirmed },

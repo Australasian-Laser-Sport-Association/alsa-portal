@@ -246,10 +246,19 @@ export default function CaptainHub() {
       // Committee manual overrides fold in here: a concern reads satisfied
       // when the normal check passes OR the override is set.
       const ov = overridesByUser[uid] ?? {}
+      // Rules Test section breakdown for the chip tooltip. Real result → section
+      // scores (or legacy note for pre-section rows); override → override note.
+      const tRow = testMap[uid]
+      const testDetail = tRow
+        ? (tRow.safety_total != null
+            ? `Safety ${tRow.safety_correct ?? 0}/${tRow.safety_total}, General ${tRow.general_correct ?? 0}/${tRow.general_total ?? 0}`
+            : 'Legacy result — no section breakdown')
+        : (ov.ref_test ? 'Committee override' : null)
       comp[uid] = {
         coc:           cocSet.has(uid) || ov.coc,
         test:          testMap[uid]?.passed === true || ov.ref_test,
         testScore:     testMap[uid]?.score,
+        testDetail,
         u18:           u18Set.has(uid) || ov.u18,
         media:         mediaSet.has(uid) || ov.media,
         sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
@@ -487,7 +496,7 @@ export default function CaptainHub() {
       coc:         !isCocRequired(event)
                     ? 'N/A'
                     : completionMap[r.user_id]?.coc    ? 'Yes' : 'No',
-      ref_test:    !isRefTestRequired(event)
+      rules_test:  !isRefTestRequired(event)
                     ? 'N/A'
                     : completionMap[r.user_id]?.test   ? 'Yes' : 'No',
       media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
@@ -855,22 +864,24 @@ export default function CaptainHub() {
                                 : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
                               return <StatusChip state={cocState} label="CoC" title={cocTitle} />
                             })()}
-                            {/* Ref Test chip renders N/A when the event has
+                            {/* Rules Test chip renders N/A when the event has
                                 disabled the requirement; otherwise reflects
-                                the player's own pass/fail state. */}
+                                the player's own pass/fail state. Tooltip carries
+                                the Safety/General section breakdown when present. */}
                             {(() => {
                               const refRequired = isRefTestRequired(event)
                               const refState = !refRequired
                                 ? 'na'
                                 : comp.test ? 'complete' : 'incomplete'
+                              const detailSuffix = comp.testDetail ? ` — ${comp.testDetail}` : ''
                               const refTitle = !refRequired
-                                ? 'Referee Test: not required for this event'
+                                ? 'Rules Test: not required for this event'
                                 : comp.test
-                                  ? `Referee Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}`
-                                  : 'Referee Test: not yet passed'
+                                  ? `Rules Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}${detailSuffix}`
+                                  : 'Rules Test: not yet passed'
                               const refLabel = !refRequired
-                                ? 'Ref Test'
-                                : (comp.test && comp.testScore != null ? `Ref ${comp.testScore}%` : 'Ref Test')
+                                ? 'Rules'
+                                : (comp.test && comp.testScore != null ? `Rules ${comp.testScore}%` : 'Rules')
                               return <StatusChip state={refState} label={refLabel} title={refTitle} />
                             })()}
                             <StatusChip

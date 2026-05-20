@@ -27,7 +27,7 @@ export default async function handler(req, res) {
         .from('legal_acceptances')
         .select('user_id, accepted_at, document:legal_documents!document_id(document_type)')
         .eq('event_year', year),
-      supabaseAdmin.from('referee_test_results').select('user_id, passed, score'),
+      supabaseAdmin.from('referee_test_results').select('user_id, passed, score, safety_correct, safety_total, general_correct, general_total'),
       supabaseAdmin.from('payment_records')
         .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes, zltac_registrations!inner(year)')
         .eq('zltac_registrations.year', year),

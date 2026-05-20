@@ -247,7 +247,7 @@ export default function AdminHome() {
               color={stats.paymentRequired !== false && stats.amountOwingCents > 0 ? 'text-yellow-400' : 'text-white'}
             />
             <StatCard
-              label="Ref Tests Passed"
+              label="Rules Tests Passed"
               value={stats.refRatio}
               sub={stats.refRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
               color="text-white"

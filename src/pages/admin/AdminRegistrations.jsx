@@ -157,7 +157,14 @@ export default function AdminRegistrations() {
       ...(paymentRequired ? [paid] : []),
     ]
     const doneCount = checks.filter(Boolean).length
-    return { ...reg, profile, team, coc, ref, refPassed, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
+    // Tooltip detail for the Rules Test pill: section breakdown when present,
+    // legacy note for pre-section results, override note when committee-waived.
+    const refTitle = ref
+      ? (ref.safety_total != null
+          ? `Safety ${ref.safety_correct ?? 0}/${ref.safety_total}, General ${ref.general_correct ?? 0}/${ref.general_total ?? 0}`
+          : 'Legacy result — no section breakdown')
+      : (reg.admin_override_ref_test ? 'Committee override — verified outside the system' : 'Not taken')
+    return { ...reg, profile, team, coc, ref, refPassed, refTitle, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
 
   // Phase + needs-follow-up derivation.
@@ -395,7 +402,7 @@ export default function AdminRegistrations() {
                 <table className="w-full text-sm" style={{ minWidth: '1180px' }}>
                   <thead>
                     <tr className="border-b border-line">
-                      {['Name', 'Alias', 'State', 'Team', 'CoC', 'Ref Test', 'Media', 'Owing', 'Paid', 'Balance', 'Payment', 'Status', 'Actions'].map(h => (
+                      {['Name', 'Alias', 'State', 'Team', 'CoC', 'Rules Test', 'Media', 'Owing', 'Paid', 'Balance', 'Payment', 'Status', 'Actions'].map(h => (
                         <th key={h} className={`px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap ${h === 'Actions' ? 'sticky right-0 bg-surface border-l border-line' : ''}`}>{h}</th>
                       ))}
                     </tr>
@@ -433,8 +440,8 @@ export default function AdminRegistrations() {
                           <td className="px-4 py-3">
                             {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
                           </td>
-                          {/* Ref Test */}
-                          <td className="px-4 py-3">
+                          {/* Rules Test */}
+                          <td className="px-4 py-3" title={p.refTitle}>
                             {p.refPassed
                               ? <Pill color="green">Passed{p.ref?.score != null ? ` (${p.ref.score}%)` : ''}</Pill>
                               : p.ref

@@ -319,7 +319,7 @@ export default function RegistrationEditModal({
             <div className="grid grid-cols-2 gap-2">
               <CheckRow checked={ovCoc}   onChange={setOvCoc}   label="Code of Conduct" />
               <CheckRow checked={ovMedia} onChange={setOvMedia} label="Media Release" />
-              <CheckRow checked={ovRef}   onChange={setOvRef}   label="Referee Test" />
+              <CheckRow checked={ovRef}   onChange={setOvRef}   label="Rules Test" />
               <CheckRow checked={ovU18}   onChange={setOvU18}   label="Under-18 Approval" />
             </div>
           </div>

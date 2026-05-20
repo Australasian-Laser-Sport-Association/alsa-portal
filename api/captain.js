@@ -225,7 +225,7 @@ export default async function handler(req, res) {
         .in('user_id', playerIds)
         .eq('event_year', eventYear),
       supabaseAdmin.from('payments').select('user_id, status').in('user_id', playerIds).eq('event_year', eventYear),
-      supabaseAdmin.from('referee_test_results').select('user_id, passed, score').in('user_id', playerIds),
+      supabaseAdmin.from('referee_test_results').select('user_id, passed, score, safety_correct, safety_total, general_correct, general_total').in('user_id', playerIds),
       supabaseAdmin
         .from('under_18_approvals')
         .select('user_id, status')

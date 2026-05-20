@@ -870,7 +870,7 @@ export default function AdminEvent() {
           <div className="space-y-3 pt-1">
             {[
               { label: 'Require Code of Conduct', sub: 'Players must sign CoC before registration is complete', key: 'require_coc' },
-              { label: 'Require Referee Test', sub: 'All team members must pass the referee test', key: 'require_ref_test' },
+              { label: 'Require Rules Test', sub: 'All team members must pass the rules test', key: 'require_ref_test' },
               { label: 'Require Payment', sub: 'Registration is only confirmed once the event fee is paid — turn off for free or on-the-day-paid events', key: 'require_payment' },
             ].map(({ label, sub, key }) => (
               <label key={key} className="flex items-start gap-3 cursor-pointer bg-surface border border-line rounded-xl p-4">

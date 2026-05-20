@@ -1396,21 +1396,21 @@ export default function PlayerHub() {
                 status={!isRegistered ? 'pending' : testResult?.passed ? 'done' : testResult ? 'error' : 'error'}
                 label={
                   testResult?.passed
-                    ? `Referee Test — Passed (${testResult.score}%)`
+                    ? `Rules Test — Passed (${testResult.score}%)`
                     : testResult
-                      ? 'Referee Test — Failed — retake required'
-                      : 'Referee Test — Not yet taken'
+                      ? 'Rules Test — Failed — retake required'
+                      : 'Rules Test — Not yet taken'
                 }
               >
                 {isRegistered && (
                   <div>
                     {testResult?.passed && (
                       <p className="text-yellow-400/80 text-xs mb-2">
-                        You have already passed the referee test ({testResult.score}%). Retaking will replace your current score.
+                        You have already passed the rules test ({testResult.score}%). Retaking will replace your current score.
                       </p>
                     )}
                     <Link to="/referee-test" className="text-brand text-xs hover:underline">
-                      {testResult?.passed ? 'Retake Test →' : testResult ? 'Retake test →' : 'Take the Referee Test →'}
+                      {testResult?.passed ? 'Retake Test →' : testResult ? 'Retake test →' : 'Take the Rules Test →'}
                     </Link>
                   </div>
                 )}
