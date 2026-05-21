@@ -47,6 +47,13 @@ export default async function handler(req, res) {
     const rosterIds = (regs ?? []).map(r => r.user_id).filter(Boolean)
     if (rosterIds.length === 0) return res.json({ profiles: [] })
 
+    const { data: callerProfile } = await supabaseAdmin
+      .from('profiles').select('roles').eq('id', user.id).maybeSingle()
+    const isCommittee = (callerProfile?.roles ?? []).some(r => COMMITTEE_ROLES.includes(r))
+    if (!isCommittee && !rosterIds.includes(user.id)) {
+      return res.status(403).json({ error: 'Not authorized to view this team roster' })
+    }
+
     const { data: profiles, error: profsErr } = await supabaseAdmin
       .from('profiles')
       .select('id, first_name, last_name, alias, state, roles')
