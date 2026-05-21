@@ -146,7 +146,6 @@ async function handleDoubles(req, res, user) {
   if (action === 'create') {
     const { eventYear, partnerId } = body
     if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })
-    if (await denyIfWouldAddSideEventAfterLock(res, eventYear, partnerId, 'doubles')) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('doubles_pairs')
@@ -155,25 +154,6 @@ async function handleDoubles(req, res, user) {
       .single()
 
     if (insertErr) return res.status(500).json({ error: insertErr.message })
-
-    const { data: partnerReg, error: partnerRegErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id, side_events')
-      .eq('user_id', partnerId)
-      .eq('year', eventYear)
-      .maybeSingle()
-
-    if (partnerRegErr) return res.status(500).json({ error: partnerRegErr.message })
-
-    if (partnerReg) {
-      const newSlugs = [...new Set([...(partnerReg.side_events ?? []), 'doubles'])]
-      const { error: sideErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .update({ side_events: newSlugs })
-        .eq('id', partnerReg.id)
-      if (sideErr) return res.status(500).json({ error: sideErr.message })
-      await computeAndWriteAmountOwing(partnerReg.id)
-    }
 
     return res.json({ record })
   }
@@ -196,6 +176,24 @@ async function handleDoubles(req, res, user) {
       .single()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
+
+    const { data: myReg, error: myRegErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id, side_events')
+      .eq('user_id', user.id)
+      .eq('year', pair.event_year)
+      .maybeSingle()
+    if (myRegErr) return res.status(500).json({ error: myRegErr.message })
+    if (myReg) {
+      const newSlugs = [...new Set([...(myReg.side_events ?? []), 'doubles'])]
+      const { error: sideErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .update({ side_events: newSlugs })
+        .eq('id', myReg.id)
+      if (sideErr) return res.status(500).json({ error: sideErr.message })
+      await computeAndWriteAmountOwing(myReg.id)
+    }
+
     return res.json({ record })
   }
 
@@ -289,7 +287,6 @@ async function handleTriples(req, res, user) {
   if (action === 'create') {
     const { eventYear, slot, partnerId } = body
     if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })
-    if (await denyIfWouldAddSideEventAfterLock(res, eventYear, partnerId, 'triples')) return
 
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('triples_teams')
@@ -305,19 +302,17 @@ async function handleTriples(req, res, user) {
       .single()
 
     if (insertErr) return res.status(500).json({ error: insertErr.message })
-    const { error: sideErr } = await addPartnerSideEventForTriples(partnerId, eventYear)
-    if (sideErr) return res.status(500).json({ error: sideErr.message })
     return res.json({ record })
   }
 
   if (action === 'add-slot') {
-    const { id, slot, partnerId, eventYear } = body
+    const { id, slot, partnerId } = body
+    if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
     if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })
 
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
-    if (await denyIfWouldAddSideEventAfterLock(res, existing.event_year ?? eventYear, partnerId, 'triples')) return
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -327,8 +322,6 @@ async function handleTriples(req, res, user) {
       .single()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
-    const { error: sideErr } = await addPartnerSideEventForTriples(partnerId, eventYear)
-    if (sideErr) return res.status(500).json({ error: sideErr.message })
     return res.json({ record })
   }
 
@@ -339,6 +332,8 @@ async function handleTriples(req, res, user) {
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
+    if (mySlot !== 2 && mySlot !== 3) return res.status(400).json({ error: 'mySlot must be 2 or 3' })
+    if (existing[`player${mySlot}_id`] !== user.id) return res.status(403).json({ error: 'You are not the player at this slot' })
     if (await denyIfWouldAddSideEventAfterLock(res, existing.event_year, user.id, 'triples')) return
 
     const myField = `player${mySlot}_confirmed`
@@ -359,11 +354,30 @@ async function handleTriples(req, res, user) {
       .single()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
+
+    const { data: myReg, error: myRegErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id, side_events')
+      .eq('user_id', user.id)
+      .eq('year', existing.event_year)
+      .maybeSingle()
+    if (myRegErr) return res.status(500).json({ error: myRegErr.message })
+    if (myReg) {
+      const newSlugs = [...new Set([...(myReg.side_events ?? []), 'triples'])]
+      const { error: sideErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .update({ side_events: newSlugs })
+        .eq('id', myReg.id)
+      if (sideErr) return res.status(500).json({ error: sideErr.message })
+      await computeAndWriteAmountOwing(myReg.id)
+    }
+
     return res.json({ record })
   }
 
   if (action === 'clear-slot') {
     const { id, slot } = body
+    if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
     if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
 
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()

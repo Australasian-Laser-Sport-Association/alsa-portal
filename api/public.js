@@ -16,8 +16,8 @@ async function handleEvent(req, res) {
   if (!year) return res.status(400).json({ error: 'year is required' })
 
   const [{ data: doubles, error: e1 }, { data: triples, error: e2 }] = await Promise.all([
-    supabaseAdmin.from('doubles_pairs').select('*').eq('event_year', year).eq('confirmed', true),
-    supabaseAdmin.from('triples_teams').select('*').eq('event_year', year).eq('confirmed', true),
+    supabaseAdmin.from('doubles_pairs').select('id, event_year, player1_id, player2_id, confirmed').eq('event_year', year).eq('confirmed', true),
+   supabaseAdmin.from('triples_teams').select('id, event_year, player1_id, player2_id, player3_id, confirmed').eq('event_year', year).eq('confirmed', true),
   ])
 
   if (e1 || e2) return res.status(500).json({ error: (e1 ?? e2).message })
