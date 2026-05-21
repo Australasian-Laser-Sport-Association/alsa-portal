@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import YearCard from './YearCard'
+import DougBurbidgeReference from '../DougBurbidgeReference'
 
 const DECADES = [
   { key: 'all',       label: 'All' },
@@ -113,6 +114,8 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
           Filter by decade or state, search across team names and player aliases, and click any year to see the full format results.
         </p>
       </div>
+
+      <DougBurbidgeReference />
 
       {/* Filter controls */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 mb-8 space-y-5">

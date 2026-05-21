@@ -30,7 +30,7 @@ function StatusBadge({ status }) {
   return null
 }
 
-export default function VolunteerSection({ registrationId = null, eventId, mode = 'hub', teamId = null, onChange }) {
+export default function VolunteerSection({ registrationId = null, eventId, mode = 'hub', teamId = null, onChange, bare = false }) {
   const [loading, setLoading] = useState(true)
   const [roles, setRoles] = useState([]) // all roles (active + inactive), sorted
   const [caveat, setCaveat] = useState(DEFAULT_CAVEAT)
@@ -185,11 +185,15 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
   if (!eventId) return null
 
   if (loading) {
+    const spinner = (
+      <div className="flex items-center justify-center py-6">
+        <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+    if (bare) return spinner
     return (
       <div className="bg-surface border border-line rounded-2xl p-5">
-        <div className="flex items-center justify-center py-6">
-          <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-        </div>
+        {spinner}
       </div>
     )
   }
@@ -197,11 +201,10 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
   const showRoles = isVolunteering
   const showSave = mode === 'hub' && !readOnly
 
-  return (
-    <div className="bg-surface border border-line rounded-2xl p-5" id="volunteering">
-      <h2 className="text-white font-bold mb-1">Volunteering at this event</h2>
+  const body = (
+    <>
       <p className="text-[#e5e5e5]/40 text-xs mb-4">
-        ZLTAC runs on volunteers. Opt in and tell us which roles you'd help with — selection is at the committee's discretion.
+        ZLTAC runs on volunteers. Opt in and tell us which roles you'd help with. Selection is at the committee's discretion.
       </p>
 
       {/* Prominent approved line */}
@@ -386,6 +389,15 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (bare) return body
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-5" id="volunteering">
+      <h2 className="text-white font-bold mb-1">Volunteering at this event</h2>
+      {body}
     </div>
   )
 }

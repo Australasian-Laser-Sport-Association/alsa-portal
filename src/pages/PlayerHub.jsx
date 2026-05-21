@@ -12,11 +12,12 @@ import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
 import VolunteerSection from '../components/VolunteerSection'
+import CollapsibleSection from '../components/CollapsibleSection'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck, Trophy, Sparkles, HeartHandshake, CreditCard } from 'lucide-react'
 
 function dollars(cents) {
   return `$${((cents ?? 0) / 100).toFixed(2)}`
@@ -753,6 +754,18 @@ export default function PlayerHub() {
   // Join Team modal
   const [joinOpen, setJoinOpen] = useState(false)
 
+  // Collapsible hub sections. All collapsed on load. Controlled here (rather
+  // than inside CollapsibleSection) so an in-page hash link can open a section.
+  const [openSections, setOpenSections] = useState({
+    'side-events': false,
+    extras: false,
+    volunteering: false,
+    'payment-details': false,
+  })
+  function toggleSection(id) {
+    setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user) return
@@ -771,6 +784,21 @@ export default function PlayerHub() {
       document.removeEventListener('visibilitychange', refetch)
     }
   }, [user]) // eslint-disable-line
+
+  // Open a section when its anchor is targeted, so the checklist links
+  // (#side-events, #extras) and any deep link land on expanded content.
+  useEffect(() => {
+    const SECTION_IDS = ['side-events', 'extras', 'volunteering', 'payment-details']
+    function openFromHash() {
+      const id = window.location.hash.replace('#', '')
+      if (SECTION_IDS.includes(id)) {
+        setOpenSections(prev => ({ ...prev, [id]: true }))
+      }
+    }
+    openFromHash()
+    window.addEventListener('hashchange', openFromHash)
+    return () => window.removeEventListener('hashchange', openFromHash)
+  }, [])
 
   async function load(opts) {
     const preserveDrafts = opts?.preserveDrafts === true
@@ -1641,8 +1669,13 @@ export default function PlayerHub() {
 
           {/* ── Side Events ── */}
           {isRegistered && (
-            <div className="bg-surface border border-line rounded-2xl p-5" id="side-events">
-              <h2 className="text-white font-bold mb-1">Side Events</h2>
+            <CollapsibleSection
+              id="side-events"
+              icon={Trophy}
+              title="Side Events"
+              open={openSections['side-events']}
+              onToggle={() => toggleSection('side-events')}
+            >
               <p className="text-[#e5e5e5]/40 text-xs mb-5">Register for individual and team side events for ZLTAC {eventYear}</p>
 
               {/* Individual entries */}
@@ -1748,13 +1781,18 @@ export default function PlayerHub() {
                   </button>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* ── Extras ── */}
           {isRegistered && (
-            <div className="bg-surface border border-line rounded-2xl p-5" id="extras">
-              <h2 className="text-white font-bold mb-1">Extras</h2>
+            <CollapsibleSection
+              id="extras"
+              icon={Sparkles}
+              title="Extras"
+              open={openSections.extras}
+              onToggle={() => toggleSection('extras')}
+            >
               <p className="text-[#e5e5e5]/40 text-xs mb-5">Optional additions to your ZLTAC experience</p>
 
               {/* Presentation Dinner Guests */}
@@ -1784,17 +1822,26 @@ export default function PlayerHub() {
                   {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
                 </button>
               )}
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* ── Volunteering ── */}
           {isRegistered && (
-            <VolunteerSection
-              mode="hub"
-              eventId={event.id}
-              registrationId={registration.id}
-              teamId={registration.team_id ?? null}
-            />
+            <CollapsibleSection
+              id="volunteering"
+              icon={HeartHandshake}
+              title="Volunteering"
+              open={openSections.volunteering}
+              onToggle={() => toggleSection('volunteering')}
+            >
+              <VolunteerSection
+                mode="hub"
+                bare
+                eventId={event.id}
+                registrationId={registration.id}
+                teamId={registration.team_id ?? null}
+              />
+            </CollapsibleSection>
           )}
 
           {/* ── Payment Details ── */}
@@ -1805,8 +1852,13 @@ export default function PlayerHub() {
               recorded server-side. While the event is open we keep the
               section visible so players who *want* to pay still can. */}
           {isRegistered && !(!isPaymentRequired(event) && locked) && (
-            <div className="bg-surface border border-line rounded-2xl p-5" id="payment-details">
-              <h2 className="text-white font-bold mb-1">Payment Details</h2>
+            <CollapsibleSection
+              id="payment-details"
+              icon={CreditCard}
+              title="Payment Details"
+              open={openSections['payment-details']}
+              onToggle={() => toggleSection('payment-details')}
+            >
               <p className="text-[#e5e5e5]/40 text-xs mb-5">Your event fees and how to pay</p>
 
               {/* Itemised breakdown — informational, computed live from event pricing */}
@@ -1908,7 +1960,7 @@ export default function PlayerHub() {
                   <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
                 </div>
               )}
-            </div>
+            </CollapsibleSection>
           )}
 
         </div>

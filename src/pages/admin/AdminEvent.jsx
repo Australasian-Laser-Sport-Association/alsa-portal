@@ -125,6 +125,10 @@ export default function AdminEvent() {
   const [photoUploading, setPhotoUploading] = useState(false)
   const photoRef = useRef()
 
+  // Cover photo
+  const [coverUploading, setCoverUploading] = useState(false)
+  const coverRef = useRef()
+
   // Custom side event
   const [showAddCustom, setShowAddCustom] = useState(false)
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM)
@@ -156,6 +160,7 @@ export default function AdminEvent() {
       venue: ev.venue ?? '',
       description: ev.description ?? '',
       logo_url: ev.logo_url ?? '',
+      cover_photo_url: ev.cover_photo_url ?? '',
       hero_text: ev.hero_text ?? '',
       photo_urls: ev.photo_urls ?? [],
     })
@@ -248,6 +253,65 @@ export default function AdminEvent() {
     })
   }
 
+  // Cover photo — immediate upload + immediate column write, mirroring the team
+  // logo flow (CaptainHub). Old files are left in storage on replace; orphans
+  // are cheap and audit-friendly. Managed independently of the Save button.
+  const COVER_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+  const COVER_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+
+  async function handleCoverSelect(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!event?.id) { setMsg({ type: 'error', text: 'Save the event first before adding a cover photo.' }); return }
+    if (!COVER_ACCEPTED_TYPES.includes(file.type)) { setMsg({ type: 'error', text: 'Cover photo must be PNG, JPG or WebP.' }); return }
+    if (file.size > COVER_MAX_BYTES) { setMsg({ type: 'error', text: 'Cover photo must be under 5MB.' }); return }
+    setMsg(null)
+    setCoverUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${event.id}/${Date.now()}.${ext}`
+      const { data: up, error: upErr } = await supabase.storage
+        .from('event-covers')
+        .upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from('event-covers').getPublicUrl(up.path)
+      const publicUrl = urlData.publicUrl
+      const { error: updErr } = await supabase
+        .from('zltac_events')
+        .update({ cover_photo_url: publicUrl })
+        .eq('id', event.id)
+      if (updErr) throw updErr
+      setForm(f => ({ ...f, cover_photo_url: publicUrl }))
+      setEvent(ev => ({ ...ev, cover_photo_url: publicUrl }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setMsg({ type: 'ok', text: 'Cover photo updated.' })
+    } catch (err) {
+      setMsg({ type: 'error', text: `Cover photo upload failed: ${err?.message || 'Please try again.'}` })
+    }
+    setCoverUploading(false)
+    if (coverRef.current) coverRef.current.value = ''
+  }
+
+  async function handleCoverRemove() {
+    if (!event?.id) return
+    setMsg(null)
+    setCoverUploading(true)
+    try {
+      const { error: updErr } = await supabase
+        .from('zltac_events')
+        .update({ cover_photo_url: null })
+        .eq('id', event.id)
+      if (updErr) throw updErr
+      setForm(f => ({ ...f, cover_photo_url: '' }))
+      setEvent(ev => ({ ...ev, cover_photo_url: null }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setMsg({ type: 'ok', text: 'Cover photo removed.' })
+    } catch (err) {
+      setMsg({ type: 'error', text: `Could not remove cover photo: ${err?.message || 'Please try again.'}` })
+    }
+    setCoverUploading(false)
+  }
+
   async function handleSave() {
     setSaving(true)
     setMsg(null)
@@ -264,6 +328,7 @@ export default function AdminEvent() {
       venue: form.venue || null,
       description: form.description || null,
       logo_url: logo_url || null,
+      cover_photo_url: form.cover_photo_url || null,
       hero_text: form.hero_text || null,
       photo_urls: form.photo_urls ?? [],
       main_fee: displayToCents(pricing.player_fee),
@@ -630,6 +695,40 @@ export default function AdminEvent() {
                 <span className="text-xs text-[#e5e5e5]/30 group-hover:text-brand transition-colors">Click to upload logo</span>
               </button>
             ) : <p className="text-xs text-[#e5e5e5]/30">No logo uploaded</p>}
+          </div>
+
+          {/* Cover photo upload — immediate save, shown as a banner on the public event page */}
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Cover Photo</label>
+            <p className="text-xs text-[#e5e5e5]/30 mb-2">PNG, JPG or WebP, max 5MB (recommended: 4096 x 1716px). Shown as a banner on the public event page.</p>
+            <input ref={coverRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCoverSelect} className="hidden" />
+            {form.cover_photo_url ? (
+              <div className="space-y-2">
+                <img src={form.cover_photo_url} alt="Cover" className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base" />
+                {!isArchived && (
+                  <div className="flex gap-2">
+                    <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
+                      className="text-xs bg-line hover:bg-[#374056] disabled:opacity-50 text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      {coverUploading ? 'Uploading…' : 'Replace cover photo'}
+                    </button>
+                    <button type="button" disabled={coverUploading} onClick={handleCoverRemove}
+                      className="text-xs text-red-400/50 hover:text-red-400 disabled:opacity-50 font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : !isArchived ? (
+              <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
+                className="w-full border border-dashed border-line hover:border-brand disabled:opacity-50 rounded-xl py-6 text-center transition-colors group">
+                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/20 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-xs text-[#e5e5e5]/30 group-hover:text-brand transition-colors">
+                  {coverUploading ? 'Uploading…' : 'Click to upload cover photo'}
+                </span>
+              </button>
+            ) : <p className="text-xs text-[#e5e5e5]/30">No cover photo uploaded</p>}
           </div>
         </div>
       )}

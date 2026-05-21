@@ -728,6 +728,17 @@ export default function EventPage() {
         </div>
       </section>
 
+      {/* Cover photo banner — constrained to content width, above the lifecycle boxes when set */}
+      {event.cover_photo_url && (
+        <section className="max-w-5xl mx-auto px-6 pt-8">
+          <img
+            src={event.cover_photo_url}
+            alt={event.name}
+            className="w-full aspect-[4096/1716] object-cover rounded-2xl"
+          />
+        </section>
+      )}
+
       {/* Event lifecycle countdown — public, shown right after the hero */}
       <section className="max-w-5xl mx-auto px-6 pt-10">
         <EventLifecycleCountdown event={event} />
