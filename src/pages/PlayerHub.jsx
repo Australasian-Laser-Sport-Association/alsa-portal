@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
+import { formatInEventTz } from '../lib/eventTimezone'
 import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
 import CommitteeBadge from '../components/CommitteeBadge'
@@ -802,7 +803,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email, payments_override')
+      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email, payments_override, timezone')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -1952,7 +1953,7 @@ export default function PlayerHub() {
                     )
                   ) : paymentState.reason === 'auto_closed' ? (
                     <div className="bg-base border border-line rounded-xl p-4">
-                      <p className="text-[#e5e5e5]/60 text-sm">Payment information will be available on {formatDate(paymentState.opensAt, 'longWithTime')}.</p>
+                      <p className="text-[#e5e5e5]/60 text-sm">Payment information will be available on {formatInEventTz(paymentState.opensAt, event.timezone, 'longWithTime')}.</p>
                     </div>
                   ) : (
                     <div className="bg-base border border-line rounded-xl p-4">

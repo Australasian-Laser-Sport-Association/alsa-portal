@@ -1,20 +1,14 @@
 import { useState, useEffect } from 'react'
+import { formatInEventTz } from '../lib/eventTimezone'
 
 // Three-tile lifecycle countdown: Registration Opens → Locks → Closes.
-// Public-safe (dates aren't sensitive). All times rendered in Melbourne.
+// Public-safe (dates aren't sensitive). All times rendered in the event's
+// timezone with a short abbreviation (e.g. "22 May 2026, 7:00 PM AEST").
 //
 // Sources: event.reg_open_date, event.reg_close_date, event.event_starts_at.
 // The first tile whose date is still in the future is the "active deadline" —
 // it gets the yellow accent + DEADLINE badge + sub-note. Past tiles dim to a
 // terminal label ("Open" / "Locked" / "Closed"); null dates show "Not set".
-
-const TZ = 'Australia/Melbourne'
-const DATE_FMT = new Intl.DateTimeFormat('en-AU', {
-  timeZone: TZ,
-  day: 'numeric', month: 'short', year: 'numeric',
-  hour: 'numeric', minute: '2-digit', hour12: true,
-  timeZoneName: 'short',
-})
 
 function toMs(value) {
   if (!value) return null
@@ -22,9 +16,9 @@ function toMs(value) {
   return Number.isNaN(t) ? null : t
 }
 
-function fmtDate(value) {
-  const t = toMs(value)
-  return t == null ? null : DATE_FMT.format(t)
+function fmtDate(value, timezone) {
+  if (!value) return null
+  return formatInEventTz(value, timezone, 'shortWithTime') || null
 }
 
 // Returns { text, urgency }. Drops leading zero units (no "0d 12h 34m").
@@ -169,7 +163,7 @@ export default function EventLifecycleCountdown({ event, className = '' }) {
             ) : (
               <>
                 <p className="text-xs sm:text-sm text-[#e5e5e5]/70 mb-3 leading-snug">
-                  {fmtDate(tile.value)}
+                  {fmtDate(tile.value, event.timezone)}
                 </p>
                 <p className={`font-black tabular-nums leading-none text-2xl sm:text-3xl ${focalColor}`}>
                   {isPast ? tile.pastLabel : cd.text}
