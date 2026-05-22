@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
@@ -73,10 +73,20 @@ export default function AdminZLTACResults() {
           >
             Standouts
           </button>
+          <button
+            onClick={() => setTab('extras')}
+            className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded transition-colors ${
+              tab === 'extras' ? 'bg-brand text-black' : 'text-[#e5e5e5]/60 hover:text-white'
+            }`}
+          >
+            Extras
+          </button>
         </div>
       </div>
 
-      {tab === 'tournaments' ? <TournamentsTab /> : <StandoutsTab />}
+      {tab === 'tournaments' && <TournamentsTab />}
+      {tab === 'standouts' && <StandoutsTab />}
+      {tab === 'extras' && <ExtrasTab />}
     </div>
   )
 }
@@ -469,10 +479,7 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {!isNew && (
           <div className="bg-[#191919] border border-line rounded-lg px-4 py-3 text-xs text-[#e5e5e5]/50 flex items-center gap-2">
-            <span>For event logo, photos, full results text, and internal notes:</span>
-            <Link to="/admin/event-history" className="text-brand/80 hover:text-brand font-medium">
-              open Event History (extras) →
-            </Link>
+            <span>For event logo, photos, full results text, and committee notes, use the Extras tab.</span>
           </div>
         )}
 
@@ -1318,6 +1325,289 @@ function DynastyEditCard({ draft, setDraft, errors, saving, isNew, onSave, onCan
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ===========================================================================
+// EXTRAS TAB — logo, full results text, photo gallery, internal notes
+// (rehoused from the former standalone Event History page; edits the four
+//  retained zltac_event_history columns. UPDATE only — years are created on
+//  the Tournaments tab.)
+// ===========================================================================
+
+function emptyExtras() {
+  return {
+    logo_url: '',
+    full_results_text: '',
+    photo_urls: [],
+    internal_notes: '',
+  }
+}
+
+function ExtrasTab() {
+  const { toast, show: showToast } = useToast()
+  const [years, setYears] = useState([])
+  const [loadingList, setLoadingList] = useState(true)
+  const [selectedId, setSelectedId] = useState('')
+  const [selectedYear, setSelectedYear] = useState(null)
+  const [form, setForm] = useState(emptyExtras())
+  const [saving, setSaving] = useState(false)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const logoRef = useRef()
+  const photoRef = useRef()
+  const photoUrlRef = useRef()
+
+  useEffect(() => { loadYears() }, [])
+
+  async function loadYears() {
+    setLoadingList(true)
+    // Existing zltac_event_history rows only — same table/scope the Tournaments
+    // tab lists from. Years that don't exist yet are created there first.
+    const { data } = await supabase
+      .from('zltac_event_history')
+      .select('id, year, name')
+      .order('year', { ascending: false })
+    setYears(data ?? [])
+    setLoadingList(false)
+  }
+
+  async function selectYear(id) {
+    setSelectedId(id)
+    if (!id) {
+      setSelectedYear(null)
+      setForm(emptyExtras())
+      return
+    }
+    const { data } = await supabase.from('zltac_event_history').select('*').eq('id', id).single()
+    if (data) {
+      setSelectedYear(data.year)
+      setForm({
+        logo_url: data.logo_url ?? '',
+        full_results_text: data.full_results_text ?? '',
+        photo_urls: data.photo_urls ?? [],
+        internal_notes: data.internal_notes ?? '',
+      })
+    }
+  }
+
+  function setField(key, val) {
+    setForm(f => ({ ...f, [key]: val }))
+  }
+
+  async function save() {
+    if (!selectedId) return
+    setSaving(true)
+    const payload = {
+      logo_url: form.logo_url || null,
+      full_results_text: form.full_results_text || null,
+      photo_urls: form.photo_urls?.length > 0 ? form.photo_urls : null,
+      internal_notes: form.internal_notes || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('zltac_event_history').update(payload).eq('id', selectedId)
+    setSaving(false)
+    if (error) showToast(error.message, 'error')
+    else showToast('Saved.')
+  }
+
+  async function uploadLogo(file) {
+    setLogoUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `history/${selectedYear ?? 'unknown'}-logo-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('event-logos').upload(path, file, { upsert: true })
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('event-logos').getPublicUrl(path)
+      setField('logo_url', publicUrl)
+    }
+    setLogoUploading(false)
+  }
+
+  async function uploadPhoto(file) {
+    setPhotoUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `history/${selectedYear ?? 'unknown'}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
+      setField('photo_urls', [...(form.photo_urls ?? []), publicUrl])
+    }
+    setPhotoUploading(false)
+  }
+
+  function addPhotoUrl() {
+    const val = photoUrlRef.current?.value?.trim()
+    if (!val) return
+    setField('photo_urls', [...(form.photo_urls ?? []), val])
+    photoUrlRef.current.value = ''
+  }
+
+  function removePhoto(idx) {
+    setField('photo_urls', form.photo_urls.filter((_, i) => i !== idx))
+  }
+
+  return (
+    <div className="flex flex-col gap-6" style={{ minHeight: 'calc(100vh - 14rem)' }}>
+      <Toast toast={toast} />
+
+      {/* Year picker */}
+      <div className="bg-surface border border-line rounded-2xl p-5 max-w-xl">
+        <label className={labelClass}>Tournament year</label>
+        <select
+          value={selectedId}
+          onChange={e => selectYear(e.target.value)}
+          className={inputClass}
+          disabled={loadingList}
+        >
+          <option value="">{loadingList ? 'Loading…' : 'Select a year…'}</option>
+          {years.map(y => (
+            <option key={y.id} value={y.id}>
+              {y.year} · {y.name || `ZLTAC ${y.year}`}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-[#e5e5e5]/40 mt-2">
+          Only years that already exist appear here. To add a new year, create it on the Tournaments tab first.
+        </p>
+      </div>
+
+      {/* Editor */}
+      {selectedId ? (
+        <div className="bg-surface border border-line rounded-2xl flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-8 max-w-2xl">
+
+            {/* Event logo */}
+            <div>
+              <label className={labelClass}>Event Logo</label>
+              {form.logo_url && (
+                <div className="mb-3">
+                  <img src={form.logo_url} alt="logo" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
+                </div>
+              )}
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files[0] && uploadLogo(e.target.files[0])} />
+                <button
+                  onClick={() => logoRef.current?.click()}
+                  disabled={logoUploading}
+                  className="text-xs border border-line bg-[#191919] hover:bg-line text-[#e5e5e5]/60 hover:text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0 self-start"
+                >
+                  {logoUploading ? 'Uploading…' : 'Upload image'}
+                </button>
+                <input
+                  className={`${inputClass} xl:flex-1 xl:min-w-0`}
+                  value={form.logo_url}
+                  onChange={e => setField('logo_url', e.target.value)}
+                  placeholder="or paste image URL"
+                />
+              </div>
+            </div>
+
+            {/* Full results text */}
+            <div>
+              <label className={labelClass}>Full Results Text</label>
+              <p className="text-[#e5e5e5]/30 text-xs mb-2">
+                Paste or type the complete results, standings, notable mentions. Rendered publicly as formatted text.
+              </p>
+              <textarea
+                className={`${inputClass} resize-y font-mono text-xs leading-relaxed`}
+                rows={12}
+                value={form.full_results_text}
+                onChange={e => setField('full_results_text', e.target.value)}
+                placeholder={'# ZLTAC 2019 Full Results\n\n## Final Standings\n1. Team Alpha (2,450 pts)\n2. Team Bravo (2,310 pts)\n...'}
+              />
+            </div>
+
+            {/* Photo gallery */}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-brand mb-4">Photo Gallery</p>
+              <div className="flex gap-3 mb-4">
+                <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files[0] && uploadPhoto(e.target.files[0])} />
+                <button
+                  onClick={() => photoRef.current?.click()}
+                  disabled={photoUploading}
+                  className="text-xs border border-line bg-[#191919] hover:bg-line text-[#e5e5e5]/60 hover:text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0"
+                >
+                  {photoUploading ? 'Uploading…' : 'Upload photo'}
+                </button>
+                <input
+                  ref={photoUrlRef}
+                  className={`${inputClass} flex-1`}
+                  placeholder="or paste image URL and press Enter"
+                  onKeyDown={e => { if (e.key === 'Enter') addPhotoUrl() }}
+                />
+                <button
+                  onClick={addPhotoUrl}
+                  className="text-xs border border-line bg-[#191919] hover:bg-line text-[#e5e5e5]/60 hover:text-white px-3 py-2 rounded-lg transition-colors flex-shrink-0"
+                >
+                  Add
+                </button>
+              </div>
+              {(form.photo_urls ?? []).length === 0 && (
+                <p className="text-[#e5e5e5]/25 text-sm text-center py-4">No photos added yet.</p>
+              )}
+              {(form.photo_urls ?? []).length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {form.photo_urls.map((url, i) => (
+                    <div key={i} className="relative group">
+                      <img src={url} alt="" className="h-20 w-full object-cover rounded-lg bg-[#191919] border border-line" />
+                      <button
+                        onClick={() => removePhoto(i)}
+                        className="absolute top-1 right-1 bg-black/80 text-red-400 text-xs w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Internal notes */}
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">Committee Only Notes</p>
+              <div className="flex items-center gap-2 mb-4 p-3 bg-[#191919] border border-line rounded-lg">
+                <svg className="w-4 h-4 text-[#e5e5e5]/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <p className="text-xs text-[#e5e5e5]/40">Committee-only notes. Not displayed publicly.</p>
+              </div>
+              <textarea
+                className={`${inputClass} resize-y`}
+                rows={16}
+                value={form.internal_notes}
+                onChange={e => setField('internal_notes', e.target.value)}
+                placeholder="Internal committee notes, context, or references for this event..."
+              />
+            </div>
+
+          </div>
+
+          {/* Footer / Save */}
+          <div className="px-6 py-4 border-t border-line flex items-center justify-end flex-shrink-0">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-all"
+            >
+              {saving ? 'Saving…' : 'Save extras'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-surface border border-line rounded-2xl flex items-center justify-center min-h-[240px]">
+          <div className="text-center px-6">
+            <div className="w-14 h-14 bg-[#191919] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">🖼️</span>
+            </div>
+            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">
+              Select a tournament year above to edit its logo, photos,<br />
+              full results text, and committee notes.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
