@@ -99,6 +99,9 @@ export default async function handler(req, res) {
     // acceptable for a soft admin-imposed cap.
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })
+    // Block new team creation once the event locks. RLS also blocks the
+    // client-direct insert; this returns a clean message before the attempt.
+    if (await denyIfLocked(res, year)) return
 
     const { data: ev, error: evErr } = await supabaseAdmin
       .from('zltac_events')

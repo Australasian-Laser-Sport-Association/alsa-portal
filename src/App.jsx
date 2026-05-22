@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import NavBar from './components/NavBar'
 import ActiveEventBanner from './components/ActiveEventBanner'
@@ -38,7 +38,7 @@ import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
 import AdminMembers from './pages/admin/AdminMembers'
 import AdminVolunteers from './pages/admin/AdminVolunteers'
-import AdminLegalDocuments from './pages/admin/AdminLegalDocuments'
+import AdminRequiredDocuments from './pages/admin/AdminRequiredDocuments'
 import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
 import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
 import AdminZLTACResults from './pages/admin/AdminZLTACResults'
@@ -104,7 +104,9 @@ function App() {
             <Route path="zltac-results" element={<AdminZLTACResults />} />
             <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
             <Route path="registrations" element={<AdminRegistrations />} />
-            <Route path="legal-documents" element={<AdminLegalDocuments />} />
+            <Route path="required-documents" element={<AdminRequiredDocuments />} />
+            {/* Legacy slug — keep links/bookmarks to /admin/legal-documents working */}
+            <Route path="legal-documents" element={<Navigate to="/admin/required-documents" replace />} />
             <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
             <Route path="referee-test" element={<AdminRefereeTest />} />
             <Route path="volunteers" element={<AdminVolunteers />} />

@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { arePaymentsOpen } from '../../lib/payments'
+import { formatDate } from '../../lib/dateFormat'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
 
@@ -113,7 +115,7 @@ export default function AdminEvent() {
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
   const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
-  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '' })
+  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '', payments_override: '' })
 
   // Logo
   const [logoFile, setLogoFile] = useState(null)
@@ -193,6 +195,8 @@ export default function AdminEvent() {
       allow_side_events_only: ev.allow_side_events_only ?? false,
       enable_waitlist: ev.enable_waitlist ?? false,
       committee_email: ev.committee_email ?? '',
+      // '' = Auto (payments_override NULL); 'open'/'closed' = manual override.
+      payments_override: ev.payments_override ?? '',
     })
     setLogoFile(null)
     setLogoPreview(ev.logo_url ?? null)
@@ -355,6 +359,7 @@ export default function AdminEvent() {
       allow_side_events_only: settings.allow_side_events_only,
       enable_waitlist: settings.enable_waitlist,
       committee_email: settings.committee_email.trim() || null,
+      payments_override: settings.payments_override || null,
       updated_at: new Date().toISOString(),
     }
 
@@ -842,9 +847,55 @@ export default function AdminEvent() {
               </div>
             )}
 
+            {/* ── Payments availability gate ── */}
+            <div className="pt-4 border-t border-line">
+              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Payments</label>
+              {(() => {
+                const ps = arePaymentsOpen({
+                  payments_override: settings.payments_override || null,
+                  reg_close_date: settings.reg_close_date || null,
+                })
+                let status
+                if (ps.open && ps.reason === 'auto_open') {
+                  status = `Currently: OPEN. Bank details visible to players. Opened automatically when registration locked on ${formatDate(settings.reg_close_date, 'longWithTime')}.`
+                } else if (ps.open && ps.reason === 'override_open') {
+                  status = 'Currently: OPEN (manually forced open). Bank details visible to players.'
+                } else if (!ps.open && ps.reason === 'auto_closed') {
+                  status = `Currently: CLOSED. Will open automatically on ${formatDate(ps.opensAt, 'longWithTime')}.`
+                } else if (!ps.open && ps.reason === 'override_closed') {
+                  status = 'Currently: CLOSED (manually forced closed).'
+                } else {
+                  status = 'Currently: CLOSED. No registration lock date set on the Registration tab.'
+                }
+                return <p className={`text-sm font-semibold ${ps.open ? 'text-brand' : 'text-white'}`}>{status}</p>
+              })()}
+              <p className="text-xs text-[#e5e5e5]/30 mt-1 mb-3">The lock date is set on the Registration tab.</p>
+
+              <div className="space-y-2">
+                {[
+                  { label: 'Auto (open when registration locks)', value: '' },
+                  { label: 'Force OPEN', value: 'open' },
+                  { label: 'Force CLOSED', value: 'closed' },
+                ].map(opt => (
+                  <label key={opt.value || 'auto'} className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="payments_override"
+                      checked={settings.payments_override === opt.value}
+                      disabled={isArchived}
+                      onChange={() => setSettings(s => ({ ...s, payments_override: opt.value }))}
+                      className="accent-[#00FF41]"
+                    />
+                    <span className="text-sm text-white">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div className="pt-4 border-t border-line">
               <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Bank Details</label>
-              <p className="text-xs text-[#e5e5e5]/30 mb-3">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/30 mb-1">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/40 mb-3">Bank details below are only visible to players when payments are open.</p>
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs text-[#e5e5e5]/40 mb-1">BSB</label>
@@ -913,7 +964,7 @@ export default function AdminEvent() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'Registration Opens', key: 'reg_open_date',  hint: 'When players can first register (informational).' },
-              { label: 'Registration locks at', key: 'reg_close_date',  hint: 'After this, players can\'t edit; payments still work.' },
+              { label: 'Registration Lock and Payment Opens', key: 'reg_close_date',  hint: 'When this passes, registrations lock and payment information becomes visible to players (unless overridden on the Pricing tab).' },
               { label: 'Registration closes',  key: 'event_starts_at', hint: 'After this, registration is fully closed (including payments).' },
             ].map(({ label, key, hint }) => (
               <div key={key}>

@@ -432,6 +432,9 @@ async function handleRegistration(req, res, user) {
     // registered = no-op for cap purposes (upsert is idempotent count-wise).
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })
+    // Block new registrations once the event locks. RLS also blocks the
+    // client-direct insert; this returns a clean message before the attempt.
+    if (await denyIfLocked(res, year)) return
 
     const { data: ev, error: evErr } = await supabaseAdmin
       .from('zltac_events')

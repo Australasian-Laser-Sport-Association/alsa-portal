@@ -710,7 +710,7 @@ export default function EventPage() {
             <p className="text-[#e5e5e5]/55 font-medium" style={{ fontSize: '18px' }}>
               {event.reg_open_date && `Registration opens ${formatDate(event.reg_open_date)}`}
               {event.reg_open_date && event.reg_close_date && ' · '}
-              {event.reg_close_date && `closes ${formatDate(event.reg_close_date)}`}
+              {event.reg_close_date && `locks ${formatDate(event.reg_close_date)}`}
             </p>
           )}
           {myReg && (
