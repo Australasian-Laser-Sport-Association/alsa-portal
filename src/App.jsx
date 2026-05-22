@@ -31,9 +31,9 @@ import RefereeTest from './pages/RefereeTest'
 
 // Admin
 import AdminLayout from './components/AdminLayout'
-import AdminHome from './pages/admin/AdminHome'
+import AdminZltacDashboard from './pages/admin/AdminZltacDashboard'
+import AdminAlsaDashboard from './pages/admin/AdminAlsaDashboard'
 import AdminEvent from './pages/admin/AdminEvent'
-import AdminEventHistory from './pages/admin/AdminEventHistory'
 import AdminRegistrations from './pages/admin/AdminRegistrations'
 import AdminRefereeTest from './pages/admin/AdminRefereeTest'
 import AdminUsers from './pages/admin/AdminUsers'
@@ -102,9 +102,9 @@ function App() {
 
           {/* Admin panel */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
-            <Route index element={<AdminHome />} />
+            <Route index element={<AdminZltacDashboard />} />
+            <Route path="portal-dashboard" element={<AdminAlsaDashboard />} />
             <Route path="event" element={<AdminEvent />} />
-            <Route path="event-history" element={<AdminEventHistory />} />
             <Route path="zltac-results" element={<AdminZLTACResults />} />
             <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
             <Route path="registrations" element={<AdminRegistrations />} />

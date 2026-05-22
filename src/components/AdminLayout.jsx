@@ -4,6 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { COMMITTEE_ROLES } from '../lib/roles'
 
 const NAV_ITEMS = [
+  { sectionLabel: 'ZLTAC Event Management' },
   {
     to: '/admin',
     end: true,
@@ -24,33 +25,6 @@ const NAV_ITEMS = [
     label: 'Current Event',
   },
   {
-    to: '/admin/zltac-results',
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-      </svg>
-    ),
-    label: 'ZLTAC Results',
-  },
-  {
-    to: '/admin/zltac-hall-of-fame',
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15a3 3 0 100-6 3 3 0 000 6zm-7-3a7 7 0 1014 0 7 7 0 00-14 0zm9.5 5L12 22l-2.5-5" />
-      </svg>
-    ),
-    label: 'ZLTAC Hall of Fame',
-  },
-  {
-    to: '/admin/event-history',
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-    label: 'Event History (extras)',
-  },
-  {
     to: '/admin/registrations',
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -66,7 +40,7 @@ const NAV_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
-    label: 'Legal Documents',
+    label: 'Documents',
   },
   {
     to: '/admin/under-18-approvals',
@@ -95,6 +69,16 @@ const NAV_ITEMS = [
     ),
     label: 'Volunteers',
   },
+  { sectionLabel: 'ALSA Portal Management' },
+  {
+    to: '/admin/portal-dashboard',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+    label: 'Dashboard',
+  },
   {
     to: '/admin/users',
     icon: (
@@ -112,6 +96,24 @@ const NAV_ITEMS = [
       </svg>
     ),
     label: 'ALSA Members',
+  },
+  {
+    to: '/admin/zltac-hall-of-fame',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15a3 3 0 100-6 3 3 0 000 6zm-7-3a7 7 0 1014 0 7 7 0 00-14 0zm9.5 5L12 22l-2.5-5" />
+      </svg>
+    ),
+    label: 'ZLTAC Hall of Fame',
+  },
+  {
+    to: '/admin/zltac-results',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+      </svg>
+    ),
+    label: 'ZLTAC Results',
   },
 ]
 

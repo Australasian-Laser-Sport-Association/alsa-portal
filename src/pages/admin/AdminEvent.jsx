@@ -404,7 +404,7 @@ export default function AdminEvent() {
       setMsg({
         type: 'ok',
         text: result?.historySkipped
-          ? `Event archived. A history record for ${event.year} already exists and was preserved — edit it on the Event History page.`
+          ? `Event archived. A history record for ${event.year} already exists and was preserved. Edit it on the ZLTAC Results page, Extras tab.`
           : 'Event archived.',
       })
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))

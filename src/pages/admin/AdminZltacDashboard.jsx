@@ -39,7 +39,7 @@ function ratioLabel(x, n) {
   return `${num} / ${denom} (${pct}%)`
 }
 
-export default function AdminHome() {
+export default function AdminZltacDashboard() {
   const [stats, setStats] = useState({})
   const [activity, setActivity] = useState([])
   const [loading, setLoading] = useState(true)
@@ -61,7 +61,6 @@ export default function AdminHome() {
       //    Year-scoped tiles require an active event; we still run the
       //    queries even when there's none — they return 0 rows gracefully.
       const [
-        { count: totalUsers },
         teamsRes,
         { data: regsForYear },
         { data: payRecsForYear },
@@ -71,7 +70,6 @@ export default function AdminHome() {
         { data: recentPayRecs },
         { data: recentCoc },
       ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
         activeEventId
           ? supabase.from('teams').select('*', { count: 'exact', head: true }).eq('event_id', activeEventId)
           : Promise.resolve({ count: 0 }),
@@ -158,7 +156,6 @@ export default function AdminHome() {
       const paymentRequired = isPaymentRequired(activeEvent)
 
       setStats({
-        totalUsers: totalUsers ?? 0,
         teamsForEvent,
         playersForEvent,
         paymentRequired,
@@ -219,8 +216,8 @@ export default function AdminHome() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-black text-white">Dashboard</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">Overview of ALSA Portal activity</p>
+        <h1 className="text-2xl font-black text-white">ZLTAC Dashboard</h1>
+        <p className="text-[#e5e5e5]/40 text-sm mt-1">Overview of the active ZLTAC event.</p>
       </div>
 
       {loading ? (
@@ -231,7 +228,6 @@ export default function AdminHome() {
         <>
           {/* Stats grid */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            <StatCard label="Total Website Users" value={stats.totalUsers} color="text-white" />
             <StatCard label={teamsLabel} value={stats.teamsForEvent} color="text-brand" />
             <StatCard label={playersLabel} value={stats.playersForEvent} color="text-white" />
             <StatCard
