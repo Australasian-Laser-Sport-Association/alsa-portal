@@ -141,7 +141,6 @@ export default function CaptainHub() {
   const [roster, setRoster] = useState([])
   const [completionMap, setCompletionMap] = useState({})
   const [filter, setFilter] = useState('all')
-  const [copyDone, setCopyDone] = useState(false)
 
   // Player search
   const [searchQuery, setSearchQuery] = useState('')
@@ -187,7 +186,7 @@ export default function CaptainHub() {
   async function load() {
     const [{ data: ev }, { data: t }] = await Promise.all([
       supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment, reg_close_date, event_starts_at, committee_email').eq('status', 'open').maybeSingle(),
-      supabase.from('teams').select('id, name, state, home_venue, colour, invite_code, status, rejection_reason, logo_url').eq('captain_id', user.id).maybeSingle(),
+      supabase.from('teams').select('id, name, state, home_venue, colour, status, rejection_reason, logo_url').eq('captain_id', user.id).maybeSingle(),
     ])
     setEvent(ev)
     if (!t) { setLoading(false); return }
@@ -387,15 +386,6 @@ export default function CaptainHub() {
     }
   }
 
-  // ── Copy invite link ──────────────────────────────────────────────────────
-  function copyInviteLink() {
-    if (!team || !event?.year) return
-    const url = `${window.location.origin}/events/${event.year}/player-register`
-    navigator.clipboard.writeText(url)
-    setCopyDone(true)
-    setTimeout(() => setCopyDone(false), 2000)
-  }
-
   // ── Team settings ─────────────────────────────────────────────────────────
   // ── Logo upload ──────────────────────────────────────────────────────────
   // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
@@ -570,7 +560,6 @@ export default function CaptainHub() {
   // editable — they don't affect registration, fees, or eligibility.
   const phase = eventPhase(event)
   const locked = phase !== 'open'
-  const inviteUrl = event ? `${window.location.origin}/events/${eventYear}/player-register` : ''
   const filteredRoster = roster.filter(r => {
     if (filter === 'ready') return isPlayerReady(r.user_id)
     if (filter === 'incomplete') return !isPlayerReady(r.user_id)
@@ -705,6 +694,13 @@ export default function CaptainHub() {
             <h2 className="text-white font-bold mb-1">Add Players to Team</h2>
             <p className="text-[#e5e5e5]/40 text-xs mb-4">Search for players who have registered for ZLTAC {eventYear} but are not yet on a team.</p>
 
+            {/* How players get onto a team now that invite codes are gone. */}
+            <div className="bg-base border border-line rounded-xl px-4 py-3 mb-4">
+              <p className="text-[#e5e5e5]/70 text-xs leading-relaxed">
+                Players need to be added here with the search tool. Players must be signed up to the ALSA portal and registered to the current event to be added.
+              </p>
+            </div>
+
             {locked ? (
               <LockedNotice email={event?.committee_email} />
             ) : (
@@ -731,7 +727,7 @@ export default function CaptainHub() {
 
                 {searchDone && !searching && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
                   <p className="text-[#e5e5e5]/35 text-xs mt-3">
-                    No registered ZLTAC {eventYear} players found matching that search. They may not have registered for ZLTAC yet — share your invite link so they can register.
+                    No registered ZLTAC {eventYear} players found matching that search. They may not have signed up to the ALSA portal and registered for ZLTAC {eventYear} yet. Players must do both before they can be added here.
                   </p>
                 )}
 
@@ -765,25 +761,6 @@ export default function CaptainHub() {
             )}
           </div>
 
-          {/* ── Invite Link ───────────────────────────────────────────────── */}
-          <div className="bg-surface border border-line rounded-2xl p-5">
-            <h2 className="text-white font-bold mb-1">Player Invite Link</h2>
-            <p className="text-[#e5e5e5]/40 text-xs mb-4">
-              Send the link below to get players to sign up and register for ZLTAC {eventYear}.
-              Once they have registered you can add them to your team using the search above.
-            </p>
-            <div className="flex items-center gap-2 bg-base border border-line rounded-xl px-4 py-3">
-              <span className="text-brand text-sm font-mono flex-1 break-all select-all">{inviteUrl || '—'}</span>
-              <button
-                onClick={copyInviteLink}
-                disabled={!inviteUrl}
-                className="text-xs bg-brand/10 hover:bg-brand/20 text-brand font-semibold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 disabled:opacity-40"
-              >
-                {copyDone ? '✓ Copied' : 'Copy'}
-              </button>
-            </div>
-          </div>
-
           {/* ── Roster ────────────────────────────────────────────────────── */}
           <div className="bg-surface border border-line rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-4 flex-wrap">
@@ -808,7 +785,7 @@ export default function CaptainHub() {
               <div className="px-5 py-10 text-center">
                 <p className="text-[#e5e5e5]/30 text-sm">
                   {roster.length === 0
-                    ? 'No players on your team yet. Search for registered players above or share your invite link.'
+                    ? 'No players on your team yet. Use the search above to add registered ZLTAC players to your team.'
                     : 'No players match this filter.'}
                 </p>
               </div>

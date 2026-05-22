@@ -63,7 +63,7 @@ export default function PlayerHubProgress({
 
   const baseSteps = [
     { Icon: PersonIcon, label: 'Register as a player', description: 'You\'ve created your ALSA account and signed up.', done: true },
-    { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Use a captain\'s invite code or start a new team.', done: hasTeam },
+    { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Create a team as captain, or get added to one by your captain.', done: hasTeam },
     // CoC step only appears when the event requires it.
     ...(cocRequired ? [{ Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct.', done: cocSigned }] : []),
     // Rules-test step only appears when the event requires it.
