@@ -7,7 +7,6 @@ import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
-import JoinTeamModal from '../components/JoinTeamModal'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
@@ -751,9 +750,6 @@ export default function PlayerHub() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState(null) // string | { message, captainBlocker: true }
 
-  // Join Team modal
-  const [joinOpen, setJoinOpen] = useState(false)
-
   // Collapsible hub sections. All collapsed on load. Controlled here (rather
   // than inside CollapsibleSection) so an in-page hash link can open a section.
   const [openSections, setOpenSections] = useState({
@@ -1206,9 +1202,6 @@ export default function PlayerHub() {
         </div>
       )}
 
-      {/* Join Team modal */}
-      <JoinTeamModal open={joinOpen} onClose={() => setJoinOpen(false)} />
-
       <div className="max-w-3xl mx-auto px-6 py-10">
 
         {/* Back */}
@@ -1377,31 +1370,20 @@ export default function PlayerHub() {
 
           {/* ── Team CTA (registered, not yet on a team) ── */}
           {isRegistered && !hasTeam && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="bg-surface border border-line rounded-2xl p-6 text-center flex flex-col" style={{ borderTopColor: '#00FF41', borderTopWidth: '3px' }}>
-                <h3 className="text-white font-black text-lg mb-2">Create Team</h3>
-                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-5">
-                  Start a new team and share your invite code with players.
-                </p>
-                <Link
-                  to={`/events/${eventYear}/captain-register`}
-                  className="block bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
-                >
-                  Create Team
-                </Link>
-              </div>
-              <div className="bg-surface border border-line rounded-2xl p-6 text-center flex flex-col" style={{ borderTopColor: '#00FF41', borderTopWidth: '3px' }}>
-                <h3 className="text-white font-black text-lg mb-2">Join Team with Code</h3>
-                <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-5">
-                  Got an invite code from a captain? Enter it to join their team.
-                </p>
-                <button
-                  onClick={() => setJoinOpen(true)}
-                  className="block w-full bg-brand hover:bg-brand-hover text-black font-bold py-2.5 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
-                >
-                  Enter Invite Code
-                </button>
-              </div>
+            <div className="bg-surface border border-line rounded-2xl p-10 text-center" style={{ borderTopColor: '#00FF41', borderTopWidth: '3px' }}>
+              <h3 className="text-white font-black text-2xl mb-3 leading-tight">Captains: Create your team</h3>
+              <p className="text-white text-sm leading-relaxed mb-6 max-w-md mx-auto">
+                Are you a Captain? Create your team now and invite your players.
+              </p>
+              <Link
+                to={`/events/${eventYear}/captain-register`}
+                className="inline-block bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
+              >
+                Create Team
+              </Link>
+              <p className="text-[#a0a0a0] text-sm leading-relaxed mt-6 max-w-md mx-auto">
+                If you are a player, get your captain to create a team and invite you to it.
+              </p>
             </div>
           )}
 

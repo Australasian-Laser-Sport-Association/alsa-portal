@@ -9,11 +9,6 @@ import Footer from '../components/Footer'
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 const TEAM_COLOURS = ['#00E6FF', '#FF3B30', '#0A84FF', '#FF9F0A', '#BF5AF2', '#FF375F', '#30D158', '#64D2FF']
 
-function generateInviteCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-}
-
 export default function CaptainRegister() {
   const { year } = useParams()
   const { user, loading: authLoading } = useAuth()
@@ -25,7 +20,6 @@ export default function CaptainRegister() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [copyDone, setCopyDone] = useState(false)
 
   // Form fields
   const [teamName, setTeamName] = useState('')
@@ -99,8 +93,6 @@ export default function CaptainRegister() {
       logo_url = urlData.publicUrl
     }
 
-    const invite_code = generateInviteCode()
-
     const { data: newTeam, error: insertError } = await supabase.from('teams').insert({
       name: teamName.trim(),
       captain_id: user.id,
@@ -109,8 +101,6 @@ export default function CaptainRegister() {
       home_venue: homeVenue.trim() || null,
       colour,
       logo_url,
-      invite_code,
-      invite_active: true,
     }).select().single()
 
     if (insertError) { setError(insertError.message); setSaving(false); return }
@@ -152,14 +142,6 @@ export default function CaptainRegister() {
     setStep(2)
   }
 
-  function copyInviteLink() {
-    if (!submittedTeam) return
-    const url = `${window.location.origin}/join/${submittedTeam.invite_code}`
-    navigator.clipboard.writeText(url)
-    setCopyDone(true)
-    setTimeout(() => setCopyDone(false), 2000)
-  }
-
   if (authLoading || initialLoading) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
@@ -181,7 +163,6 @@ export default function CaptainRegister() {
 
   // ── Success ────────────────────────────────────────────────────────────────
   if (step === 2 && submittedTeam) {
-    const inviteUrl = `${window.location.origin}/join/${submittedTeam.invite_code}`
     return (
       <div className="min-h-screen bg-base text-white flex flex-col">
         <section className="flex-1 flex flex-col items-center justify-center px-6 py-20">
@@ -198,18 +179,9 @@ export default function CaptainRegister() {
             </div>
 
             <div className="bg-surface border border-brand/20 rounded-2xl p-6 mb-5">
-              <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">Team Invite Link</p>
-              <div className="flex items-center gap-2 bg-base border border-line rounded-xl px-4 py-3 mb-3">
-                <span className="text-brand text-sm font-mono flex-1 break-all">{inviteUrl}</span>
-                <button
-                  onClick={copyInviteLink}
-                  className="text-xs bg-brand/10 hover:bg-brand/20 text-brand font-semibold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-                >
-                  {copyDone ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-              <p className="text-[#e5e5e5]/40 text-xs leading-relaxed">
-                Share this link with your players. Once approved by the ZLTAC committee, players can join your team using this link.
+              <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">What's next</p>
+              <p className="text-white text-sm leading-relaxed">
+                Head to your Team Hub to build your roster. Use the search tool to find players who have signed up to the ALSA portal and registered for ZLTAC {year}, then add them to your team.
               </p>
             </div>
 

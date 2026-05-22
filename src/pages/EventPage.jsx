@@ -7,7 +7,6 @@ import { formatDate } from '../lib/dateFormat'
 import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
 import RegistrationTimeline from '../components/RegistrationTimeline'
-import JoinTeamModal from '../components/JoinTeamModal'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
@@ -397,9 +396,6 @@ export default function EventPage() {
   const [triplesTeams, setTriplesTeams] = useState([])
   const [pairProfileMap, setPairProfileMap] = useState({})
 
-  // Join Team modal
-  const [joinOpen, setJoinOpen] = useState(false)
-
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState(null)
 
@@ -676,9 +672,6 @@ export default function EventPage() {
         </div>
       )}
 
-      {/* Join Team modal */}
-      <JoinTeamModal open={joinOpen} onClose={() => setJoinOpen(false)} />
-
       {/* Hero */}
       <section
         className="relative py-24 border-b border-line overflow-hidden"
@@ -814,7 +807,7 @@ export default function EventPage() {
                     </div>
                   </div>
                   <p className="text-white/90 text-base leading-relaxed">
-                    Sign up to compete in {event.name}. Once registered, you can create a team or join an existing one with an invite code. Side events, team management, and event progress all live in your Player Hub.
+                    Sign up to compete in {event.name}. Once registered, you can create a team and add your players, or ask your captain to add you to theirs. Side events, team management, and event progress all live in your Player Hub.
                   </p>
                 </div>
                 <div className="md:col-span-2 flex flex-col items-stretch md:items-end gap-3">
@@ -844,8 +837,6 @@ export default function EventPage() {
         const onHoverLeave = e => {
           e.currentTarget.style.boxShadow = 'none'
         }
-        const cardClass = 'rounded-2xl p-10 transition-all text-center flex flex-col'
-        const primaryButton = 'block w-full bg-brand hover:bg-brand-hover text-black font-bold py-3 px-4 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]'
 
         const playerHubPill = (
           <HubPill
@@ -861,25 +852,25 @@ export default function EventPage() {
         if (!myReg.team_id) {
           return (
             <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Create Team</h2>
-                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                    Start a new team and share your invite code with players.
-                  </p>
-                  <Link to={`/events/${year}/captain-register`} className={primaryButton}>
-                    Create Team
-                  </Link>
-                </div>
-                <div className={cardClass} style={cardStyle} onMouseEnter={onHoverEnter} onMouseLeave={onHoverLeave}>
-                  <h2 className="text-white font-black text-xl mb-4 leading-tight">Join Team with Code</h2>
-                  <p className="text-[#a0a0a0] text-sm leading-relaxed flex-1 mb-8">
-                    Got an invite code from a captain? Enter it to join their team.
-                  </p>
-                  <button onClick={() => setJoinOpen(true)} className={primaryButton}>
-                    Enter Invite Code
-                  </button>
-                </div>
+              <div
+                className="rounded-2xl p-10 text-center mb-6"
+                style={cardStyle}
+                onMouseEnter={onHoverEnter}
+                onMouseLeave={onHoverLeave}
+              >
+                <h2 className="text-white font-black text-2xl mb-3 leading-tight">Captains: Create your team</h2>
+                <p className="text-white text-sm leading-relaxed mb-6 max-w-md mx-auto">
+                  Are you a Captain? Create your team now and invite your players.
+                </p>
+                <Link
+                  to={`/events/${year}/captain-register`}
+                  className="inline-block bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
+                >
+                  Create Team
+                </Link>
+                <p className="text-[#a0a0a0] text-sm leading-relaxed mt-6 max-w-md mx-auto">
+                  If you are a player, get your captain to create a team and invite you to it.
+                </p>
               </div>
               {playerHubPill}
             </section>
