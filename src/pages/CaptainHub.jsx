@@ -785,7 +785,13 @@ export default function CaptainHub() {
               <div className="px-5 py-10 text-center">
                 <p className="text-[#e5e5e5]/30 text-sm">
                   {roster.length === 0
+<<<<<<< HEAD
                     ? 'No players on your team yet. Use the search above to add registered ZLTAC players to your team.'
+=======
+                    ? (locked
+                        ? 'Registrations are locked. Players can no longer be added.'
+                        : 'No players on your team yet. Use the search above to add registered ZLTAC players to your team.')
+>>>>>>> feature/build-phase-cleanup
                     : 'No players match this filter.'}
                 </p>
               </div>

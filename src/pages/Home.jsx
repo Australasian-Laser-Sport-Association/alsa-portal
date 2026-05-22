@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight, Trophy, Users, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { formatDate } from '../lib/dateFormat'
+import { formatInEventTz } from '../lib/eventTimezone'
 import Footer from '../components/Footer'
 
 const CrosshairIcon = ({ className }) => (
@@ -66,7 +66,7 @@ export default function Home() {
   useEffect(() => {
     supabase
       .from('zltac_events')
-      .select('id, name, year, location, status, logo_url, reg_open_date, reg_close_date')
+      .select('id, name, year, location, status, logo_url, reg_open_date, reg_close_date, timezone')
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
@@ -264,11 +264,11 @@ export default function Home() {
                     {(activeEvent.reg_open_date || activeEvent.reg_close_date) && (
                       <p className="text-[#e5e5e5]/45 text-sm">
                         {activeEvent.reg_open_date && (
-                          <>Registration opens {formatDate(activeEvent.reg_open_date)}</>
+                          <>Registration opens {formatInEventTz(activeEvent.reg_open_date, activeEvent.timezone)}</>
                         )}
                         {activeEvent.reg_open_date && activeEvent.reg_close_date && ' · '}
                         {activeEvent.reg_close_date && (
-                          <>closes {formatDate(activeEvent.reg_close_date)}</>
+                          <>locks {formatInEventTz(activeEvent.reg_close_date, activeEvent.timezone)}</>
                         )}
                       </p>
                     )}

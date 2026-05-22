@@ -1,8 +1,24 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { arePaymentsOpen } from '../../lib/payments'
+import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
+
+// Timezone selector options. Value is the IANA name stored on the event row;
+// label is the friendly form shown in the dropdown. Australia/Melbourne is the
+// default for new events.
+const TIMEZONE_OPTIONS = [
+  { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)' },
+  { value: 'Australia/Sydney',    label: 'Sydney (AEST/AEDT)' },
+  { value: 'Australia/Brisbane',  label: 'Brisbane (AEST)' },
+  { value: 'Australia/Adelaide',  label: 'Adelaide (ACST/ACDT)' },
+  { value: 'Australia/Perth',     label: 'Perth (AWST)' },
+  { value: 'Australia/Hobart',    label: 'Hobart (AEST/AEDT)' },
+  { value: 'Australia/Darwin',    label: 'Darwin (ACST)' },
+  { value: 'Pacific/Auckland',    label: 'Auckland (NZST/NZDT)' },
+]
 
 const DEFAULT_SIDE_EVENTS = [
   { slug: 'lord-of-the-rings', name: 'Lord of the Rings', description: 'Epic multi-round format — only the finest warriors survive each ring to claim the ultimate title.', enabled: true, price: '25.00', max_participants: '', custom: false },
@@ -113,7 +129,7 @@ export default function AdminEvent() {
   const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
   const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
   const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
-  const [settings, setSettings] = useState({ reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '' })
+  const [settings, setSettings] = useState({ timezone: 'Australia/Melbourne', reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '', payments_override: '' })
 
   // Logo
   const [logoFile, setLogoFile] = useState(null)
@@ -180,10 +196,12 @@ export default function AdminEvent() {
       account_number: ev.bank_account_number ?? '',
       account_name: ev.bank_account_name ?? '',
     })
+    const tz = ev.timezone || 'Australia/Melbourne'
     setSettings({
-      reg_open_date: ev.reg_open_date ? ev.reg_open_date.slice(0, 16) : '',
-      reg_close_date: ev.reg_close_date ? ev.reg_close_date.slice(0, 16) : '',
-      event_starts_at: ev.event_starts_at ? ev.event_starts_at.slice(0, 16) : '',
+      timezone: tz,
+      reg_open_date: toInputValue(ev.reg_open_date, tz),
+      reg_close_date: toInputValue(ev.reg_close_date, tz),
+      event_starts_at: toInputValue(ev.event_starts_at, tz),
       max_teams: ev.max_teams ?? '',
       max_players: ev.max_players ?? '',
       max_players_per_team: ev.max_players_per_team ?? '',
@@ -193,6 +211,8 @@ export default function AdminEvent() {
       allow_side_events_only: ev.allow_side_events_only ?? false,
       enable_waitlist: ev.enable_waitlist ?? false,
       committee_email: ev.committee_email ?? '',
+      // '' = Auto (payments_override NULL); 'open'/'closed' = manual override.
+      payments_override: ev.payments_override ?? '',
     })
     setLogoFile(null)
     setLogoPreview(ev.logo_url ?? null)
@@ -343,9 +363,10 @@ export default function AdminEvent() {
         price: displayToCents(se.price),
         max_participants: se.max_participants ? parseInt(se.max_participants) : null,
       })),
-      reg_open_date: settings.reg_open_date || null,
-      reg_close_date: settings.reg_close_date || null,
-      event_starts_at: settings.event_starts_at || null,
+      timezone: settings.timezone || 'Australia/Melbourne',
+      reg_open_date: parseFromEventTz(settings.reg_open_date, settings.timezone),
+      reg_close_date: parseFromEventTz(settings.reg_close_date, settings.timezone),
+      event_starts_at: parseFromEventTz(settings.event_starts_at, settings.timezone),
       max_teams: settings.max_teams ? parseInt(settings.max_teams) : null,
       max_players: settings.max_players ? parseInt(settings.max_players) : null,
       max_players_per_team: settings.max_players_per_team ? parseInt(settings.max_players_per_team) : null,
@@ -355,6 +376,7 @@ export default function AdminEvent() {
       allow_side_events_only: settings.allow_side_events_only,
       enable_waitlist: settings.enable_waitlist,
       committee_email: settings.committee_email.trim() || null,
+      payments_override: settings.payments_override || null,
       updated_at: new Date().toISOString(),
     }
 
@@ -842,9 +864,59 @@ export default function AdminEvent() {
               </div>
             )}
 
+            {/* ── Payments availability gate ── */}
+            <div className="pt-4 border-t border-line">
+              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Payments</label>
+              {(() => {
+                // settings.reg_close_date is an event-local input string; convert
+                // to a UTC instant so the payment gate and the displayed times are
+                // computed the same way they will be for players.
+                const lockUtc = parseFromEventTz(settings.reg_close_date, settings.timezone)
+                const ps = arePaymentsOpen({
+                  payments_override: settings.payments_override || null,
+                  reg_close_date: lockUtc,
+                })
+                let status
+                if (ps.open && ps.reason === 'auto_open') {
+                  status = `Currently: OPEN. Bank details visible to players. Opened automatically when registration locked on ${formatInEventTz(lockUtc, settings.timezone, 'longWithTime')}.`
+                } else if (ps.open && ps.reason === 'override_open') {
+                  status = 'Currently: OPEN (manually forced open). Bank details visible to players.'
+                } else if (!ps.open && ps.reason === 'auto_closed') {
+                  status = `Currently: CLOSED. Will open automatically on ${formatInEventTz(ps.opensAt, settings.timezone, 'longWithTime')}.`
+                } else if (!ps.open && ps.reason === 'override_closed') {
+                  status = 'Currently: CLOSED (manually forced closed).'
+                } else {
+                  status = 'Currently: CLOSED. No registration lock date set on the Registration tab.'
+                }
+                return <p className={`text-sm font-semibold ${ps.open ? 'text-brand' : 'text-white'}`}>{status}</p>
+              })()}
+              <p className="text-xs text-[#e5e5e5]/30 mt-1 mb-3">The lock date is set on the Registration tab.</p>
+
+              <div className="space-y-2">
+                {[
+                  { label: 'Auto (open when registration locks)', value: '' },
+                  { label: 'Force OPEN', value: 'open' },
+                  { label: 'Force CLOSED', value: 'closed' },
+                ].map(opt => (
+                  <label key={opt.value || 'auto'} className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="payments_override"
+                      checked={settings.payments_override === opt.value}
+                      disabled={isArchived}
+                      onChange={() => setSettings(s => ({ ...s, payments_override: opt.value }))}
+                      className="accent-[#00FF41]"
+                    />
+                    <span className="text-sm text-white">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div className="pt-4 border-t border-line">
               <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Bank Details</label>
-              <p className="text-xs text-[#e5e5e5]/30 mb-3">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/30 mb-1">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/40 mb-3">Bank details below are only visible to players when payments are open.</p>
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs text-[#e5e5e5]/40 mb-1">BSB</label>
@@ -905,6 +977,26 @@ export default function AdminEvent() {
       {/* ── TAB 3: Registration Settings ─────────────────────────────────── */}
       {activeTab === 3 && (
         <div className="space-y-5 max-w-xl">
+          {/* Event timezone. Drives how every date on this tab (and the payment
+              status on the Pricing tab) is entered and displayed. Stored as the
+              IANA name; the dates stay UTC timestamptz under the hood. */}
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Event Timezone</label>
+            <select
+              value={settings.timezone ?? 'Australia/Melbourne'}
+              disabled={isArchived}
+              onChange={e => setSettings(s => ({ ...s, timezone: e.target.value }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+            >
+              {TIMEZONE_OPTIONS.map(tz => (
+                <option key={tz.value} value={tz.value} className="text-white bg-base">{tz.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-[#e5e5e5]/40 mt-1.5 leading-snug">
+              All dates on this event use the timezone above. Times saved before this update may show differently now because they are interpreted in the event timezone. Please check each date and save once to confirm.
+            </p>
+          </div>
+
           {/* Phase boundaries. reg_close_date is the open→locked threshold
               (was a label-only field before — now enforced server-side via
               the phase guard); event_starts_at is the locked→closed
@@ -913,18 +1005,25 @@ export default function AdminEvent() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'Registration Opens', key: 'reg_open_date',  hint: 'When players can first register (informational).' },
-              { label: 'Registration locks at', key: 'reg_close_date',  hint: 'After this, players can\'t edit; payments still work.' },
+              { label: 'Registration Lock and Payment Opens', key: 'reg_close_date',  hint: 'When this passes, registrations lock and payment information becomes visible to players (unless overridden on the Pricing tab).' },
               { label: 'Registration closes',  key: 'event_starts_at', hint: 'After this, registration is fully closed (including payments).' },
-            ].map(({ label, key, hint }) => (
+            ].map(({ label, key, hint }) => {
+              // Abbreviation reflects the field's own instant (so DST is correct
+              // for that date); falls back to "now" while the field is empty.
+              const abbr = getTzAbbr(
+                settings.timezone,
+                settings[key] ? parseFromEventTz(settings[key], settings.timezone) : new Date(),
+              )
+              return (
               <div key={key}>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}{abbr ? ` (${abbr})` : ''}</label>
                 <input type="datetime-local" value={settings[key] ?? ''} disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
                 />
                 {hint && <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">{hint}</p>}
               </div>
-            ))}
+            )})}
           </div>
 
           <div>
