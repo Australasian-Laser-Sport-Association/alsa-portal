@@ -26,7 +26,6 @@ import CaptainRegister from './pages/CaptainRegister'
 import PlayerRegister from './pages/PlayerRegister'
 import PlayerHub from './pages/PlayerHub'
 import CaptainHub from './pages/CaptainHub'
-import JoinTeam from './pages/JoinTeam'
 import RefereeTest from './pages/RefereeTest'
 
 // Admin
@@ -81,9 +80,6 @@ function App() {
           <Route path="/events/:year" element={<EventPage />} />
           <Route path="/events/:year/captain-register" element={<ProtectedRoute><CaptainRegister /></ProtectedRoute>} />
           <Route path="/events/:year/player-register" element={<ProtectedRoute><PlayerRegister /></ProtectedRoute>} />
-
-          {/* Join via invite link → redirects to player-register */}
-          <Route path="/join/:code" element={<JoinTeam />} />
 
           {/* Hubs (pull active event dynamically) */}
           <Route path="/captain-hub" element={<ProtectedRoute><CaptainHub /></ProtectedRoute>} />
