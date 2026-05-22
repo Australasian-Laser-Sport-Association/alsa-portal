@@ -268,7 +268,7 @@ export default function Home() {
                         )}
                         {activeEvent.reg_open_date && activeEvent.reg_close_date && ' · '}
                         {activeEvent.reg_close_date && (
-                          <>closes {formatDate(activeEvent.reg_close_date)}</>
+                          <>locks {formatDate(activeEvent.reg_close_date)}</>
                         )}
                       </p>
                     )}

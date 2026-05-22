@@ -11,7 +11,12 @@ import { COMMITTEE_EMAIL } from '../lib/eventPhase'
 // When unset, falls back to the app-level COMMITTEE_EMAIL default. The parent
 // already has the event row, so it passes the value down — the banner never
 // fetches it itself.
-export default function LockedRegistrationBanner({ phase, email, className = '' }) {
+//
+// `lockedSubline` optionally overrides the 'locked'-phase body so a caller can
+// communicate context-specific nuance (e.g. PlayerHub: partner edits stay
+// open). Ignored for the 'closed' phase. The committee email link is always
+// appended after the body.
+export default function LockedRegistrationBanner({ phase, email, className = '', lockedSubline }) {
   if (phase !== 'locked' && phase !== 'closed') return null
 
   const committeeEmail = email || COMMITTEE_EMAIL
@@ -22,7 +27,7 @@ export default function LockedRegistrationBanner({ phase, email, className = '' 
 
   const subline = phase === 'closed'
     ? 'All registration changes (including payments) must now go via the committee.'
-    : 'No further self-service changes. Contact the committee for any roster, side-event, or partner changes.'
+    : (lockedSubline || 'No further self-service changes. Contact the committee for any roster or side-event changes.')
 
   return (
     <div className={`bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 flex items-start gap-3 ${className}`}>

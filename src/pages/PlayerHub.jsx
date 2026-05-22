@@ -14,6 +14,7 @@ import VolunteerSection from '../components/VolunteerSection'
 import CollapsibleSection from '../components/CollapsibleSection'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
+import { arePaymentsOpen } from '../lib/payments'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
 import { ClipboardCheck, Trophy, Sparkles, HeartHandshake, CreditCard } from 'lucide-react'
@@ -801,7 +802,7 @@ export default function PlayerHub() {
     // 1. Get active event
     const { data: ev } = await supabase
       .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email')
+      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email, payments_override')
       .eq('status', 'open')
       .maybeSingle()
 
@@ -1158,6 +1159,9 @@ export default function PlayerHub() {
 
   const hasBankDetails = !!(event.bank_bsb && event.bank_account_number && event.bank_account_name)
   const paymentRef = registration?.payment_reference ?? ''
+  // Committee-controlled gate on the bank details. payment_reference and
+  // amount_owing are never gated by this — only the account info to send money.
+  const paymentState = arePaymentsOpen(event)
 
   return (
     <div className="min-h-screen bg-base text-white">
@@ -1390,7 +1394,12 @@ export default function PlayerHub() {
           {/* Phase banner — visible to player when registration is locked or
               fully closed. */}
           {locked && (
-            <LockedRegistrationBanner phase={phase} email={event.committee_email} className="mb-2" />
+            <LockedRegistrationBanner
+              phase={phase}
+              email={event.committee_email}
+              className="mb-2"
+              lockedSubline="You can still find or change partners for side events you're already in. Contact the committee for any other changes."
+            />
           )}
 
           {/* ── Registration Checklist ── */}
@@ -1921,25 +1930,43 @@ export default function PlayerHub() {
                 <div className="bg-brand/10 border border-brand/30 rounded-xl p-4">
                   <p className="text-brand font-semibold text-sm">Payment received — thanks!</p>
                 </div>
-              ) : hasBankDetails ? (
-                <div className="bg-base border border-line rounded-xl p-4 space-y-4">
-                  <p className="text-white font-semibold text-sm">Pay the balance to:</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="BSB" value={event.bank_bsb} />
-                    <Field label="Account Number" value={event.bank_account_number} />
-                    <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
-                  </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Bank details are gated by the committee payment-availability
+                      state. The payment reference below is identity-tied and is
+                      never gated — it always renders alongside amount owing. */}
+                  {paymentState.open ? (
+                    hasBankDetails ? (
+                      <div className="bg-base border border-line rounded-xl p-4 space-y-4">
+                        <p className="text-white font-semibold text-sm">Pay the balance to:</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label="BSB" value={event.bank_bsb} />
+                          <Field label="Account Number" value={event.bank_account_number} />
+                          <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-base border border-line rounded-xl p-4">
+                        <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
+                      </div>
+                    )
+                  ) : paymentState.reason === 'auto_closed' ? (
+                    <div className="bg-base border border-line rounded-xl p-4">
+                      <p className="text-[#e5e5e5]/60 text-sm">Payment information will be available on {formatDate(paymentState.opensAt, 'longWithTime')}.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-base border border-line rounded-xl p-4">
+                      <p className="text-[#e5e5e5]/60 text-sm">Payments are temporarily closed. Contact the committee for assistance.</p>
+                    </div>
+                  )}
+
                   {paymentRef && (
-                    <div>
+                    <div className="bg-base border border-line rounded-xl p-4">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-1.5">Reference</p>
                       <CopyableReference value={paymentRef} />
                       <p className="text-[#e5e5e5]/40 text-xs mt-2">Include this exact reference so we can match your payment.</p>
                     </div>
                   )}
-                </div>
-              ) : (
-                <div className="bg-base border border-line rounded-xl p-4">
-                  <p className="text-[#e5e5e5]/60 text-sm">Bank details will be released soon.</p>
                 </div>
               )}
             </CollapsibleSection>

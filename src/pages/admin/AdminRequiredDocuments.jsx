@@ -6,13 +6,35 @@ import { formatDate } from '../../lib/dateFormat'
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
 
+// Icons reuse the existing inline-SVG (heroicons-outline) set already used across
+// the admin panel — no new icon library.
+const ICONS = {
+  shield: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  ),
+  document: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  ),
+  user: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  ),
+}
+
 const DOC_TYPES = [
-  { key: 'code_of_conduct', label: 'Code of Conduct' },
-  { key: 'media_release',   label: 'Media Release' },
-  { key: 'under_18_form',   label: 'Under 18 Form' },
+  { key: 'code_of_conduct', label: 'Code of Conduct', icon: ICONS.shield },
+  { key: 'media_release',   label: 'Media Release',   icon: ICONS.document },
+  { key: 'under_18_form',   label: 'Under 18 Form',   icon: ICONS.user },
 ]
 
 const MAX_BYTES = 10 * 1024 * 1024
+// Storage bucket name is part of the data model and is intentionally unchanged
+// by the "Legal Documents" → "Required Documents" UI rename.
 const BUCKET = 'legal-documents'
 
 function slugifyPdf(filename) {
@@ -43,15 +65,32 @@ function publicUrl(filePath) {
 
 // ---------------------------------------------------------------------------
 
-export default function AdminLegalDocuments() {
+export default function AdminRequiredDocuments() {
   useOutletContext()
-  const [tab, setTab] = useState('code_of_conduct')
+  const [selected, setSelected] = useState('code_of_conduct')
+  const [summary, setSummary] = useState({}) // { [document_type]: activeRow }
   const [toast, setToast] = useState(null)
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
+
+  // Lightweight read of the active version per type, so the left-rail cards can
+  // show upload status without each card mounting its own DocumentTab.
+  async function loadSummary() {
+    const { data } = await supabase
+      .from('legal_documents')
+      .select('document_type, original_filename, uploaded_at')
+      .eq('is_active', true)
+    const map = {}
+    for (const row of data ?? []) map[row.document_type] = row
+    setSummary(map)
+  }
+
+  useEffect(() => { loadSummary() }, [])
+
+  const activeLabel = DOC_TYPES.find(t => t.key === selected)?.label ?? ''
 
   return (
     <div>
@@ -65,36 +104,86 @@ export default function AdminLegalDocuments() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-        <div>
-          <h1 className="text-lg font-black text-white">Legal Documents</h1>
-          <p className="text-xs text-[#e5e5e5]/40 mt-1">PDF versions of the three player-acknowledged documents.</p>
-        </div>
-        <div className="flex bg-[#111] border border-line rounded-lg p-1 flex-wrap">
-          {DOC_TYPES.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded transition-colors ${
-                tab === t.key ? 'bg-brand text-black' : 'text-[#e5e5e5]/60 hover:text-white'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="mb-6">
+        <h1 className="text-lg font-black text-white">Required Documents</h1>
+        <p className="text-xs text-[#e5e5e5]/40 mt-1">PDF versions of the three player-acknowledged documents.</p>
       </div>
 
-      <DocumentTab key={tab} documentType={tab} showToast={showToast} />
+      <div className="flex flex-col md:flex-row gap-6 md:items-start">
+        {/* Left rail — document selectors */}
+        <div className="md:w-[300px] md:flex-shrink-0">
+          <p className="text-xs text-[#e5e5e5]/40 mb-3 leading-relaxed">
+            Select a document to upload the master file players will download and sign.
+          </p>
+          <div className="space-y-3">
+            {DOC_TYPES.map(t => (
+              <SelectorCard
+                key={t.key}
+                docType={t}
+                active={selected === t.key}
+                doc={summary[t.key] ?? null}
+                onSelect={() => setSelected(t.key)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Right column — upload panel for the selected document */}
+        <div className="flex-1 min-w-0">
+          <DocumentTab
+            key={selected}
+            documentType={selected}
+            label={activeLabel}
+            showToast={showToast}
+            onDataChanged={loadSummary}
+          />
+        </div>
+      </div>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// DocumentTab — one tab's worth (current + upload + history)
+// SelectorCard — left-rail navigation card for one document type
 // ---------------------------------------------------------------------------
 
-function DocumentTab({ documentType, showToast }) {
+function SelectorCard({ docType, active, doc, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={`w-full text-left flex items-start gap-3 p-4 rounded-2xl border transition-all ${
+        active
+          ? 'bg-brand/10 border-brand/40 shadow-lg shadow-brand/5'
+          : 'bg-surface border-line hover:bg-line/30 hover:border-line'
+      }`}
+    >
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
+        active ? 'bg-brand/15 border-brand/30 text-brand' : 'bg-[#191919] border-line text-[#e5e5e5]/50'
+      }`}>
+        {docType.icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`font-bold text-sm ${active ? 'text-white' : 'text-white/90'}`}>{docType.label}</p>
+        {doc ? (
+          <div className="mt-1">
+            <p className="text-xs text-[#e5e5e5]/60 truncate">Uploaded — {doc.original_filename}</p>
+            <p className="text-[11px] text-[#e5e5e5]/40 mt-0.5">{formatDate(doc.uploaded_at)}</p>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-400/80 mt-1">No file uploaded yet</p>
+        )}
+      </div>
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// DocumentTab — one document type's panel (current + upload + history)
+// ---------------------------------------------------------------------------
+
+function DocumentTab({ documentType, label, showToast, onDataChanged }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -117,6 +206,7 @@ function DocumentTab({ documentType, showToast }) {
       setRows(data ?? [])
     }
     setLoading(false)
+    onDataChanged?.()
   }
 
   const active = rows.find(r => r.is_active) ?? null
@@ -162,6 +252,14 @@ function DocumentTab({ documentType, showToast }) {
 
   return (
     <div className="space-y-8">
+
+      {/* Panel heading */}
+      <div>
+        <h2 className="text-base font-bold text-white">{label} — Master File</h2>
+        <p className="text-xs text-[#e5e5e5]/40 mt-1 leading-relaxed">
+          This is the file players will download from their player hub. Replacing it does not invalidate existing player signatures.
+        </p>
+      </div>
 
       {/* Current active version */}
       <section>

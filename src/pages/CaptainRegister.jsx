@@ -4,6 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
+import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
@@ -37,7 +38,7 @@ export default function CaptainRegister() {
 
     async function load() {
       const [{ data: ev }, { data: existing }] = await Promise.all([
-        supabase.from('zltac_events').select('id, name, year, status').eq('year', parseInt(year)).maybeSingle(),
+        supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
         supabase.from('teams').select('id').eq('captain_id', user.id).maybeSingle(),
       ])
       setEvent(ev)
@@ -156,6 +157,20 @@ export default function CaptainRegister() {
         <p className="text-3xl mb-4">🚫</p>
         <h1 className="text-2xl font-black text-white mb-2">Registration Closed</h1>
         <p className="text-[#e5e5e5]/40 text-sm mb-6">Captain registration for {event?.name ?? `ZLTAC ${year}`} is not currently open.</p>
+        <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
+      </div>
+    )
+  }
+
+  // Team creation is locked once the event passes reg_close_date, even while
+  // status is still 'open'. Server-side RLS blocks the team insert regardless;
+  // this stops captains reaching the form.
+  if (event && eventPhase(event) !== 'open') {
+    return (
+      <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
+        <p className="text-3xl mb-4">🔒</p>
+        <h1 className="text-2xl font-black text-white mb-2">Registrations Locked</h1>
+        <p className="text-[#e5e5e5]/40 text-sm mb-6">Team creation for {event?.name ?? `ZLTAC ${year}`} is locked. Contact the committee if you need to register a team.</p>
         <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
       </div>
     )
