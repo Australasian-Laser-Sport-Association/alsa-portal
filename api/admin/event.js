@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
@@ -104,7 +105,7 @@ async function handleEvent(req, res) {
 }
 
 // ── registrations ─────────────────────────────────────────────────────────────
-async function handleRegistrations(req, res) {
+async function handleRegistrations(req, res, user) {
   if (req.method === 'GET') {
     const year = parseInt(req.query.year)
     if (!year) return res.status(400).json({ error: 'year is required' })
@@ -120,7 +121,7 @@ async function handleRegistrations(req, res) {
       { data: triples, error: e9 },
     ] = await Promise.all([
       supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18').eq('year', year).order('created_at', { ascending: false }),
-      supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state'),
+      supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),
       supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),
       supabaseAdmin
         .from('legal_acceptances')
@@ -309,6 +310,162 @@ async function handleRegistrations(req, res) {
     return res.json({ ok: true })
   }
 
+  if (req.method === 'POST') {
+    // create-placeholder-registration — committee creates a profile + registration
+    // for a player who has no portal account (a "placeholder", is_placeholder=true).
+    // See migration 20260524000000_placeholder_profiles.sql. The post-signup claim
+    // flow is Chunk 2 and is intentionally not handled here.
+    const body = req.body ?? {}
+    if (body.action !== 'create-placeholder-registration') {
+      return res.status(400).json({ error: `Unknown action: ${body.action}` })
+    }
+
+    const eventYear = parseInt(body.event_year)
+    const firstName = (body.first_name ?? '').trim()
+    const alias     = (body.alias ?? '').trim()
+
+    if (!eventYear) return res.status(400).json({ error: 'Event year is required' })
+    if (!firstName) return res.status(400).json({ error: 'First name is required' })
+    if (!alias)     return res.status(400).json({ error: 'Alias is required' })
+
+    // Collision check: reject if any existing profile already uses this alias
+    // (case-insensitive). ilike does the case-insensitive match; we escape LIKE
+    // wildcards in the alias so an alias like "a_b" is matched literally, then
+    // confirm an exact lower() match in JS as the source of truth. The colliding
+    // profile is named in the error so the admin can decide to link instead
+    // (linking is Chunk 2).
+    const likePattern = alias.replace(/[\\%_]/g, m => `\\${m}`)
+    const { data: clashes, error: clashErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id, first_name, last_name, alias, is_placeholder')
+      .ilike('alias', likePattern)
+    if (clashErr) return res.status(500).json({ error: clashErr.message })
+
+    const clash = (clashes ?? []).find(p => (p.alias ?? '').toLowerCase() === alias.toLowerCase())
+    if (clash) {
+      const who = [clash.first_name, clash.last_name].filter(Boolean).join(' ') || clash.alias || 'an existing profile'
+      const kind = clash.is_placeholder ? ' (placeholder)' : ''
+      return res.status(409).json({
+        error: `Alias "${alias}" is already used by ${who}${kind}. Choose a different alias, or link to that profile instead.`,
+        colliding_profile_id: clash.id,
+      })
+    }
+
+    // a. Insert the placeholder profile. profiles.id has no DB default (it used
+    //    to mirror auth.users.id), so we generate the UUID here.
+    const newId = randomUUID()
+    const { data: prof, error: profErr } = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        id: newId,
+        is_placeholder: true,
+        created_by_admin_id: user.id,
+        first_name: firstName,
+        last_name: (body.last_name ?? '').trim() || null,
+        alias,
+        placeholder_email: (body.email ?? '').trim() || null,
+        phone: (body.phone ?? '').trim() || null,
+        state: body.state || null,
+        dob: body.dob || null,
+        emergency_contact_name: (body.emergency_contact_name ?? '').trim() || null,
+        emergency_contact_phone: (body.emergency_contact_phone ?? '').trim() || null,
+      })
+      .select('id, first_name, last_name, alias, is_placeholder')
+      .single()
+    if (profErr) return res.status(500).json({ error: `profile insert: ${profErr.message}` })
+
+    // Effective side events: mirror the player self-service set, plus ensure the
+    // partner-bearing slugs are present when a partner is assigned so the
+    // placeholder is priced and rostered consistently with its pairing. Only the
+    // placeholder's own registration is touched (partners are separate rows).
+    const sideEvents = new Set(Array.isArray(body.side_events) ? body.side_events : [])
+    if (body.doubles_partner_id) sideEvents.add('doubles')
+    if (Array.isArray(body.triples_partner_ids) && body.triples_partner_ids.some(Boolean)) sideEvents.add('triples')
+
+    // b. Insert the registration. The BEFORE INSERT trigger generates
+    //    payment_reference ({YYYY}{SANITIZED_ALIAS}) from the alias we just saved.
+    const { data: reg, error: regErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .insert({
+        user_id: newId,
+        year: eventYear,
+        team_id: body.team_id || null,
+        side_events: sideEvents.size ? [...sideEvents] : null,
+        dinner_guests: Math.max(0, parseInt(body.dinner_guests) || 0),
+        emergency_contact_name: (body.emergency_contact_name ?? '').trim() || null,
+        emergency_contact_phone: (body.emergency_contact_phone ?? '').trim() || null,
+        status: 'pending',
+      })
+      .select('id, user_id, year, side_events, status, payment_reference, amount_owing')
+      .single()
+    if (regErr) {
+      // Compensating cleanup. supabase-js gives us no multi-statement
+      // transaction, so on a failed registration insert we delete the orphan
+      // placeholder profile we just created rather than leave it dangling.
+      // (v1; convert profile + registration + partners into a single Postgres
+      // RPC for true atomicity if this proves fragile.)
+      await supabaseAdmin.from('profiles').delete().eq('id', newId)
+      return res.status(500).json({ error: `registration insert: ${regErr.message}` })
+    }
+
+    // c. Doubles partner — clear-and-replace, mirroring the PATCH path. The
+    //    placeholder is player1. doubles_pairs has UNIQUE(event_year, playerN_id)
+    //    so any existing pair for either player must be cleared first. confirmed
+    //    is true: a placeholder cannot self-confirm and the admin acts for it.
+    if (body.doubles_partner_id) {
+      const partnerId = body.doubles_partner_id
+      const { error: clearSelfErr } = await supabaseAdmin
+        .from('doubles_pairs').delete().eq('event_year', eventYear)
+        .or(`player1_id.eq.${newId},player2_id.eq.${newId}`)
+      if (clearSelfErr) return res.status(500).json({ error: `doubles clear: ${clearSelfErr.message}` })
+
+      const { error: clearPartnerErr } = await supabaseAdmin
+        .from('doubles_pairs').delete().eq('event_year', eventYear)
+        .or(`player1_id.eq.${partnerId},player2_id.eq.${partnerId}`)
+      if (clearPartnerErr) return res.status(500).json({ error: `doubles clear partner: ${clearPartnerErr.message}` })
+
+      const { error: dErr } = await supabaseAdmin
+        .from('doubles_pairs')
+        .insert({ event_year: eventYear, player1_id: newId, player2_id: partnerId, confirmed: true })
+      if (dErr) return res.status(500).json({ error: `doubles insert: ${dErr.message}` })
+    }
+
+    // d. Triples partners — clear-and-replace, mirroring the PATCH path. The
+    //    placeholder is player1; partners fill slots 2/3. Slot-confirmed flags
+    //    follow whether the slot is filled, and the team is confirmed once both
+    //    partner slots are present (same semantics as the PATCH handler).
+    if (Array.isArray(body.triples_partner_ids) && body.triples_partner_ids.some(Boolean)) {
+      const [p2, p3] = [body.triples_partner_ids[0] || null, body.triples_partner_ids[1] || null]
+      const { error: clearErr } = await supabaseAdmin
+        .from('triples_teams').delete().eq('event_year', eventYear)
+        .or(`player1_id.eq.${newId},player2_id.eq.${newId},player3_id.eq.${newId}`)
+      if (clearErr) return res.status(500).json({ error: `triples clear: ${clearErr.message}` })
+
+      const { error: tErr } = await supabaseAdmin
+        .from('triples_teams')
+        .insert({
+          event_year: eventYear,
+          player1_id: newId,
+          player2_id: p2,
+          player3_id: p3,
+          player2_confirmed: !!p2,
+          player3_confirmed: !!p3,
+          confirmed: !!(p2 && p3),
+        })
+      if (tErr) return res.status(500).json({ error: `triples insert: ${tErr.message}` })
+    }
+
+    // Price the registration now that side events are final.
+    const { amountOwing, error: owErr } = await computeAndWriteAmountOwing(reg.id)
+    if (owErr) return res.status(500).json({ error: `recompute: ${owErr}` })
+
+    return res.json({
+      registration: { ...reg, amount_owing: amountOwing ?? reg.amount_owing },
+      profile: prof,
+      payment_reference: reg.payment_reference,
+    })
+  }
+
   return res.status(405).json({ error: 'Method not allowed' })
 }
 
@@ -437,7 +594,7 @@ export default async function handler(req, res) {
 
   const resource = req.query.resource
   if (resource === 'event')         return handleEvent(req, res)
-  if (resource === 'registrations') return handleRegistrations(req, res)
+  if (resource === 'registrations') return handleRegistrations(req, res, user)
   if (resource === 'payments')      return handlePayments(req, res, user)
   return res.status(400).json({ error: 'resource query param must be "event", "registrations", or "payments"' })
 }

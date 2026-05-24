@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { arePaymentsOpen } from '../../lib/payments'
@@ -106,6 +107,7 @@ function StatusBanner({ status, onChangeStatus, saving, archived }) {
 }
 
 export default function AdminEvent() {
+  const navigate = useNavigate()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState(0)
@@ -604,22 +606,30 @@ export default function AdminEvent() {
           <h1 className="text-2xl font-black text-white">{form.name} {form.year}</h1>
           <p className="text-[#e5e5e5]/40 text-sm mt-1">Current event configuration</p>
         </div>
-        {!isArchived && (
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              onClick={openArchiveModal}
-              className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
-            >
-              Archive Event
-            </button>
-            <button
-              onClick={openDeleteModal}
-              className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"
-            >
-              Delete Event
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => navigate('/admin/registrations?new=1')}
+            className="text-xs bg-surface border border-line hover:border-brand text-brand font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            + Add manual registration
+          </button>
+          {!isArchived && (
+            <>
+              <button
+                onClick={openArchiveModal}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
+              >
+                Archive Event
+              </button>
+              <button
+                onClick={openDeleteModal}
+                className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"
+              >
+                Delete Event
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Status banner */}

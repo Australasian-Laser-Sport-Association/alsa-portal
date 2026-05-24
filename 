@@ -1,0 +1,481 @@
+[1mdiff --git a/api/admin/event.js b/api/admin/event.js[m
+[1mindex 5416554..032951e 100644[m
+[1m--- a/api/admin/event.js[m
+[1m+++ b/api/admin/event.js[m
+[36m@@ -1,3 +1,4 @@[m
+[32m+[m[32mimport { randomUUID } from 'crypto'[m
+ import supabaseAdmin from '../_lib/supabase.js'[m
+ import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'[m
+ import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'[m
+[36m@@ -104,7 +105,7 @@[m [masync function handleEvent(req, res) {[m
+ }[m
+ [m
+ // ── registrations ─────────────────────────────────────────────────────────────[m
+[31m-async function handleRegistrations(req, res) {[m
+[32m+[m[32masync function handleRegistrations(req, res, user) {[m
+   if (req.method === 'GET') {[m
+     const year = parseInt(req.query.year)[m
+     if (!year) return res.status(400).json({ error: 'year is required' })[m
+[36m@@ -120,7 +121,7 @@[m [masync function handleRegistrations(req, res) {[m
+       { data: triples, error: e9 },[m
+     ] = await Promise.all([[m
+       supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18').eq('year', year).order('created_at', { ascending: false }),[m
+[31m-      supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state'),[m
+[32m+[m[32m      supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),[m
+       supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),[m
+       supabaseAdmin[m
+         .from('legal_acceptances')[m
+[36m@@ -309,6 +310,162 @@[m [masync function handleRegistrations(req, res) {[m
+     return res.json({ ok: true })[m
+   }[m
+ [m
+[32m+[m[32m  if (req.method === 'POST') {[m
+[32m+[m[32m    // create-placeholder-registration — committee creates a profile + registration[m
+[32m+[m[32m    // for a player who has no portal account (a "placeholder", is_placeholder=true).[m
+[32m+[m[32m    // See migration 20260524000000_placeholder_profiles.sql. The post-signup claim[m
+[32m+[m[32m    // flow is Chunk 2 and is intentionally not handled here.[m
+[32m+[m[32m    const body = req.body ?? {}[m
+[32m+[m[32m    if (body.action !== 'create-placeholder-registration') {[m
+[32m+[m[32m      return res.status(400).json({ error: `Unknown action: ${body.action}` })[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    const eventYear = parseInt(body.event_year)[m
+[32m+[m[32m    const firstName = (body.first_name ?? '').trim()[m
+[32m+[m[32m    const alias     = (body.alias ?? '').trim()[m
+[32m+[m
+[32m+[m[32m    if (!eventYear) return res.status(400).json({ error: 'Event year is required' })[m
+[32m+[m[32m    if (!firstName) return res.status(400).json({ error: 'First name is required' })[m
+[32m+[m[32m    if (!alias)     return res.status(400).json({ error: 'Alias is required' })[m
+[32m+[m
+[32m+[m[32m    // Collision check: reject if any existing profile already uses this alias[m
+[32m+[m[32m    // (case-insensitive). ilike does the case-insensitive match; we escape LIKE[m
+[32m+[m[32m    // wildcards in the alias so an alias like "a_b" is matched literally, then[m
+[32m+[m[32m    // confirm an exact lower() match in JS as the source of truth. The colliding[m
+[32m+[m[32m    // profile is named in the error so the admin can decide to link instead[m
+[32m+[m[32m    // (linking is Chunk 2).[m
+[32m+[m[32m    const likePattern = alias.replace(/[\\%_]/g, m => `\\${m}`)[m
+[32m+[m[32m    const { data: clashes, error: clashErr } = await supabaseAdmin[m
+[32m+[m[32m      .from('profiles')[m
+[32m+[m[32m      .select('id, first_name, last_name, alias, is_placeholder')[m
+[32m+[m[32m      .ilike('alias', likePattern)[m
+[32m+[m[32m    if (clashErr) return res.status(500).json({ error: clashErr.message })[m
+[32m+[m
+[32m+[m[32m    const clash = (clashes ?? []).find(p => (p.alias ?? '').toLowerCase() === alias.toLowerCase())[m
+[32m+[m[32m    if (clash) {[m
+[32m+[m[32m      const who = [clash.first_name, clash.last_name].filter(Boolean).join(' ') || clash.alias || 'an existing profile'[m
+[32m+[m[32m      const kind = clash.is_placeholder ? ' (placeholder)' : ''[m
+[32m+[m[32m      return res.status(409).json({[m
+[32m+[m[32m        error: `Alias "${alias}" is already used by ${who}${kind}. Choose a different alias, or link to that profile instead.`,[m
+[32m+[m[32m        colliding_profile_id: clash.id,[m
+[32m+[m[32m      })[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // a. Insert the placeholder profile. profiles.id has no DB default (it used[m
+[32m+[m[32m    //    to mirror auth.users.id), so we generate the UUID here.[m
+[32m+[m[32m    const newId = randomUUID()[m
+[32m+[m[32m    const { data: prof, error: profErr } = await supabaseAdmin[m
+[32m+[m[32m      .from('profiles')[m
+[32m+[m[32m      .insert({[m
+[32m+[m[32m        id: newId,[m
+[32m+[m[32m        is_placeholder: true,[m
+[32m+[m[32m        created_by_admin_id: user.id,[m
+[32m+[m[32m        first_name: firstName,[m
+[32m+[m[32m        last_name: (body.last_name ?? '').trim() || null,[m
+[32m+[m[32m        alias,[m
+[32m+[m[32m        placeholder_email: (body.email ?? '').trim() || null,[m
+[32m+[m[32m        phone: (body.phone ?? '').trim() || null,[m
+[32m+[m[32m        state: body.state || null,[m
+[32m+[m[32m        dob: body.dob || null,[m
+[32m+[m[32m        emergency_contact_name: (body.emergency_contact_name ?? '').trim() || null,[m
+[32m+[m[32m        emergency_contact_phone: (body.emergency_contact_phone ?? '').trim() || null,[m
+[32m+[m[32m      })[m
+[32m+[m[32m      .select('id, first_name, last_name, alias, is_placeholder')[m
+[32m+[m[32m      .single()[m
+[32m+[m[32m    if (profErr) return res.status(500).json({ error: `profile insert: ${profErr.message}` })[m
+[32m+[m
+[32m+[m[32m    // Effective side events: mirror the player self-service set, plus ensure the[m
+[32m+[m[32m    // partner-bearing slugs are present when a partner is assigned so the[m
+[32m+[m[32m    // placeholder is priced and rostered consistently with its pairing. Only the[m
+[32m+[m[32m    // placeholder's own registration is touched (partners are separate rows).[m
+[32m+[m[32m    const sideEvents = new Set(Array.isArray(body.side_events) ? body.side_events : [])[m
+[32m+[m[32m    if (body.doubles_partner_id) sideEvents.add('doubles')[m
+[32m+[m[32m    if (Array.isArray(body.triples_partner_ids) && body.triples_partner_ids.some(Boolean)) sideEvents.add('triples')[m
+[32m+[m
+[32m+[m[32m    // b. Insert the registration. The BEFORE INSERT trigger generates[m
+[32m+[m[32m    //    payment_reference ({YYYY}{SANITIZED_ALIAS}) from the alias we just saved.[m
+[32m+[m[32m    const { data: reg, error: regErr } = await supabaseAdmin[m
+[32m+[m[32m      .from('zltac_registrations')[m
+[32m+[m[32m      .insert({[m
+[32m+[m[32m        user_id: newId,[m
+[32m+[m[32m        year: eventYear,[m
+[32m+[m[32m        team_id: body.team_id || null,[m
+[32m+[m[32m        side_events: sideEvents.size ? [...sideEvents] : null,[m
+[32m+[m[32m        dinner_guests: Math.max(0, parseInt(body.dinner_guests) || 0),[m
+[32m+[m[32m        emergency_contact_name: (body.emergency_contact_name ?? '').trim() || null,[m
+[32m+[m[32m        emergency_contact_phone: (body.emergency_contact_phone ?? '').trim() || null,[m
+[32m+[m[32m        status: 'pending',[m
+[32m+[m[32m      })[m
+[32m+[m[32m      .select('id, user_id, year, side_events, status, payment_reference, amount_owing')[m
+[32m+[m[32m      .single()[m
+[32m+[m[32m    if (regErr) {[m
+[32m+[m[32m      // Compensating cleanup. supabase-js gives us no multi-statement[m
+[32m+[m[32m      // transaction, so on a failed registration insert we delete the orphan[m
+[32m+[m[32m      // placeholder profile we just created rather than leave it dangling.[m
+[32m+[m[32m      // (v1; convert profile + registration + partners into a single Postgres[m
+[32m+[m[32m      // RPC for true atomicity if this proves fragile.)[m
+[32m+[m[32m      await supabaseAdmin.from('profiles').delete().eq('id', newId)[m
+[32m+[m[32m      return res.status(500).json({ error: `registration insert: ${regErr.message}` })[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // c. Doubles partner — clear-and-replace, mirroring the PATCH path. The[m
+[32m+[m[32m    //    placeholder is player1. doubles_pairs has UNIQUE(event_year, playerN_id)[m
+[32m+[m[32m    //    so any existing pair for either player must be cleared first. confirmed[m
+[32m+[m[32m    //    is true: a placeholder cannot self-confirm and the admin acts for it.[m
+[32m+[m[32m    if (body.doubles_partner_id) {[m
+[32m+[m[32m      const partnerId = body.doubles_partner_id[m
+[32m+[m[32m      const { error: clearSelfErr } = await supabaseAdmin[m
+[32m+[m[32m        .from('doubles_pairs').delete().eq('event_year', eventYear)[m
+[32m+[m[32m        .or(`player1_id.eq.${newId},player2_id.eq.${newId}`)[m
+[32m+[m[32m      if (clearSelfErr) return res.status(500).json({ error: `doubles clear: ${clearSelfErr.message}` })[m
+[32m+[m
+[32m+[m[32m      const { error: clearPartnerErr } = await supabaseAdmin[m
+[32m+[m[32m        .from('doubles_pairs').delete().eq('event_year', eventYear)[m
+[32m+[m[32m        .or(`player1_id.eq.${partnerId},player2_id.eq.${partnerId}`)[m
+[32m+[m[32m      if (clearPartnerErr) return res.status(500).json({ error: `doubles clear partner: ${clearPartnerErr.message}` })[m
+[32m+[m
+[32m+[m[32m      const { error: dErr } = await supabaseAdmin[m
+[32m+[m[32m        .from('doubles_pairs')[m
+[32m+[m[32m        .insert({ event_year: eventYear, player1_id: newId, player2_id: partnerId, confirmed: true })[m
+[32m+[m[32m      if (dErr) return res.status(500).json({ error: `doubles insert: ${dErr.message}` })[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // d. Triples partners — clear-and-replace, mirroring the PATCH path. The[m
+[32m+[m[32m    //    placeholder is player1; partners fill slots 2/3. Slot-confirmed flags[m
+[32m+[m[32m    //    follow whether the slot is filled, and the team is confirmed once both[m
+[32m+[m[32m    //    partner slots are present (same semantics as the PATCH handler).[m
+[32m+[m[32m    if (Array.isArray(body.triples_partner_ids) && body.triples_partner_ids.some(Boolean)) {[m
+[32m+[m[32m      const [p2, p3] = [body.triples_partner_ids[0] || null, body.triples_partner_ids[1] || null][m
+[32m+[m[32m      const { error: clearErr } = await supabaseAdmin[m
+[32m+[m[32m        .from('triples_teams').delete().eq('event_year', eventYear)[m
+[32m+[m[32m        .or(`player1_id.eq.${newId},player2_id.eq.${newId},player3_id.eq.${newId}`)[m
+[32m+[m[32m      if (clearErr) return res.status(500).json({ error: `triples clear: ${clearErr.message}` })[m
+[32m+[m
+[32m+[m[32m      const { error: tErr } = await supabaseAdmin[m
+[32m+[m[32m        .from('triples_teams')[m
+[32m+[m[32m        .insert({[m
+[32m+[m[32m          event_year: eventYear,[m
+[32m+[m[32m          player1_id: newId,[m
+[32m+[m[32m          player2_id: p2,[m
+[32m+[m[32m          player3_id: p3,[m
+[32m+[m[32m          player2_confirmed: !!p2,[m
+[32m+[m[32m          player3_confirmed: !!p3,[m
+[32m+[m[32m          confirmed: !!(p2 && p3),[m
+[32m+[m[32m        })[m
+[32m+[m[32m      if (tErr) return res.status(500).json({ error: `triples insert: ${tErr.message}` })[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Price the registration now that side events are final.[m
+[32m+[m[32m    const { amountOwing, error: owErr } = await computeAndWriteAmountOwing(reg.id)[m
+[32m+[m[32m    if (owErr) return res.status(500).json({ error: `recompute: ${owErr}` })[m
+[32m+[m
+[32m+[m[32m    return res.json({[m
+[32m+[m[32m      registration: { ...reg, amount_owing: amountOwing ?? reg.amount_owing },[m
+[32m+[m[32m      profile: prof,[m
+[32m+[m[32m      payment_reference: reg.payment_reference,[m
+[32m+[m[32m    })[m
+[32m+[m[32m  }[m
+[32m+[m
+   return res.status(405).json({ error: 'Method not allowed' })[m
+ }[m
+ [m
+[36m@@ -437,7 +594,7 @@[m [mexport default async function handler(req, res) {[m
+ [m
+   const resource = req.query.resource[m
+   if (resource === 'event')         return handleEvent(req, res)[m
+[31m-  if (resource === 'registrations') return handleRegistrations(req, res)[m
+[32m+[m[32m  if (resource === 'registrations') return handleRegistrations(req, res, user)[m
+   if (resource === 'payments')      return handlePayments(req, res, user)[m
+   return res.status(400).json({ error: 'resource query param must be "event", "registrations", or "payments"' })[m
+ }[m
+[1mdiff --git a/api/player.js b/api/player.js[m
+[1mindex d5e6163..f2b6759 100644[m
+[1m--- a/api/player.js[m
+[1m+++ b/api/player.js[m
+[36m@@ -3,6 +3,7 @@[m [mimport { verifyUser } from './_lib/auth.js'[m
+ import { COMMITTEE_ROLES } from '../src/lib/roles.js'[m
+ import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'[m
+ import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'[m
+[32m+[m[32mimport { anyPlaceholder } from './_lib/placeholders.js'[m
+ [m
+ // Helper: returns true and writes a 403 to res when the event for the[m
+ // given year is not in 'open' phase. Used only by price-bearing player[m
+[36m@@ -147,9 +148,13 @@[m [masync function handleDoubles(req, res, user) {[m
+     const { eventYear, partnerId } = body[m
+     if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })[m
+ [m
+[32m+[m[32m    // Auto-confirm when the partner is a placeholder: a placeholder has no login[m
+[32m+[m[32m    // to confirm from, so the pairing is confirmed on creation.[m
+[32m+[m[32m    const confirmed = await anyPlaceholder([partnerId])[m
+[32m+[m
+     const { data: record, error: insertErr } = await supabaseAdmin[m
+       .from('doubles_pairs')[m
+[31m-      .insert({ event_year: eventYear, player1_id: user.id, player2_id: partnerId, confirmed: false })[m
+[32m+[m[32m      .insert({ event_year: eventYear, player1_id: user.id, player2_id: partnerId, confirmed })[m
+       .select()[m
+       .single()[m
+ [m
+[36m@@ -288,6 +293,11 @@[m [masync function handleTriples(req, res, user) {[m
+     const { eventYear, slot, partnerId } = body[m
+     if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })[m
+ [m
+[32m+[m[32m    // Auto-confirm the partner's slot when the partner is a placeholder (no[m
+[32m+[m[32m    // login to confirm from). The team stays unconfirmed until both partner[m
+[32m+[m[32m    // slots are filled and confirmed.[m
+[32m+[m[32m    const slotConfirmed = await anyPlaceholder([partnerId])[m
+[32m+[m
+     const { data: record, error: insertErr } = await supabaseAdmin[m
+       .from('triples_teams')[m
+       .insert({[m
+[36m@@ -297,6 +307,7 @@[m [masync function handleTriples(req, res, user) {[m
+         confirmed: false,[m
+         player2_confirmed: false,[m
+         player3_confirmed: false,[m
+[32m+[m[32m        [`player${slot}_confirmed`]: slotConfirmed,[m
+       })[m
+       .select()[m
+       .single()[m
+[36m@@ -310,13 +321,23 @@[m [masync function handleTriples(req, res, user) {[m
+     if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })[m
+     if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })[m
+ [m
+[31m-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()[m
+[32m+[m[32m    const { data: existing, error: existingErr } = await supabaseAdmin[m
+[32m+[m[32m      .from('triples_teams')[m
+[32m+[m[32m      .select('player1_id, event_year, player2_confirmed, player3_confirmed')[m
+[32m+[m[32m      .eq('id', id)[m
+[32m+[m[32m      .maybeSingle()[m
+     if (existingErr) return res.status(500).json({ error: existingErr.message })[m
+     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })[m
+ [m
+[32m+[m[32m    // Auto-confirm this slot when the added partner is a placeholder. The whole[m
+[32m+[m[32m    // team is confirmed once both partner slots are confirmed.[m
+[32m+[m[32m    const slotConfirmed = await anyPlaceholder([partnerId])[m
+[32m+[m[32m    const otherField = slot === 2 ? 'player3_confirmed' : 'player2_confirmed'[m
+[32m+[m[32m    const teamConfirmed = slotConfirmed && existing[otherField] === true[m
+[32m+[m
+     const { data: record, error: updateErr } = await supabaseAdmin[m
+       .from('triples_teams')[m
+[31m-      .update({ [`player${slot}_id`]: partnerId, [`player${slot}_confirmed`]: false, confirmed: false })[m
+[32m+[m[32m      .update({ [`player${slot}_id`]: partnerId, [`player${slot}_confirmed`]: slotConfirmed, confirmed: teamConfirmed })[m
+       .eq('id', id)[m
+       .select()[m
+       .single()[m
+[1mdiff --git a/src/pages/admin/AdminEvent.jsx b/src/pages/admin/AdminEvent.jsx[m
+[1mindex d5b4360..735b14d 100644[m
+[1m--- a/src/pages/admin/AdminEvent.jsx[m
+[1m+++ b/src/pages/admin/AdminEvent.jsx[m
+[36m@@ -1,4 +1,5 @@[m
+ ﻿import { useState, useEffect, useRef } from 'react'[m
+[32m+[m[32mimport { useNavigate } from 'react-router-dom'[m
+ import { supabase } from '../../lib/supabase'[m
+ import { apiFetch } from '../../lib/apiFetch.js'[m
+ import { arePaymentsOpen } from '../../lib/payments'[m
+[36m@@ -106,6 +107,7 @@[m [mfunction StatusBanner({ status, onChangeStatus, saving, archived }) {[m
+ }[m
+ [m
+ export default function AdminEvent() {[m
+[32m+[m[32m  const navigate = useNavigate()[m
+   const [event, setEvent] = useState(null)[m
+   const [loading, setLoading] = useState(true)[m
+   const [activeTab, setActiveTab] = useState(0)[m
+[36m@@ -604,22 +606,30 @@[m [mexport default function AdminEvent() {[m
+           <h1 className="text-2xl font-black text-white">{form.name} {form.year}</h1>[m
+           <p className="text-[#e5e5e5]/40 text-sm mt-1">Current event configuration</p>[m
+         </div>[m
+[31m-        {!isArchived && ([m
+[31m-          <div className="flex items-center gap-3 flex-shrink-0">[m
+[31m-            <button[m
+[31m-              onClick={openArchiveModal}[m
+[31m-              className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"[m
+[31m-            >[m
+[31m-              Archive Event[m
+[31m-            </button>[m
+[31m-            <button[m
+[31m-              onClick={openDeleteModal}[m
+[31m-              className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"[m
+[31m-            >[m
+[31m-              Delete Event[m
+[31m-            </button>[m
+[31m-          </div>[m
+[31m-        )}[m
+[32m+[m[32m        <div className="flex items-center gap-3 flex-shrink-0">[m
+[32m+[m[32m          <button[m
+[32m+[m[32m            onClick={() => navigate('/admin/registrations?new=1')}[m
+[32m+[m[32m            className="text-xs bg-surface border border-line hover:border-brand text-brand font-semibold px-4 py-2 rounded-lg transition-colors"[m
+[32m+[m[32m          >[m
+[32m+[m[32m            + Add manual registration[m
+[32m+[m[32m          </button>[m
+[32m+[m[32m          {!isArchived && ([m
+[32m+[m[32m            <>[m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={openArchiveModal}[m
+[32m+[m[32m                className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Archive Event[m
+[32m+[m[32m              </button>[m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={openDeleteModal}[m
+[32m+[m[32m                className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Delete Event[m
+[32m+[m[32m              </button>[m
+[32m+[m[32m            </>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m        </div>[m
+       </div>[m
+ [m
+       {/* Status banner */}[m
+[1mdiff --git a/src/pages/admin/AdminRegistrations.jsx b/src/pages/admin/AdminRegistrations.jsx[m
+[1mindex 3ae7e8c..0ed2fa8 100644[m
+[1m--- a/src/pages/admin/AdminRegistrations.jsx[m
+[1m+++ b/src/pages/admin/AdminRegistrations.jsx[m
+[36m@@ -1,10 +1,12 @@[m
+ ﻿import { useState, useEffect } from 'react'[m
+[32m+[m[32mimport { useSearchParams } from 'react-router-dom'[m
+ import { supabase } from '../../lib/supabase'[m
+ import { apiFetch } from '../../lib/apiFetch.js'[m
+ import { formatDate } from '../../lib/dateFormat'[m
+ import { dollars } from '../../lib/pricing.js'[m
+ import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'[m
+ import RegistrationEditModal from '../../components/RegistrationEditModal.jsx'[m
+[32m+[m[32mimport AddPlaceholderRegistrationModal from '../../components/AddPlaceholderRegistrationModal.jsx'[m
+ import { eventPhase } from '../../lib/eventPhase'[m
+ import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'[m
+ [m
+[36m@@ -69,6 +71,19 @@[m [mexport default function AdminRegistrations() {[m
+   const [event, setEvent] = useState(null)                // active event row (for phase + side_events list)[m
+   const [needsFollowUp, setNeedsFollowUp] = useState(false) // filter toggle[m
+   const [toast, setToast] = useState(null)[m
+[32m+[m[32m  const [addModalOpen, setAddModalOpen] = useState(false)[m
+[32m+[m[32m  const [placeholderBanner, setPlaceholderBanner] = useState(null) // { reference, name }[m
+[32m+[m[32m  const [searchParams, setSearchParams] = useSearchParams()[m
+[32m+[m
+[32m+[m[32m  // Deep link from the Admin Event page ("Add manual registration") opens the[m
+[32m+[m[32m  // modal directly. Consume the param so a refresh does not reopen it.[m
+[32m+[m[32m  useEffect(() => {[m
+[32m+[m[32m    if (searchParams.get('new') === '1') {[m
+[32m+[m[32m      setAddModalOpen(true)[m
+[32m+[m[32m      searchParams.delete('new')[m
+[32m+[m[32m      setSearchParams(searchParams, { replace: true })[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }, [searchParams, setSearchParams])[m
+ [m
+   useEffect(() => {[m
+     supabase[m
+[36m@@ -204,6 +219,14 @@[m [mexport default function AdminRegistrations() {[m
+     fetchAll()[m
+   }[m
+ [m
+[32m+[m[32m  function handlePlaceholderCreated(result) {[m
+[32m+[m[32m    setAddModalOpen(false)[m
+[32m+[m[32m    const name = [result?.profile?.first_name, result?.profile?.last_name].filter(Boolean).join(' ')[m
+[32m+[m[32m      || result?.profile?.alias || 'player'[m
+[32m+[m[32m    setPlaceholderBanner({ reference: result?.payment_reference ?? null, name })[m
+[32m+[m[32m    fetchAll()[m
+[32m+[m[32m  }[m
+[32m+[m
+   // Player count per team[m
+   const playerCountByTeam = regs.reduce((acc, r) => {[m
+     if (r.team_id) acc[r.team_id] = (acc[r.team_id] ?? 0) + 1[m
+[36m@@ -302,6 +325,18 @@[m [mexport default function AdminRegistrations() {[m
+         />[m
+       )}[m
+ [m
+[32m+[m[32m      {/* Add manual (placeholder) registration modal */}[m
+[32m+[m[32m      {addModalOpen && ([m
+[32m+[m[32m        <AddPlaceholderRegistrationModal[m
+[32m+[m[32m          eventYear={eventYear}[m
+[32m+[m[32m          enabledSideEvents={(event?.side_events ?? []).filter(se => se.enabled)}[m
+[32m+[m[32m          teams={teams.filter(t => t.status === 'approved').map(t => ({ id: t.id, name: t.name }))}[m
+[32m+[m[32m          allPlayers={allPlayersForPicker}[m
+[32m+[m[32m          onClose={() => setAddModalOpen(false)}[m
+[32m+[m[32m          onCreated={handlePlaceholderCreated}[m
+[32m+[m[32m        />[m
+[32m+[m[32m      )}[m
+[32m+[m
+       {/* Header */}[m
+       <div className="flex items-center justify-between mb-6">[m
+         <div>[m
+[36m@@ -310,14 +345,48 @@[m [mexport default function AdminRegistrations() {[m
+             ZLTAC {eventYear} — {players.length} players · <span className="text-green-400">{completeCount} complete</span> · <span className="text-red-400">{incompleteCount} incomplete</span>[m
+           </p>[m
+         </div>[m
+[31m-        <button[m
+[31m-          onClick={() => eventYear && fetchAll()}[m
+[31m-          className="text-xs bg-surface border border-line hover:border-brand text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors"[m
+[31m-        >[m
+[31m-          ↻ Refresh[m
+[31m-        </button>[m
+[32m+[m[32m        <div className="flex items-center gap-2">[m
+[32m+[m[32m          {eventYear && ([m
+[32m+[m[32m            <button[m
+[32m+[m[32m              onClick={() => setAddModalOpen(true)}[m
+[32m+[m[32m              className="text-xs bg-surface border border-line hover:border-brand text-brand font-semibold px-4 py-2 rounded-lg transition-colors"[m
+[32m+[m[32m            >[m
+[32m+[m[32m              + Add manual registration[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m          )}[m
+[32m+[m[32m          <button[m
+[32m+[m[32m            onClick={() => eventYear && fetchAll()}[m
+[32m+[m[32m            className="text-xs bg-surface border border-line hover:border-brand text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors"[m
+[32m+[m[32m          >[m
+[32m+[m[32m            ↻ Refresh[m
+[32m+[m[32m          </button>[m
+[32m+[m[32m        </div>[m
+       </div>[m
+ [m
+[32m+[m[32m      {/* Manual registration success banner — surfaces the generated payment[m
+[32m+[m[32m          reference so the admin can relay it to the player. */}[m
+[32m+[m[32m      {placeholderBanner && ([m
+[32m+[m[32m        <div className="mb-4 bg-brand/10 border border-brand/30 rounded-xl px-4 py-3 flex items-center justify-between gap-4">[m
+[32m+[m[32m          <div className="min-w-0">[m
+[32m+[m[32m            <p className="text-white text-sm font-semibold">Manual registration created for {placeholderBanner.name}.</p>[m
+[32m+[m[32m            <p className="text-[#e5e5e5]/60 text-xs mt-0.5">[m
+[32m+[m[32m              Payment reference: <span className="text-brand font-mono font-bold">{placeholderBanner.reference || 'not generated'}</span>. Send this to the player so their bank transfer can be matched.[m
+[32m+[m[32m            </p>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <div className="flex items-center gap-2 flex-shrink-0">[m
+[32m+[m[32m            {placeholderBanner.reference && ([m
+[32m+[m[32m              <button[m
+[32m+[m[32m                onClick={() => { navigator.clipboard?.writeText(placeholderBanner.reference); showToast('Payment reference copied') }}[m
+[32m+[m[32m                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Copy reference[m
+[32m+[m[32m              </button>[m
+[32m+[m[32m            )}[m
+[32m+[m[32m            <button onClick={() => setPlaceholderBanner(null)} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">×</button>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      )}[m
+[32m+[m
+       {error && ([m
+         <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">[m
+           <strong>Error:</strong> {error}[m
+[36m@@ -414,9 +483,14 @@[m [mexport default function AdminRegistrations() {[m
+                         <tr key={p.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">[m
+                           {/* Name */}[m
+                           <td className="px-4 py-3 whitespace-nowrap">[m
+[31m-                            {(p.profile?.first_name || p.profile?.last_name)[m
+[31m-                              ? <span className="font-semibold text-white">{name}</span>[m
+[31m-                              : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}[m
+[32m+[m[32m                            <span className="inline-flex items-center gap-2">[m
+[32m+[m[32m                              {(p.profile?.first_name || p.profile?.last_name)[m
+[32m+[m[32m                                ? <span className="font-semibold text-white">{name}</span>[m
+[32m+[m[32m                                : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}[m
+[32m+[m[32m                              {p.profile?.is_placeholder && ([m
+[32m+[m[32m                                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line">Manual</span>[m
+[32m+[m[32m                              )}[m
+[32m+[m[32m                            </span>[m
+                           </td>[m
+                           {/* Alias */}[m
+                           <td className="px-4 py-3 whitespace-nowrap">[m

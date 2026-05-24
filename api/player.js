@@ -3,6 +3,7 @@ import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
 import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
+import { anyPlaceholder } from './_lib/placeholders.js'
 
 // Helper: returns true and writes a 403 to res when the event for the
 // given year is not in 'open' phase. Used only by price-bearing player
@@ -147,9 +148,13 @@ async function handleDoubles(req, res, user) {
     const { eventYear, partnerId } = body
     if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })
 
+    // Auto-confirm when the partner is a placeholder: a placeholder has no login
+    // to confirm from, so the pairing is confirmed on creation.
+    const confirmed = await anyPlaceholder([partnerId])
+
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('doubles_pairs')
-      .insert({ event_year: eventYear, player1_id: user.id, player2_id: partnerId, confirmed: false })
+      .insert({ event_year: eventYear, player1_id: user.id, player2_id: partnerId, confirmed })
       .select()
       .single()
 
@@ -288,6 +293,11 @@ async function handleTriples(req, res, user) {
     const { eventYear, slot, partnerId } = body
     if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })
 
+    // Auto-confirm the partner's slot when the partner is a placeholder (no
+    // login to confirm from). The team stays unconfirmed until both partner
+    // slots are filled and confirmed.
+    const slotConfirmed = await anyPlaceholder([partnerId])
+
     const { data: record, error: insertErr } = await supabaseAdmin
       .from('triples_teams')
       .insert({
@@ -297,6 +307,7 @@ async function handleTriples(req, res, user) {
         confirmed: false,
         player2_confirmed: false,
         player3_confirmed: false,
+        [`player${slot}_confirmed`]: slotConfirmed,
       })
       .select()
       .single()
@@ -310,13 +321,23 @@ async function handleTriples(req, res, user) {
     if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
     if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('triples_teams')
+      .select('player1_id, event_year, player2_confirmed, player3_confirmed')
+      .eq('id', id)
+      .maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
 
+    // Auto-confirm this slot when the added partner is a placeholder. The whole
+    // team is confirmed once both partner slots are confirmed.
+    const slotConfirmed = await anyPlaceholder([partnerId])
+    const otherField = slot === 2 ? 'player3_confirmed' : 'player2_confirmed'
+    const teamConfirmed = slotConfirmed && existing[otherField] === true
+
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
-      .update({ [`player${slot}_id`]: partnerId, [`player${slot}_confirmed`]: false, confirmed: false })
+      .update({ [`player${slot}_id`]: partnerId, [`player${slot}_confirmed`]: slotConfirmed, confirmed: teamConfirmed })
       .eq('id', id)
       .select()
       .single()

@@ -1,10 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
 import { dollars } from '../../lib/pricing.js'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 import RegistrationEditModal from '../../components/RegistrationEditModal.jsx'
+import AddPlaceholderRegistrationModal from '../../components/AddPlaceholderRegistrationModal.jsx'
 import { eventPhase } from '../../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'
 
@@ -69,6 +71,19 @@ export default function AdminRegistrations() {
   const [event, setEvent] = useState(null)                // active event row (for phase + side_events list)
   const [needsFollowUp, setNeedsFollowUp] = useState(false) // filter toggle
   const [toast, setToast] = useState(null)
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [placeholderBanner, setPlaceholderBanner] = useState(null) // { reference, name }
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // Deep link from the Admin Event page ("Add manual registration") opens the
+  // modal directly. Consume the param so a refresh does not reopen it.
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setAddModalOpen(true)
+      searchParams.delete('new')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   useEffect(() => {
     supabase
@@ -204,6 +219,14 @@ export default function AdminRegistrations() {
     fetchAll()
   }
 
+  function handlePlaceholderCreated(result) {
+    setAddModalOpen(false)
+    const name = [result?.profile?.first_name, result?.profile?.last_name].filter(Boolean).join(' ')
+      || result?.profile?.alias || 'player'
+    setPlaceholderBanner({ reference: result?.payment_reference ?? null, name })
+    fetchAll()
+  }
+
   // Player count per team
   const playerCountByTeam = regs.reduce((acc, r) => {
     if (r.team_id) acc[r.team_id] = (acc[r.team_id] ?? 0) + 1
@@ -302,6 +325,18 @@ export default function AdminRegistrations() {
         />
       )}
 
+      {/* Add manual (placeholder) registration modal */}
+      {addModalOpen && (
+        <AddPlaceholderRegistrationModal
+          eventYear={eventYear}
+          enabledSideEvents={(event?.side_events ?? []).filter(se => se.enabled)}
+          teams={teams.filter(t => t.status === 'approved').map(t => ({ id: t.id, name: t.name }))}
+          allPlayers={allPlayersForPicker}
+          onClose={() => setAddModalOpen(false)}
+          onCreated={handlePlaceholderCreated}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -310,13 +345,47 @@ export default function AdminRegistrations() {
             ZLTAC {eventYear} — {players.length} players · <span className="text-green-400">{completeCount} complete</span> · <span className="text-red-400">{incompleteCount} incomplete</span>
           </p>
         </div>
-        <button
-          onClick={() => eventYear && fetchAll()}
-          className="text-xs bg-surface border border-line hover:border-brand text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors"
-        >
-          ↻ Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {eventYear && (
+            <button
+              onClick={() => setAddModalOpen(true)}
+              className="text-xs bg-surface border border-line hover:border-brand text-brand font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              + Add manual registration
+            </button>
+          )}
+          <button
+            onClick={() => eventYear && fetchAll()}
+            className="text-xs bg-surface border border-line hover:border-brand text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            ↻ Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Manual registration success banner — surfaces the generated payment
+          reference so the admin can relay it to the player. */}
+      {placeholderBanner && (
+        <div className="mb-4 bg-brand/10 border border-brand/30 rounded-xl px-4 py-3 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-white text-sm font-semibold">Manual registration created for {placeholderBanner.name}.</p>
+            <p className="text-[#e5e5e5]/60 text-xs mt-0.5">
+              Payment reference: <span className="text-brand font-mono font-bold">{placeholderBanner.reference || 'not generated'}</span>. Send this to the player so their bank transfer can be matched.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {placeholderBanner.reference && (
+              <button
+                onClick={() => { navigator.clipboard?.writeText(placeholderBanner.reference); showToast('Payment reference copied') }}
+                className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Copy reference
+              </button>
+            )}
+            <button onClick={() => setPlaceholderBanner(null)} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">×</button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
@@ -414,9 +483,14 @@ export default function AdminRegistrations() {
                         <tr key={p.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
                           {/* Name */}
                           <td className="px-4 py-3 whitespace-nowrap">
-                            {(p.profile?.first_name || p.profile?.last_name)
-                              ? <span className="font-semibold text-white">{name}</span>
-                              : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
+                            <span className="inline-flex items-center gap-2">
+                              {(p.profile?.first_name || p.profile?.last_name)
+                                ? <span className="font-semibold text-white">{name}</span>
+                                : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
+                              {p.profile?.is_placeholder && (
+                                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line">Manual</span>
+                              )}
+                            </span>
                           </td>
                           {/* Alias */}
                           <td className="px-4 py-3 whitespace-nowrap">
