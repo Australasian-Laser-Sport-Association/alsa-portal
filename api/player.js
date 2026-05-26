@@ -457,6 +457,45 @@ async function handleRegistration(req, res, user) {
     // client-direct insert; this returns a clean message before the attempt.
     if (await denyIfLocked(res, year)) return
 
+    // Chunk 2: detect the placeholder-alias conflict that would otherwise hit
+    // the zltac_registrations.payment_reference UNIQUE constraint at insert
+    // time. We compare the caller's profile.alias (already populated by the
+    // signup metadata trigger) against the alias of any placeholder profile
+    // that has a registration for this year. The caller's own row is skipped
+    // (they're not a placeholder, but belt-and-braces). Returns ok:true with a
+    // placeholder_id so PlayerRegister can surface the claim flow directly.
+    const { data: callerProfile, error: callerErr } = await supabaseAdmin
+      .from('profiles')
+      .select('alias')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (callerErr) return res.status(500).json({ error: callerErr.message })
+
+    const callerAlias = (callerProfile?.alias ?? '').trim()
+    if (callerAlias) {
+      const { data: phReg, error: phErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .select('user_id, profiles!inner(id, alias, is_placeholder)')
+        .eq('year', year)
+        .eq('profiles.is_placeholder', true)
+      if (phErr) return res.status(500).json({ error: phErr.message })
+
+      const lowerCaller = callerAlias.toLowerCase()
+      const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
+      if (conflict) {
+        // 200 with ok:false so apiFetch resolves with the body; the caller
+        // inspects the structured payload to drive the claim modal directly.
+        // Other ok:false branches in this codebase (claim_placeholder_profile,
+        // RPC wrappers) follow the same pattern.
+        return res.json({
+          ok: false,
+          error: 'placeholder_exists',
+          placeholder_id: conflict.user_id,
+          message: 'There is already a placeholder registration with this alias for this event. Claim it instead.',
+        })
+      }
+    }
+
     const { data: ev, error: evErr } = await supabaseAdmin
       .from('zltac_events')
       .select('max_players')

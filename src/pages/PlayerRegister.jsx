@@ -7,6 +7,7 @@ import { recomputeOwing } from '../lib/recomputeOwing'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import VolunteerSection from '../components/VolunteerSection'
+import PlaceholderClaimPrompt from '../components/PlaceholderClaimPrompt.jsx'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -34,6 +35,10 @@ export default function PlayerRegister() {
   // Volunteer opt-in is held locally by VolunteerSection and reported up here;
   // it's persisted after the registration row is created (below).
   const volunteerRef = useRef({ isVolunteering: false, role_ids: [], notes: '' })
+
+  // Chunk 2: ref to the shared claim prompt so we can imperatively open the
+  // modal when the server precheck returns a 'placeholder_exists' conflict.
+  const claimPromptRef = useRef(null)
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
@@ -70,15 +75,25 @@ export default function PlayerRegister() {
     setSubmitting(true)
     setError('')
 
-    // Server-side cap check for max_players. When the event has a cap and
-    // it would be exceeded, this returns 400 with a user-facing message.
-    // Already-registered callers pass through (the upsert is idempotent
-    // count-wise).
+    // Server-side precheck: cap-check for max_players AND placeholder-alias
+    // collision detection (Chunk 2). The precheck returns ok:false +
+    // placeholder_id when there's already a placeholder registration with this
+    // caller's alias; we surface the claim modal directly so the user can
+    // absorb it instead of hitting the payment_reference UNIQUE constraint at
+    // insert time. The ok:true / 4xx error paths are unchanged.
     try {
-      await apiFetch('/api/player?resource=registration', {
+      const pre = await apiFetch('/api/player?resource=registration', {
         method: 'POST',
         body: JSON.stringify({ action: 'precheck-register', year: parseInt(year) }),
       })
+      if (pre?.ok === false && pre.error === 'placeholder_exists' && pre.placeholder_id) {
+        setSubmitting(false)
+        setError(pre.message || 'A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
+        if (claimPromptRef.current?.openForPlaceholder) {
+          claimPromptRef.current.openForPlaceholder(pre.placeholder_id)
+        }
+        return
+      }
     } catch (err) {
       setSubmitting(false)
       setError(err?.message || 'Could not start registration. Please try again.')
@@ -113,7 +128,22 @@ export default function PlayerRegister() {
       status: 'pending',
     }, { onConflict: 'user_id,year' }).select('id').single()
 
-    if (regError) { setSubmitting(false); setError(regError.message); return }
+    if (regError) {
+      setSubmitting(false)
+      // Friendly catch for the payment_reference UNIQUE collision (a
+      // placeholder with the same alias has a registration in this year). The
+      // precheck above should usually catch this first, but a race between
+      // precheck and insert could still let it through — fall back to a
+      // human-readable error and keep the claim banner visible.
+      const code = regError.code
+      const msg = regError.message ?? ''
+      if (code === '23505' || msg.includes('zltac_registrations_payment_reference_key')) {
+        setError('A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
+        return
+      }
+      setError(regError.message)
+      return
+    }
     if (regRow?.id) await recomputeOwing(regRow.id)
 
     // Persist volunteer opt-in now the registration row exists. Non-fatal:
@@ -195,6 +225,17 @@ export default function PlayerRegister() {
       </section>
 
       <section className="max-w-xl mx-auto px-6 py-16">
+        {/* Chunk 2 placeholder-claim prompt. Shows above the form when the
+            committee has already created a placeholder matching this user's
+            alias or email; claiming redirects to the Player Hub. */}
+        {user && (
+          <PlaceholderClaimPrompt
+            ref={claimPromptRef}
+            userId={user.id}
+            onClaimed={() => navigate('/player-hub')}
+          />
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
 
           {/* Personal details */}

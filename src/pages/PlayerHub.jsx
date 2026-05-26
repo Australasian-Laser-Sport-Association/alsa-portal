@@ -18,6 +18,7 @@ import { eventPhase } from '../lib/eventPhase'
 import { arePaymentsOpen } from '../lib/payments'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
+import PlaceholderClaimPrompt from '../components/PlaceholderClaimPrompt.jsx'
 import { ClipboardCheck, Trophy, Sparkles, HeartHandshake, CreditCard } from 'lucide-react'
 
 function dollars(cents) {
@@ -752,16 +753,6 @@ export default function PlayerHub() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState(null) // string | { message, captainBlocker: true }
 
-  // Chunk 2 placeholder-claim: matches returned by /api/player?resource=claimable
-  // (placeholders whose alias or email matches the logged-in user), the modal
-  // open flag, and per-claim ui state. Dismissals are persisted in localStorage
-  // keyed by (currentUserId, placeholderId) so the prompt stays away on this
-  // device. Cross-device re-prompt is accepted for v1.
-  const [claimMatches, setClaimMatches] = useState([])
-  const [claimOpen, setClaimOpen] = useState(false)
-  const [claimError, setClaimError] = useState(null)
-  const [claimWorking, setClaimWorking] = useState(null) // placeholder id currently being submitted
-
   // Collapsible hub sections. All collapsed on load. Controlled here (rather
   // than inside CollapsibleSection) so an in-page hash link can open a section.
   const [openSections, setOpenSections] = useState({
@@ -943,51 +934,7 @@ export default function PlayerHub() {
       setPartnerProfileMap(Object.fromEntries((partnerProfs ?? []).map(p => [p.id, p])))
     }
 
-    // Chunk 2: fetch placeholders that match the caller's alias/email.
-    // Server-side does the case-insensitive matching; we filter dismissed ones
-    // here so the per-device dismissal works without a DB round-trip.
-    try {
-      const { matches } = await apiFetch('/api/player?resource=claimable')
-      const filtered = (matches ?? []).filter(m => {
-        const key = `placeholder_dismissed_${user.id}_${m.placeholder.id}`
-        return !localStorage.getItem(key)
-      })
-      setClaimMatches(filtered)
-    } catch (err) {
-      console.error('[PlayerHub] claimable fetch failed:', err)
-    }
-
     setLoading(false)
-  }
-
-  // Chunk 2 placeholder-claim handlers.
-  async function claimPlaceholder(placeholderId) {
-    setClaimWorking(placeholderId)
-    setClaimError(null)
-    try {
-      const result = await apiFetch('/api/player?resource=claim', {
-        method: 'POST',
-        body: JSON.stringify({ placeholder_id: placeholderId }),
-      })
-      if (result?.ok === false) {
-        setClaimError(result.error || 'Could not claim this registration.')
-        return
-      }
-      // Drop the claimed match from the list and refetch the hub so the new
-      // registration (and any moved partners) appear immediately.
-      setClaimMatches(prev => prev.filter(m => m.placeholder.id !== placeholderId))
-      await load({ preserveDrafts: true })
-    } catch (err) {
-      setClaimError(err.message || 'Could not claim this registration.')
-    } finally {
-      setClaimWorking(null)
-    }
-  }
-
-  function dismissPlaceholder(placeholderId) {
-    const key = `placeholder_dismissed_${user.id}_${placeholderId}`
-    try { localStorage.setItem(key, '1') } catch { /* private mode */ }
-    setClaimMatches(prev => prev.filter(m => m.placeholder.id !== placeholderId))
   }
 
   function toggleSideEvent(slug) {
@@ -1310,114 +1257,11 @@ export default function PlayerHub() {
           </div>
         </div>
 
-        {/* ── Placeholder claim banner ── */}
-        {claimMatches.length > 0 && (
-          <div className="bg-surface border border-brand/30 rounded-2xl p-5 mb-5">
-            <p className="text-white font-bold mb-1">
-              We found {claimMatches.length} registration{claimMatches.length === 1 ? '' : 's'} that might be yours
-            </p>
-            <p className="text-white text-sm mb-4 leading-relaxed">
-              The committee created {claimMatches.length === 1 ? 'a placeholder profile' : 'placeholder profiles'} that match your alias or email.
-              Review the details and claim {claimMatches.length === 1 ? 'it' : 'them'} if {claimMatches.length === 1 ? "it's" : "they're"} yours.
-            </p>
-            <button
-              type="button"
-              onClick={() => { setClaimError(null); setClaimOpen(true) }}
-              className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all"
-            >
-              Review and claim
-            </button>
-          </div>
-        )}
-
-        {/* ── Placeholder claim modal ── */}
-        {claimOpen && (
-          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-            <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[85vh] overflow-y-auto">
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <p className="text-white font-bold text-lg">Claim a registration</p>
-                  <p className="text-white text-xs mt-1">
-                    Each match is a placeholder profile that shares your alias or email. Claim only the ones that are actually you.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setClaimOpen(false)}
-                  className="text-white text-xl leading-none px-2"
-                >×</button>
-              </div>
-
-              {claimError && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
-                  <p className="text-red-400 text-xs">{claimError}</p>
-                </div>
-              )}
-
-              {claimMatches.length === 0 ? (
-                <p className="text-white text-sm">No placeholders left to review.</p>
-              ) : (
-                <div className="space-y-3">
-                  {claimMatches.map(m => {
-                    const ph = m.placeholder
-                    const fullName = [ph.first_name, ph.last_name].filter(Boolean).join(' ')
-                    return (
-                      <div key={ph.id} className="bg-base border border-line rounded-xl p-4">
-                        <div className="mb-2">
-                          <p className="text-white font-semibold text-sm">
-                            {fullName || ph.alias || 'Unnamed placeholder'}
-                            {ph.alias && <span className="text-brand ml-2">"{ph.alias}"</span>}
-                          </p>
-                          {ph.placeholder_email && (
-                            <p className="text-white text-xs mt-0.5">Email on file: {ph.placeholder_email}</p>
-                          )}
-                        </div>
-                        {m.registrations.length > 0 ? (
-                          <div className="bg-surface border border-line rounded-lg p-3 mb-3">
-                            <p className="text-white text-[10px] font-bold uppercase tracking-wider mb-1.5">Registrations</p>
-                            <ul className="space-y-1">
-                              {m.registrations.map(r => (
-                                <li key={`${ph.id}_${r.year}`} className="text-white text-xs">
-                                  <span className="font-semibold">ZLTAC {r.year}</span>
-                                  {r.payment_reference && (
-                                    <span className="font-mono ml-2">{r.payment_reference}</span>
-                                  )}
-                                  {r.side_events && r.side_events.length > 0 && (
-                                    <span className="ml-2">side events: {r.side_events.join(', ')}</span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : (
-                          <p className="text-white text-xs mb-3 italic">No registrations recorded for this placeholder.</p>
-                        )}
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => claimPlaceholder(ph.id)}
-                            disabled={claimWorking === ph.id}
-                            className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg text-xs transition-colors"
-                          >
-                            {claimWorking === ph.id ? 'Claiming...' : 'Claim this'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => dismissPlaceholder(ph.id)}
-                            disabled={claimWorking === ph.id}
-                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-lg text-xs transition-colors"
-                          >
-                            Not me
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* ── Placeholder claim prompt (Chunk 2) ── */}
+        <PlaceholderClaimPrompt
+          userId={user.id}
+          onClaimed={() => load({ preserveDrafts: true })}
+        />
 
         {/* ── Doubles partner invitation alert ── */}
         {doublesRecord && doublesRecord.player2_id === user.id && !doublesRecord.confirmed && (() => {
