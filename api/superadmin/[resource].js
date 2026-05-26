@@ -1,18 +1,21 @@
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { verifyUser, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 
-// Catch-all dispatcher for superadmin-only endpoints, consolidated into one
+// Catch-all dispatcher for superadmin-mostly endpoints, consolidated into one
 // Vercel function to stay under the Hobby plan's 12-function ceiling.
 //
 // URL surface preserved exactly so existing callers/tests don't need changes:
-//   /api/superadmin/competitions         → POST, GET, PATCH
-//   /api/superadmin/competition-managers → POST, GET, DELETE
-//   /api/superadmin/profile-search       → GET (alias-only lookup for the
-//                                           manager-grant UI)
+//   /api/superadmin/competitions         → POST, GET, PATCH    (superadmin)
+//   /api/superadmin/competition-managers → POST, GET, DELETE   (superadmin)
+//   /api/superadmin/profile-search       → GET                 (superadmin)
+//   /api/superadmin/my-competitions      → GET                 (any auth user)
 //
-// Vercel maps [resource].js to req.query.resource. Auth runs once at the top
-// (every branch needs superadmin); method routing and validation inside each
-// branch are unchanged from the original per-resource files.
+// Vercel maps [resource].js to req.query.resource. Auth is per-branch because
+// 'my-competitions' deliberately serves any authenticated user (a pre-nationals
+// manager who has no superadmin role), unlike the other three. The
+// "/superadmin/" path segment is a directory-naming artefact of the
+// function-count consolidation, not an assertion that every resource here is
+// gated by verifySuperAdmin — see Phase 1d notes.
 //
 // Response shape mirrors /api/admin/*: bare object, no envelope, errors as
 // { error: '<message>' }. Creation responses use 201; everything else 200.
@@ -342,12 +345,59 @@ async function handleProfileSearch(req, res) {
 }
 
 
+// ── my-competitions ──────────────────────────────────────────────────────────
+// Auth: any authenticated user (no superadmin gate). Returns the competitions
+// where the caller is in competition_managers AND the competition is not
+// archived, ordered by start_date ascending. Used by:
+//   - the post-login redirect to detect whether the caller is a manager
+//   - the Manager Hub page to render the caller's competition list
+// Response shape mirrors the superadmin competitions list so render code can
+// be shared.
+async function handleMyCompetitions(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  // Fetch the manager grants, then the competitions they point at. Could be a
+  // join via PostgREST embed; doing it in two steps keeps the row shape
+  // identical to the superadmin list (so the client renders both with the same
+  // code path).
+  const { data: grants, error: gErr } = await supabaseAdmin
+    .from('competition_managers')
+    .select('competition_id')
+    .eq('user_id', user.id)
+  if (gErr) return res.status(500).json({ error: gErr.message })
+
+  const ids = (grants ?? []).map(g => g.competition_id)
+  if (ids.length === 0) return res.json([])
+
+  const { data: comps, error: cErr } = await supabaseAdmin
+    .from('competitions')
+    .select('*')
+    .in('id', ids)
+    .is('archived_at', null)
+    .order('start_date', { ascending: true })
+  if (cErr) return res.status(500).json({ error: cErr.message })
+
+  return res.json(comps ?? [])
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
+// Each branch picks its own auth helper because my-competitions deliberately
+// serves any authenticated user (a manager who is not a superadmin), unlike
+// the other three.
 export default async function handler(req, res) {
+  const resource = req.query.resource
+
+  if (resource === 'my-competitions') return handleMyCompetitions(req, res)
+
+  // The remaining resources require superadmin. Verify once and share the user
+  // object across the three handlers.
   const { user, error: authErr } = await verifySuperAdmin(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
-  const resource = req.query.resource
   if (resource === 'competitions')         return handleCompetitions(req, res, user)
   if (resource === 'competition-managers') return handleCompetitionManagers(req, res, user)
   if (resource === 'profile-search')       return handleProfileSearch(req, res)

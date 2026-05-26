@@ -43,6 +43,10 @@ import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
 import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
 import AdminZLTACResults from './pages/admin/AdminZLTACResults'
 import AdminCompetitions from './pages/admin/AdminCompetitions'
+// Manager (pre-nationals)
+import ManagerLayout from './components/ManagerLayout'
+import ManagerHub from './pages/manage/ManagerHub'
+import ManagerCompetitionDetail from './pages/manage/ManagerCompetitionDetail'
 // ZLTAC history
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
@@ -115,6 +119,13 @@ function App() {
             <Route path="members" element={<AdminMembers />} />
             <Route path="competitions" element={<AdminCompetitions />} />
           </Route>
+
+          {/* Manager (pre-nationals) panel */}
+          <Route path="/manage" element={<ProtectedRoute><ManagerLayout /></ProtectedRoute>}>
+            <Route index element={<ManagerHub />} />
+            <Route path="competitions/:slug" element={<ManagerCompetitionDetail />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

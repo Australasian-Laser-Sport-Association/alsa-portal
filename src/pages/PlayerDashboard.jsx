@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { formatDate } from '../lib/dateFormat'
@@ -418,7 +418,8 @@ const ROLE_PILL_META = {
 }
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function PlayerDashboard() {
-  const { user, userRoles } = useAuth()
+  const { user, userRoles, profile: authProfile } = useAuth()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [openEvent, setOpenEvent] = useState(null)
@@ -429,6 +430,25 @@ export default function PlayerDashboard() {
     if (!user) return
     load()
   }, [user]) // eslint-disable-line
+
+  // Pre-nationals manager redirect (Phase 1d). Users with no committee role
+  // but at least one row in competition_managers land on /manage instead of
+  // staying on /dashboard. Committee users keep their existing dashboard +
+  // admin tiles. The check fires only for non-committee users so the extra
+  // request is scoped to the small minority who need it.
+  useEffect(() => {
+    if (!user || !authProfile) return
+    if (isCommittee(authProfile)) return
+    let cancelled = false
+    apiFetch('/api/superadmin/my-competitions')
+      .then(list => {
+        if (!cancelled && Array.isArray(list) && list.length > 0) {
+          navigate('/manage', { replace: true })
+        }
+      })
+      .catch(err => console.error('[PlayerDashboard] my-competitions check failed:', err))
+    return () => { cancelled = true }
+  }, [user, authProfile, navigate])
 
   async function load() {
     const [{ data: prof }, { data: ev }] = await Promise.all([
