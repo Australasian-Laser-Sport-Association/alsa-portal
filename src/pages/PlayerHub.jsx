@@ -1210,27 +1210,6 @@ export default function PlayerHub() {
 
       <div className="max-w-3xl mx-auto px-6 py-10">
 
-        {/* Back */}
-        <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-5 inline-block">
-          ← {event.name}
-        </Link>
-
-        {/* Welcome */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-shrink-0">
-            <DashboardGridIcon />
-          </div>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Player Hub</h1>
-            <p className="text-[#e5e5e5]/40 text-sm mt-1">
-              Your hub for {event.name} registration, team status, and event-day prep.
-            </p>
-          </div>
-        </div>
-
-        {/* Event lifecycle countdown */}
-        <EventLifecycleCountdown event={event} className="mb-8" />
-
         {/* Header */}
         <div className="mb-8">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">ZLTAC {eventYear} · Player Hub</p>
@@ -1256,6 +1235,27 @@ export default function PlayerHub() {
             )}
           </div>
         </div>
+
+        {/* Back */}
+        <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-5 inline-block">
+          ← {event.name}
+        </Link>
+
+        {/* Welcome */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-shrink-0">
+            <DashboardGridIcon />
+          </div>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Player Hub</h1>
+            <p className="text-[#e5e5e5]/40 text-sm mt-1">
+              Your hub for {event.name} registration, team status, and event-day prep.
+            </p>
+          </div>
+        </div>
+
+        {/* Event lifecycle countdown */}
+        <EventLifecycleCountdown event={event} className="mb-8" />
 
         {/* ── Placeholder claim prompt (Chunk 2) ── */}
         <PlaceholderClaimPrompt
