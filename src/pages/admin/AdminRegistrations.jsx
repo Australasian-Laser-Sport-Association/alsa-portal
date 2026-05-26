@@ -36,6 +36,141 @@ function Pill({ color, children }) {
   )
 }
 
+// Modal for the Chunk 2 manual link: committee picks any real user to absorb
+// a placeholder. The picker is local — we already have every profile loaded
+// for the registrations table, so filter the non-placeholders client-side.
+function LinkPlaceholderModal({ placeholder, profiles, summaryCounts, onClose, onLinked }) {
+  const [query, setQuery] = useState('')
+  const [picked, setPicked] = useState(null) // chosen real profile
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const realUsers = profiles.filter(p => !p.is_placeholder)
+  const q = query.trim().toLowerCase()
+  const results = q.length < 2 ? [] : realUsers.filter(p => {
+    const alias = (p.alias ?? '').toLowerCase()
+    const name = [p.first_name, p.last_name].filter(Boolean).join(' ').toLowerCase()
+    return alias.includes(q) || name.includes(q)
+  }).slice(0, 25)
+
+  const phName = [placeholder.first_name, placeholder.last_name].filter(Boolean).join(' ')
+    || placeholder.alias || 'placeholder'
+  const pickedName = picked
+    ? ([picked.first_name, picked.last_name].filter(Boolean).join(' ') || picked.alias || 'user')
+    : null
+
+  async function submit() {
+    if (!picked) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await apiFetch('/api/admin/event?resource=registrations', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'link-placeholder',
+          placeholder_id: placeholder.id,
+          real_user_id: picked.id,
+        }),
+      })
+      if (result?.ok === false) {
+        setError(result.error || 'Could not link the placeholder.')
+        return
+      }
+      onLinked()
+    } catch (err) {
+      setError(err.message || 'Could not link the placeholder.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+      <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[85vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <p className="text-white font-bold text-lg">Link placeholder to user</p>
+            <p className="text-white text-xs mt-1">
+              Placeholder: <span className="font-semibold">{phName}</span>
+              {placeholder.alias && <span className="text-brand ml-1">"{placeholder.alias}"</span>}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
+        </div>
+
+        {!picked ? (
+          <>
+            <input
+              type="text"
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search by alias or name..."
+              className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand mb-3"
+            />
+            {q.length >= 2 && results.length === 0 && (
+              <p className="text-white text-xs italic">No matching users.</p>
+            )}
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {results.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPicked(p)}
+                  className="w-full flex items-center justify-between gap-3 bg-base hover:bg-line/40 border border-line rounded-lg px-3 py-2 text-left transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-white text-sm font-semibold">
+                      {[p.first_name, p.last_name].filter(Boolean).join(' ') || '(no name)'}
+                      {p.alias && <span className="text-brand ml-2">"{p.alias}"</span>}
+                    </p>
+                    {p.state && <p className="text-white text-[10px] mt-0.5">{p.state}</p>}
+                  </div>
+                  <span className="text-brand text-xs font-bold">Pick</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-base border border-line rounded-xl p-4 mb-4">
+              <p className="text-white text-xs font-bold uppercase tracking-wider mb-2">Confirm merge</p>
+              <p className="text-white text-sm leading-relaxed">
+                This will move {summaryCounts.regCount} registration{summaryCounts.regCount === 1 ? '' : 's'} and {summaryCounts.partnerCount} partner relationship{summaryCounts.partnerCount === 1 ? '' : 's'} from <span className="font-semibold">{phName}</span> to <span className="font-semibold">{pickedName}</span>{picked.alias ? ` "${picked.alias}"` : ''}. The placeholder profile will be deleted.
+              </p>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{error}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting}
+                className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {submitting ? 'Linking...' : 'Confirm and link'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPicked(null); setError(null) }}
+                disabled={submitting}
+                className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Back
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StatusBadge({ status }) {
   const styles = {
     pending:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
@@ -73,6 +208,7 @@ export default function AdminRegistrations() {
   const [toast, setToast] = useState(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [placeholderBanner, setPlaceholderBanner] = useState(null) // { reference, name }
+  const [linkModal, setLinkModal] = useState(null)                  // { placeholder } currently being linked to a real user
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Deep link from the Admin Event page ("Add manual registration") opens the
@@ -249,6 +385,17 @@ export default function AdminRegistrations() {
     ])
   }
 
+  // Counts for the link-confirmation summary. Same source the merge function
+  // uses (zltac_registrations + doubles_pairs + triples_teams), computed
+  // client-side from the data we already loaded so the admin sees what's about
+  // to move before they confirm.
+  function linkSummaryCounts(placeholderId) {
+    const regCount = regs.filter(r => r.user_id === placeholderId).length
+    const partnerCount = doubles.filter(d => d.player1_id === placeholderId || d.player2_id === placeholderId).length
+      + triples.filter(t => t.player1_id === placeholderId || t.player2_id === placeholderId || t.player3_id === placeholderId).length
+    return { regCount, partnerCount }
+  }
+
   async function removePlayer() {
     if (!removeConfirm) return
     try {
@@ -334,6 +481,24 @@ export default function AdminRegistrations() {
           allPlayers={allPlayersForPicker}
           onClose={() => setAddModalOpen(false)}
           onCreated={handlePlaceholderCreated}
+        />
+      )}
+
+      {/* Link placeholder to real user modal (Chunk 2 admin fallback) */}
+      {linkModal && (
+        <LinkPlaceholderModal
+          placeholder={linkModal.placeholder}
+          profiles={profiles}
+          summaryCounts={linkSummaryCounts(linkModal.placeholder.id)}
+          onClose={() => setLinkModal(null)}
+          onLinked={() => {
+            const phId = linkModal.placeholder.id
+            setLinkModal(null)
+            setRegs(prev => prev.filter(r => r.user_id !== phId))
+            setProfiles(prev => prev.filter(p => p.id !== phId))
+            showToast('Placeholder linked. Registration moved to the chosen user.')
+            fetchAll()
+          }}
         />
       )}
 
@@ -556,6 +721,14 @@ export default function AdminRegistrations() {
                               >
                                 Edit
                               </button>
+                              {p.profile?.is_placeholder && (
+                                <button
+                                  onClick={() => setLinkModal({ placeholder: p.profile })}
+                                  className="text-xs font-semibold px-3 py-1 rounded-full border bg-brand/15 border-brand/30 text-brand hover:bg-brand/25 transition-colors"
+                                >
+                                  Link to user
+                                </button>
+                              )}
                               <button
                                 onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
                                 className="text-xs font-semibold px-3 py-1 rounded-full border bg-green-500/15 border-green-500/30 text-green-300 hover:bg-green-500/25 transition-colors"

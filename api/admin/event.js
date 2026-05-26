@@ -311,11 +311,32 @@ async function handleRegistrations(req, res, user) {
   }
 
   if (req.method === 'POST') {
+    const body = req.body ?? {}
+
+    // link-placeholder — Chunk 2 manual fallback. Committee picks any real
+    // user to absorb a stuck placeholder (alias/email auto-match failed or the
+    // real user prefers not to use the banner). Invokes the same
+    // claim_placeholder_profile RPC the player-side claim uses, so the merge
+    // logic (year-conflict check, FK moves, delete) stays one place. Caller
+    // is already verifyCommittee()-gated by the top-level dispatch, which is
+    // sufficient for the committee branch of the RPC's internal guard.
+    if (body.action === 'link-placeholder') {
+      const { placeholder_id, real_user_id } = body
+      if (!placeholder_id || !real_user_id) {
+        return res.status(400).json({ error: 'placeholder_id and real_user_id are required' })
+      }
+      const { data, error } = await supabaseAdmin.rpc('claim_placeholder_profile', {
+        placeholder_id,
+        real_id: real_user_id,
+      })
+      if (error) return res.status(500).json({ error: error.message })
+      if (data && data.ok === false) return res.status(400).json(data)
+      return res.json(data ?? { ok: true })
+    }
+
     // create-placeholder-registration — committee creates a profile + registration
     // for a player who has no portal account (a "placeholder", is_placeholder=true).
-    // See migration 20260524000000_placeholder_profiles.sql. The post-signup claim
-    // flow is Chunk 2 and is intentionally not handled here.
-    const body = req.body ?? {}
+    // See migration 20260524000000_placeholder_profiles.sql.
     if (body.action !== 'create-placeholder-registration') {
       return res.status(400).json({ error: `Unknown action: ${body.action}` })
     }

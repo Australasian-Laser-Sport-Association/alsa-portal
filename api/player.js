@@ -565,17 +565,115 @@ async function handleRegistration(req, res, user) {
   return res.status(400).json({ error: `Unknown action: ${action}` })
 }
 
+// ── claimable / claim ───────────────────────────────────────────────────────
+// Chunk 2 placeholder-claim flow. Two endpoints:
+//   GET  ?resource=claimable → list placeholders that match the caller by
+//                              alias or auth.users email (case-insensitive).
+//   POST ?resource=claim     → merge a chosen placeholder into the caller via
+//                              the claim_placeholder_profile RPC.
+// The RPC has its own auth.uid() == real_id guard, so even a direct
+// supabase.rpc() call from the browser is safe — but the API layer still
+// uses supabaseAdmin so that cross-user reads work under RLS.
+
+async function handleClaimable(req, res, user) {
+  // Resolve the caller's alias (from profiles) and email (from auth.users) so
+  // we can match against placeholders.alias and placeholders.placeholder_email.
+  const { data: prof, error: profErr } = await supabaseAdmin
+    .from('profiles')
+    .select('alias')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profErr) return res.status(500).json({ error: profErr.message })
+
+  const callerAlias = (prof?.alias ?? '').trim()
+  const callerEmail = (user.email ?? '').trim()
+  if (!callerAlias && !callerEmail) return res.json({ matches: [] })
+
+  // Pull every placeholder (small table) and match in JS — keeps the case-
+  // insensitive comparison cheap and avoids two separate filtered queries.
+  const { data: placeholders, error: phErr } = await supabaseAdmin
+    .from('profiles')
+    .select('id, alias, first_name, last_name, placeholder_email')
+    .eq('is_placeholder', true)
+  if (phErr) return res.status(500).json({ error: phErr.message })
+
+  const lowerAlias = callerAlias.toLowerCase()
+  const lowerEmail = callerEmail.toLowerCase()
+  const matched = (placeholders ?? []).filter(p => {
+    const a = (p.alias ?? '').toLowerCase()
+    const e = (p.placeholder_email ?? '').toLowerCase()
+    return (lowerAlias && a && a === lowerAlias) || (lowerEmail && e && e === lowerEmail)
+  })
+  if (!matched.length) return res.json({ matches: [] })
+
+  // Hydrate each match with its registrations so the modal can show year +
+  // payment ref + side events the caller is being asked to absorb.
+  const matchedIds = matched.map(p => p.id)
+  const { data: regs, error: regsErr } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('user_id, year, payment_reference, side_events')
+    .in('user_id', matchedIds)
+    .order('year', { ascending: false })
+  if (regsErr) return res.status(500).json({ error: regsErr.message })
+
+  const regsByUser = {}
+  for (const r of (regs ?? [])) {
+    ;(regsByUser[r.user_id] ??= []).push({
+      year: r.year,
+      payment_reference: r.payment_reference,
+      side_events: r.side_events ?? [],
+    })
+  }
+
+  const matches = matched.map(p => ({
+    placeholder: {
+      id: p.id,
+      alias: p.alias,
+      first_name: p.first_name,
+      last_name: p.last_name,
+      placeholder_email: p.placeholder_email,
+    },
+    registrations: regsByUser[p.id] ?? [],
+  }))
+
+  return res.json({ matches })
+}
+
+async function handleClaim(req, res, user) {
+  const { placeholder_id } = req.body ?? {}
+  if (!placeholder_id) return res.status(400).json({ error: 'placeholder_id is required' })
+
+  const { data, error } = await supabaseAdmin.rpc('claim_placeholder_profile', {
+    placeholder_id,
+    real_id: user.id,
+  })
+  if (error) return res.status(500).json({ error: error.message })
+
+  if (data && data.ok === false) {
+    return res.status(400).json(data)
+  }
+  return res.json(data ?? { ok: true })
+}
+
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-
   const { user, error } = await verifyUser(req)
   if (error) return res.status(401).json({ error })
 
   const resource = req.query.resource
+
+  // GET endpoints
+  if (req.method === 'GET') {
+    if (resource === 'claimable') return handleClaimable(req, res, user)
+    return res.status(400).json({ error: 'resource query param must be "claimable" for GET' })
+  }
+
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
   if (resource === 'doubles')      return handleDoubles(req, res, user)
   if (resource === 'triples')      return handleTriples(req, res, user)
   if (resource === 'registration') return handleRegistration(req, res, user)
-  return res.status(400).json({ error: 'resource query param must be "doubles", "triples", or "registration"' })
+  if (resource === 'claim')        return handleClaim(req, res, user)
+  return res.status(400).json({ error: 'resource query param must be "doubles", "triples", "registration", or "claim"' })
 }
