@@ -19,6 +19,11 @@ import supabaseAdmin from './_lib/supabase.js'
 const PUBLIC_COMPETITION_COLUMNS =
   'id, slug, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible'
 
+// Columns shown on the public ZLTAC card. Mirrors the displayable surface of
+// the zltac_events row without exposing fees or admin metadata.
+const PUBLIC_ZLTAC_COLUMNS =
+  'id, year, name, status, location, venue, start_date, end_date, logo_url, reg_open_date, reg_close_date'
+
 // ── event ───────────────────────────────────────────────────────────────────
 
 async function handleEvent(req, res) {
@@ -93,14 +98,22 @@ async function handleMembers(_req, res) {
 }
 
 // ── competitions ────────────────────────────────────────────────────────────
-// Anon-facing public listings for pre-nationals. Two modes:
-//   ?resource=competitions            → array of visible competitions
-//   ?resource=competitions&slug=<s>   → single competition (404 if not found)
+// Anon-facing public listings. Two modes:
+//   ?resource=competitions            → { main_events, competitions } combined
+//                                       feed for the /competitions page
+//   ?resource=competitions&slug=<s>   → single pre-nationals competition,
+//                                       404 if not found
 //
-// Visibility predicate matches the RLS policy on competitions (anon role) for
-// defence-in-depth: archived rows and competitions whose registration_close_at
-// has already passed are excluded. Bank details are stripped via the column
-// list above.
+// The slug branch is unchanged from Phase 3b. The list branch was widened to
+// also surface ZLTAC events (the "main event" each year) so the public page
+// can show both in two labelled sections.
+//
+// Visibility:
+//   - competitions: mirrors the anon RLS predicate from 20260527000000
+//     (archived_at IS NULL AND (registration_close_at IS NULL OR > now)).
+//   - zltac_events: mirrors the anon RLS predicate from initial_schema.sql:567
+//     (status IN ('open', 'closed', 'archived') — i.e. anything not draft).
+// Both filters are enforced server-side regardless of RLS for defence-in-depth.
 
 async function handleCompetitions(req, res) {
   const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : ''
@@ -120,14 +133,29 @@ async function handleCompetitions(req, res) {
     return res.json(data)
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('competitions')
-    .select(PUBLIC_COMPETITION_COLUMNS)
-    .is('archived_at', null)
-    .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
-    .order('start_date', { ascending: true })
-  if (error) return res.status(500).json({ error: error.message })
-  return res.json(data ?? [])
+  // Run both queries in parallel; if either fails, surface a single 500 so
+  // the client never has to render a partial feed.
+  const [mainEventsResult, competitionsResult] = await Promise.all([
+    supabaseAdmin
+      .from('zltac_events')
+      .select(PUBLIC_ZLTAC_COLUMNS)
+      .in('status', ['open', 'closed', 'archived'])
+      .order('start_date', { ascending: true }),
+    supabaseAdmin
+      .from('competitions')
+      .select(PUBLIC_COMPETITION_COLUMNS)
+      .is('archived_at', null)
+      .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
+      .order('start_date', { ascending: true }),
+  ])
+
+  if (mainEventsResult.error) return res.status(500).json({ error: mainEventsResult.error.message })
+  if (competitionsResult.error) return res.status(500).json({ error: competitionsResult.error.message })
+
+  return res.json({
+    main_events: mainEventsResult.data ?? [],
+    competitions: competitionsResult.data ?? [],
+  })
 }
 
 // ── Dispatch ────────────────────────────────────────────────────────────────
