@@ -42,6 +42,7 @@ import AdminRequiredDocuments from './pages/admin/AdminRequiredDocuments'
 import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
 import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
 import AdminZLTACResults from './pages/admin/AdminZLTACResults'
+import AdminCompetitions from './pages/admin/AdminCompetitions'
 // ZLTAC history
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
@@ -112,6 +113,7 @@ function App() {
             <Route path="volunteers" element={<AdminVolunteers />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="members" element={<AdminMembers />} />
+            <Route path="competitions" element={<AdminCompetitions />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

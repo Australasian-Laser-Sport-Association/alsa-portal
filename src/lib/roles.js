@@ -6,3 +6,8 @@ export function isCommittee(profile) {
   const roles = profile?.roles ?? []
   return roles.some(r => COMMITTEE_ROLES.includes(r))
 }
+
+export function isSuperAdmin(profile) {
+  const roles = profile?.roles ?? []
+  return roles.includes('superadmin')
+}

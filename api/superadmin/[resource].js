@@ -7,6 +7,8 @@ import { verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 // URL surface preserved exactly so existing callers/tests don't need changes:
 //   /api/superadmin/competitions         → POST, GET, PATCH
 //   /api/superadmin/competition-managers → POST, GET, DELETE
+//   /api/superadmin/profile-search       → GET (alias-only lookup for the
+//                                           manager-grant UI)
 //
 // Vercel maps [resource].js to req.query.resource. Auth runs once at the top
 // (every branch needs superadmin); method routing and validation inside each
@@ -262,6 +264,39 @@ async function handleCompetitionManagers(req, res, user) {
 }
 
 
+// ── profile-search ────────────────────────────────────────────────────────────
+// Lightweight alias-only profile lookup the manager-grant UI uses. Deliberately
+// narrow on purpose: only superadmins can call it, only non-placeholder
+// profiles are returned, no email is included (that surfaces on the
+// manager-list response). Case-insensitive ilike on alias, capped at 10 rows.
+async function handleProfileSearch(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const q = (req.query.q ?? '').trim()
+  if (q.length < 2) return badRequest(res, 'q must be at least 2 characters')
+
+  // Escape LIKE wildcards so an alias like "a_b" is matched literally.
+  const likePattern = `%${q.replace(/[\\%_]/g, m => `\\${m}`)}%`
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, alias, first_name, last_name, is_placeholder')
+    .eq('is_placeholder', false)
+    .ilike('alias', likePattern)
+    .limit(10)
+  if (error) return res.status(500).json({ error: error.message })
+
+  const out = (data ?? []).map(p => ({
+    id: p.id,
+    alias: p.alias,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    // ALSA ID short — first segment of the UUID, matches how PlayerHub renders it.
+    alsa_id_short: p.id.split('-')[0].toUpperCase(),
+  }))
+  return res.json(out)
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   const { user, error: authErr } = await verifySuperAdmin(req)
@@ -270,5 +305,6 @@ export default async function handler(req, res) {
   const resource = req.query.resource
   if (resource === 'competitions')         return handleCompetitions(req, res, user)
   if (resource === 'competition-managers') return handleCompetitionManagers(req, res, user)
+  if (resource === 'profile-search')       return handleProfileSearch(req, res)
   return res.status(404).json({ error: 'unknown resource' })
 }
