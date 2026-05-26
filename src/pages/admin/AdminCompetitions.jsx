@@ -5,15 +5,26 @@ import { isSuperAdmin } from '../../lib/roles'
 
 // Superadmin-only competition management.
 //   - List competitions in a table
-//   - Create competition via a modal (mirrors AdminRegistrations modal style)
+//   - Create / edit competition via a shared modal (mirrors AdminRegistrations
+//     modal style); slug is derived server-side from name, never shown in the
+//     create form, shown as read-only URL in the edit form.
 //   - Expand a row to manage its managers (grant by alias search, revoke per row)
+//   - Archive from inside the edit modal (PATCH archived_at). No unarchive UI.
 //
 // All writes go through /api/superadmin/* — service-role server-side. Page
 // gates itself via useOutletContext(): non-superadmin admins see a "not
 // authorised" message rather than the page UI. AdminLayout already filters
 // the sidebar entry so this is defence-in-depth.
 
-const SLUG_RE = /^[a-z0-9-]+$/
+// Converts ISO timestamp to the datetime-local input format (YYYY-MM-DDTHH:MM)
+// in the user's local timezone, since <input type="datetime-local"> expects
+// local time, not UTC. Returns '' for null/undefined so the input is empty.
+function isoToLocalInput(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
@@ -63,28 +74,34 @@ function Pill({ tone, children }) {
 }
 
 
-// ── Create competition modal ─────────────────────────────────────────────────
-function CreateCompetitionModal({ onClose, onCreated }) {
-  const [slug, setSlug] = useState('')
-  const [name, setName] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [regOpen, setRegOpen] = useState('')
-  const [regClose, setRegClose] = useState('')
-  const [price, setPrice] = useState('')
-  const [bankName, setBankName] = useState('')
-  const [bankBsb, setBankBsb] = useState('')
-  const [bankAccount, setBankAccount] = useState('')
-  const [paymentVisible, setPaymentVisible] = useState(false)
+// ── Competition modal (create + edit) ────────────────────────────────────────
+// One modal serves both flows; mode is inferred from `initial` (null = create,
+// row = edit). Slug is server-derived on create and read-only on edit (shown
+// as the URL line at the top of the modal). Archive lives at the bottom of
+// the edit modal, separated by danger styling.
+function CompetitionFormModal({ initial, onClose, onSaved }) {
+  const isEdit = !!initial
+  const [name, setName] = useState(initial?.name ?? '')
+  const [startDate, setStartDate] = useState(initial?.start_date ?? '')
+  const [endDate, setEndDate] = useState(initial?.end_date ?? '')
+  const [regOpen, setRegOpen] = useState(isoToLocalInput(initial?.registration_open_at))
+  const [regClose, setRegClose] = useState(isoToLocalInput(initial?.registration_close_at))
+  const [price, setPrice] = useState(initial?.price_per_player != null ? String(initial.price_per_player) : '')
+  const [bankName, setBankName] = useState(initial?.bank_account_name ?? '')
+  const [bankBsb, setBankBsb] = useState(initial?.bank_bsb ?? '')
+  const [bankAccount, setBankAccount] = useState(initial?.bank_account_number ?? '')
+  const [paymentVisible, setPaymentVisible] = useState(initial?.payment_info_visible ?? false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+
+  // Archive flow state — edit modal only.
+  const [archiveConfirm, setArchiveConfirm] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
     setError(null)
 
-    if (!slug.trim()) return setError('Slug is required.')
-    if (!SLUG_RE.test(slug.trim())) return setError('Slug must be lowercase letters, numbers, and hyphens only.')
     if (!name.trim()) return setError('Name is required.')
     if (!startDate || !endDate) return setError('Start and end dates are required.')
     if (new Date(endDate) < new Date(startDate)) return setError('End date must be on or after start date.')
@@ -94,27 +111,46 @@ function CreateCompetitionModal({ onClose, onCreated }) {
 
     setSubmitting(true)
     try {
-      const created = await apiFetch('/api/superadmin/competitions', {
-        method: 'POST',
-        body: JSON.stringify({
-          slug: slug.trim(),
-          name: name.trim(),
-          start_date: startDate,
-          end_date: endDate,
-          registration_open_at: regOpen || null,
-          registration_close_at: regClose || null,
-          price_per_player: price ? Number(price) : null,
-          bank_account_name: bankName.trim() || null,
-          bank_bsb: bankBsb.trim() || null,
-          bank_account_number: bankAccount.trim() || null,
-          payment_info_visible: paymentVisible,
-        }),
+      const payload = {
+        name: name.trim(),
+        start_date: startDate,
+        end_date: endDate,
+        registration_open_at: regOpen ? new Date(regOpen).toISOString() : null,
+        registration_close_at: regClose ? new Date(regClose).toISOString() : null,
+        price_per_player: price ? Number(price) : null,
+        bank_account_name: bankName.trim() || null,
+        bank_bsb: bankBsb.trim() || null,
+        bank_account_number: bankAccount.trim() || null,
+        payment_info_visible: paymentVisible,
+      }
+      const url = isEdit
+        ? `/api/superadmin/competitions?id=${initial.id}`
+        : '/api/superadmin/competitions'
+      const saved = await apiFetch(url, {
+        method: isEdit ? 'PATCH' : 'POST',
+        body: JSON.stringify(payload),
       })
-      onCreated(created)
+      onSaved(saved)
     } catch (err) {
-      setError(err.message || 'Could not create competition.')
+      setError(err.message || `Could not ${isEdit ? 'save' : 'create'} competition.`)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function archive() {
+    setArchiving(true)
+    setError(null)
+    try {
+      const saved = await apiFetch(`/api/superadmin/competitions?id=${initial.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archived_at: new Date().toISOString() }),
+      })
+      onSaved(saved, { archived: true })
+    } catch (err) {
+      setError(err.message || 'Could not archive competition.')
+      setArchiving(false)
+      setArchiveConfirm(false)
     }
   }
 
@@ -122,7 +158,12 @@ function CreateCompetitionModal({ onClose, onCreated }) {
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
       <form onSubmit={submit} className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-3 mb-4">
-          <p className="text-white font-bold text-lg">Create competition</p>
+          <div>
+            <p className="text-white font-bold text-lg">{isEdit ? 'Edit competition' : 'Create competition'}</p>
+            {isEdit && (
+              <p className="text-white text-[11px] opacity-50 mt-1 font-mono">URL: /competitions/{initial.slug}</p>
+            )}
+          </div>
           <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
         </div>
 
@@ -134,18 +175,6 @@ function CreateCompetitionModal({ onClose, onCreated }) {
 
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Slug</label>
-            <input
-              type="text"
-              value={slug}
-              onChange={e => setSlug(e.target.value)}
-              placeholder="pre-nationals-2027"
-              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-            />
-            <p className="text-white text-[11px] mt-1 opacity-60">Lowercase, numbers, hyphens only. Used in URLs and payment references.</p>
-          </div>
-
-          <div>
             <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
             <input
               type="text"
@@ -154,6 +183,9 @@ function CreateCompetitionModal({ onClose, onCreated }) {
               placeholder="ALSA Pre-Nationals 2027"
               className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
             />
+            {!isEdit && (
+              <p className="text-white text-[11px] mt-1 opacity-60">URL slug is generated from the name automatically.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -259,23 +291,64 @@ function CreateCompetitionModal({ onClose, onCreated }) {
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all"
-          >
-            {submitting ? 'Creating...' : 'Create competition'}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="flex items-center justify-between mt-6 gap-3 flex-wrap">
+          {isEdit ? (
+            <button
+              type="button"
+              onClick={() => setArchiveConfirm(true)}
+              disabled={submitting || archiving}
+              className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold px-4 py-2 rounded-xl text-sm transition-colors disabled:opacity-50"
+            >
+              Archive
+            </button>
+          ) : <span />}
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={submitting || archiving}
+              className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all"
+            >
+              {submitting ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save changes' : 'Create competition')}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting || archiving}
+              className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
+
+        {archiveConfirm && (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-4">
+            <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+              <p className="text-white font-bold mb-2">Archive competition?</p>
+              <p className="text-white text-sm mb-5 opacity-80">
+                Archive <span className="font-semibold">{initial.name}</span>? It will be hidden from the default list. Existing registrations and managers are not affected.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={archive}
+                  disabled={archiving}
+                  className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+                >
+                  {archiving ? 'Archiving...' : 'Archive'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setArchiveConfirm(false)}
+                  disabled={archiving}
+                  className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   )
@@ -503,6 +576,7 @@ export default function AdminCompetitions() {
   const [competitions, setCompetitions] = useState(null) // null = loading
   const [error, setError] = useState(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [editing, setEditing] = useState(null) // row being edited, or null
   const [expandedId, setExpandedId] = useState(null)
   const [managerCounts, setManagerCounts] = useState({}) // id -> count
 
@@ -534,9 +608,27 @@ export default function AdminCompetitions() {
     load()
   }
 
-  function handleManagerCount(id, count) {
-    setManagerCounts(prev => ({ ...prev, [id]: count }))
+  function handleEdited(updated, opts) {
+    setEditing(null)
+    if (opts?.archived) {
+      // Archived rows leave the default list. Drop from local state and refetch
+      // for the authoritative order.
+      setCompetitions(prev => prev ? prev.filter(c => c.id !== updated.id) : prev)
+      setExpandedId(prev => (prev === updated.id ? null : prev))
+    } else {
+      setCompetitions(prev => prev ? prev.map(c => (c.id === updated.id ? updated : c)) : prev)
+    }
+    load()
   }
+
+  // useCallback so the reference is stable across renders. Without this, the
+  // ManagerPanel's loadManagers useCallback would re-create every parent
+  // render (which happens every time setManagerCounts fires), making its
+  // useEffect re-fire and re-fetch managers in an infinite loop. That loop
+  // was the source of the visible flicker on the search input + results.
+  const handleManagerCount = useCallback((id, count) => {
+    setManagerCounts(prev => ({ ...prev, [id]: count }))
+  }, [])
 
   if (!allowed) {
     return (
@@ -552,9 +644,18 @@ export default function AdminCompetitions() {
   return (
     <div>
       {createOpen && (
-        <CreateCompetitionModal
+        <CompetitionFormModal
+          initial={null}
           onClose={() => setCreateOpen(false)}
-          onCreated={handleCreated}
+          onSaved={handleCreated}
+        />
+      )}
+
+      {editing && (
+        <CompetitionFormModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={handleEdited}
         />
       )}
 
@@ -592,7 +693,7 @@ export default function AdminCompetitions() {
           <table className="w-full text-sm" style={{ minWidth: '720px' }}>
             <thead>
               <tr className="border-b border-line">
-                {['Slug', 'Name', 'Dates', 'Registration', 'Managers', ''].map((h, i) => (
+                {['Name', 'Dates', 'Registration', 'Managers', ''].map((h, i) => (
                   <th key={i} className="px-4 py-3 text-left text-xs text-white opacity-50 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -609,10 +710,10 @@ export default function AdminCompetitions() {
                       onClick={() => setExpandedId(expanded ? null : c.id)}
                       className="border-b border-line last:border-0 hover:bg-line/30 transition-colors cursor-pointer"
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-brand font-mono text-xs font-bold">{c.slug}</span>
+                      <td className="px-4 py-3">
+                        <p className="text-white font-semibold">{c.name}</p>
+                        <p className="text-white opacity-40 text-[11px] font-mono mt-0.5">/competitions/{c.slug}</p>
                       </td>
-                      <td className="px-4 py-3 text-white font-semibold">{c.name}</td>
                       <td className="px-4 py-3 text-white opacity-70 text-xs whitespace-nowrap">
                         {formatDateRange(c.start_date, c.end_date)}
                       </td>
@@ -622,9 +723,16 @@ export default function AdminCompetitions() {
                       <td className="px-4 py-3 text-white opacity-70 text-xs">
                         {mgrCount === undefined ? '-' : mgrCount}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setEditing(c) }}
+                          className="text-xs bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-semibold px-3 py-1 rounded-lg transition-colors mr-2"
+                        >
+                          Edit
+                        </button>
                         <svg
-                          className={`w-4 h-4 text-white opacity-40 inline-block transition-transform ${expanded ? 'rotate-180' : ''}`}
+                          className={`w-4 h-4 text-white opacity-40 inline-block transition-transform align-middle ${expanded ? 'rotate-180' : ''}`}
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -635,7 +743,7 @@ export default function AdminCompetitions() {
                     </tr>
                     {expanded && (
                       <tr key={`${c.id}-panel`}>
-                        <td colSpan={6} className="p-0">
+                        <td colSpan={5} className="p-0">
                           <ManagerPanel competition={c} onCountChanged={handleManagerCount} />
                         </td>
                       </tr>

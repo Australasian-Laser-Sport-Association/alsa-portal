@@ -19,6 +19,36 @@ import { verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 
 const SLUG_RE = /^[a-z0-9-]+$/
 
+// Derives a URL slug from a competition name. Lowercases, replaces any non-
+// alphanumeric run with a single hyphen, trims leading/trailing hyphens.
+// Example: "Victorian Pre Nationals 2027" -> "victorian-pre-nationals-2027".
+// Returns '' if the result is empty (caller decides how to handle).
+function slugifyName(name) {
+  return (name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+// Returns a slug that is unique in public.competitions, by appending -2, -3,
+// ..., -10 on collision. Returns null if all ten variants are taken.
+async function findAvailableSlug(baseSlug) {
+  // Pull every existing slug that starts with the base. Cheap because the slug
+  // pool is small and start-with is index-friendly.
+  const { data, error } = await supabaseAdmin
+    .from('competitions')
+    .select('slug')
+    .ilike('slug', `${baseSlug}%`)
+  if (error) throw new Error(`slug collision check failed: ${error.message}`)
+  const taken = new Set((data ?? []).map(r => r.slug))
+  if (!taken.has(baseSlug)) return baseSlug
+  for (let n = 2; n <= 10; n++) {
+    const candidate = `${baseSlug}-${n}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return null
+}
+
 // Whitelist of fields the competitions PATCH endpoint will accept. slug is
 // intentionally omitted (URLs may already exist by the time anyone tries to
 // rename), and created_by / created_at are immutable.
@@ -68,15 +98,29 @@ async function handleCompetitions(req, res, user) {
 
   if (req.method === 'POST') {
     const body = req.body ?? {}
-    const slug = (body.slug ?? '').trim()
     const name = (body.name ?? '').trim()
     const { start_date, end_date } = body
-    if (!slug) return badRequest(res, 'slug is required')
-    if (!SLUG_RE.test(slug)) return badRequest(res, 'slug must match ^[a-z0-9-]+$')
     if (!name) return badRequest(res, 'name is required')
     if (!start_date || !end_date) return badRequest(res, 'start_date and end_date are required')
     const dateErr = validateDates(body)
     if (dateErr) return badRequest(res, dateErr)
+
+    // Slug derivation. Caller may pass body.slug (admin tooling); otherwise
+    // we derive from the name. The format regex is enforced post-derivation so
+    // weird Unicode in names can't slip a bad slug through.
+    const rawSlug = (body.slug ?? '').trim() || slugifyName(name)
+    if (!rawSlug) return badRequest(res, 'could not derive a slug from name; please provide a name with letters or numbers')
+    if (!SLUG_RE.test(rawSlug)) return badRequest(res, 'derived slug failed validation; use a simpler name')
+
+    let slug
+    try {
+      slug = await findAvailableSlug(rawSlug)
+    } catch (err) {
+      return res.status(500).json({ error: err.message })
+    }
+    if (!slug) {
+      return res.status(409).json({ error: 'Could not derive a unique slug for this name. Try a more specific name.' })
+    }
 
     const insertRow = {
       slug,
@@ -97,10 +141,11 @@ async function handleCompetitions(req, res, user) {
       .select()
       .single()
     if (error) {
-      // 23505 = unique_violation. The slug UNIQUE index is the only realistic
-      // collision on this endpoint, so surface it as 409 with a clear message.
+      // 23505 = unique_violation. findAvailableSlug should have prevented this,
+      // but a race between the check and the insert could still hit. Surface
+      // it cleanly so the caller can retry.
       if (error.code === '23505') {
-        return res.status(409).json({ error: `slug "${slug}" is already in use` })
+        return res.status(409).json({ error: `slug "${slug}" is already in use (concurrent create)` })
       }
       return res.status(500).json({ error: error.message })
     }
