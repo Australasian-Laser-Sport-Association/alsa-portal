@@ -4,10 +4,20 @@ import supabaseAdmin from './_lib/supabase.js'
 //   ?resource=event&year=YYYY → confirmed doubles/triples pairs for an event
 //   ?resource=committee       → ALSA + ZLTAC committee members
 //   ?resource=members         → current ALSA membership period + member list
+//   ?resource=competitions    → pre-nationals listings (list or single by slug)
 //
 // All resources are GET, all public (no auth). Consolidated from
 // api/event.js + api/committee.js + api/members.js to stay under the
 // Vercel Hobby function cap.
+
+// Columns that anon callers see for a competition. bank_account_name,
+// bank_bsb, bank_account_number are deliberately stripped — those only ever
+// appear in the authenticated registration flow (Phase 3c). Matches the
+// defence-in-depth model: the RLS policy from 20260527000000 admits the row,
+// the API enforces the column filter so anon never sees bank details even via
+// this endpoint.
+const PUBLIC_COMPETITION_COLUMNS =
+  'id, slug, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible'
 
 // ── event ───────────────────────────────────────────────────────────────────
 
@@ -82,14 +92,53 @@ async function handleMembers(_req, res) {
   return res.json({ current_period: period, members })
 }
 
+// ── competitions ────────────────────────────────────────────────────────────
+// Anon-facing public listings for pre-nationals. Two modes:
+//   ?resource=competitions            → array of visible competitions
+//   ?resource=competitions&slug=<s>   → single competition (404 if not found)
+//
+// Visibility predicate matches the RLS policy on competitions (anon role) for
+// defence-in-depth: archived rows and competitions whose registration_close_at
+// has already passed are excluded. Bank details are stripped via the column
+// list above.
+
+async function handleCompetitions(req, res) {
+  const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : ''
+  const nowIso = new Date().toISOString()
+
+  if (slug) {
+    const { data, error } = await supabaseAdmin
+      .from('competitions')
+      .select(PUBLIC_COMPETITION_COLUMNS)
+      .eq('slug', slug)
+      .is('archived_at', null)
+      // Postgrest can't OR (a IS NULL, a > now) cleanly; .or() handles it.
+      .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
+      .maybeSingle()
+    if (error) return res.status(500).json({ error: error.message })
+    if (!data) return res.status(404).json({ error: 'competition not found' })
+    return res.json(data)
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('competitions')
+    .select(PUBLIC_COMPETITION_COLUMNS)
+    .is('archived_at', null)
+    .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
+    .order('start_date', { ascending: true })
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(data ?? [])
+}
+
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const resource = req.query.resource
-  if (resource === 'event')     return handleEvent(req, res)
-  if (resource === 'committee') return handleCommittee(req, res)
-  if (resource === 'members')   return handleMembers(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "committee", or "members"' })
+  if (resource === 'event')        return handleEvent(req, res)
+  if (resource === 'committee')    return handleCommittee(req, res)
+  if (resource === 'members')      return handleMembers(req, res)
+  if (resource === 'competitions') return handleCompetitions(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "committee", "members", or "competitions"' })
 }
