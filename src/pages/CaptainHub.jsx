@@ -130,6 +130,8 @@ function StatusBadge({ status }) {
 }
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+// Mirrors CaptainRegister.jsx — keep in sync if the creation palette changes.
+const TEAM_COLOURS = ['#00E6FF', '#FF3B30', '#0A84FF', '#FF9F0A', '#BF5AF2', '#FF375F', '#30D158', '#64D2FF']
 
 export default function CaptainHub() {
   const { user, loading: authLoading } = useAuth()
@@ -162,7 +164,7 @@ export default function CaptainHub() {
 
   // Team settings
   const [editingSettings, setEditingSettings] = useState(false)
-  const [settingsForm, setSettingsForm] = useState({ name: '', state: '', home_venue: '' })
+  const [settingsForm, setSettingsForm] = useState({ name: '', state: '', home_venue: '', colour: '#00E6FF' })
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsErr, setSettingsErr] = useState('')
 
@@ -191,7 +193,7 @@ export default function CaptainHub() {
     setEvent(ev)
     if (!t) { setLoading(false); return }
     setTeam(t)
-    setSettingsForm({ name: t.name ?? '', state: t.state ?? '', home_venue: t.home_venue ?? '' })
+    setSettingsForm({ name: t.name ?? '', state: t.state ?? '', home_venue: t.home_venue ?? '', colour: t.colour ?? '#00E6FF' })
     if (ev?.year) await loadRoster(t, ev.year)
     setLoading(false)
   }
@@ -465,6 +467,7 @@ export default function CaptainHub() {
       name: settingsForm.name.trim(),
       state: settingsForm.state || null,
       home_venue: settingsForm.home_venue.trim() || null,
+      colour: settingsForm.colour,
     }).eq('id', team.id)
     setSavingSettings(false)
     if (error) { setSettingsErr(error.message); return }
@@ -981,6 +984,29 @@ export default function CaptainHub() {
                   <input type="text" value={settingsForm.home_venue} onChange={e => setSettingsForm(f => ({ ...f, home_venue: e.target.value }))}
                     placeholder="e.g. Zone300 Sydney"
                     className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand" />
+                </div>
+                {/* Team colour — mirrors CaptainRegister.jsx picker exactly. */}
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Team Colour</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {TEAM_COLOURS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSettingsForm(f => ({ ...f, colour: c }))}
+                        className="w-8 h-8 rounded-full border-2 transition-all"
+                        style={{ background: c, borderColor: settingsForm.colour === c ? '#fff' : 'transparent' }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={settingsForm.colour}
+                      onChange={e => setSettingsForm(f => ({ ...f, colour: e.target.value }))}
+                      className="w-8 h-8 rounded-full border border-line bg-surface cursor-pointer p-0.5"
+                      title="Custom colour"
+                    />
+                    <span className="text-xs text-[#e5e5e5]/40 font-mono ml-1">{settingsForm.colour}</span>
+                  </div>
                 </div>
                 {settingsErr && <p className="text-red-400 text-xs">{settingsErr}</p>}
                 <div className="flex gap-3">
