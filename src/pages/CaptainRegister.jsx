@@ -39,7 +39,7 @@ export default function CaptainRegister() {
     async function load() {
       const [{ data: ev }, { data: existing }] = await Promise.all([
         supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
-        supabase.from('teams').select('id').eq('captain_id', user.id).maybeSingle(),
+        supabase.from('teams').select('id').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
       ])
       setEvent(ev)
       if (existing) { navigate('/captain-hub'); return }

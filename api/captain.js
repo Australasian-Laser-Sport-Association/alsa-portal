@@ -172,11 +172,15 @@ export default async function handler(req, res) {
     const eventYear = bodyEventYear ?? await getActiveEventYear()
     if (!eventYear) return res.status(400).json({ error: 'eventYear is required (no active event)' })
 
-    // Caller must captain a team. Get all teams they captain.
+    // Caller must captain a ZLTAC team. Filtering on event_id IS NOT NULL
+    // scopes this to ZLTAC (the xor CHECK on teams excludes pre-nats rows).
+    // Functionally the downstream zltac_registrations join already shields the
+    // result, but scoping at the source removes a future-bug surface.
     const { data: captainedTeams, error: ctErr } = await supabaseAdmin
       .from('teams')
       .select('id')
       .eq('captain_id', user.id)
+      .not('event_id', 'is', null)
     if (ctErr) return res.status(500).json({ error: ctErr.message })
 
     const captainedTeamIds = (captainedTeams ?? []).map(t => t.id)

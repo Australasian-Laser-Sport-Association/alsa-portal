@@ -187,7 +187,7 @@ export default function CaptainHub() {
   async function load() {
     const [{ data: ev }, { data: t }] = await Promise.all([
       supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment, reg_close_date, event_starts_at, committee_email').eq('status', 'open').maybeSingle(),
-      supabase.from('teams').select('id, name, state, home_venue, colour, status, rejection_reason, logo_url').eq('captain_id', user.id).maybeSingle(),
+      supabase.from('teams').select('id, name, state, home_venue, colour, status, rejection_reason, logo_url').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
     ])
     setEvent(ev)
     if (!t) { setLoading(false); return }

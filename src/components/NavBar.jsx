@@ -123,8 +123,12 @@ export default function NavBar() {
     return () => { cancelled = true }
   }, [user, event])
 
-  // Look up the user's most recent team (as captain or manager) so the Team Hub
-  // pill shows whenever they own a team — regardless of approval state.
+  // Look up the user's most recent ZLTAC team (as captain or manager) so the
+  // Team Hub pill shows whenever they own a ZLTAC team — regardless of
+  // approval state. event_id IS NOT NULL scopes this to ZLTAC teams (the xor
+  // CHECK on teams guarantees event_id IS NOT NULL ⇔ competition_id IS NULL),
+  // so a user who only captains a pre-nats team does NOT light up this pill —
+  // pre-nats has its own /competitions/:slug/hub surface.
   useEffect(() => {
     if (!user) return
     let cancelled = false
@@ -132,6 +136,7 @@ export default function NavBar() {
       .from('teams')
       .select('status')
       .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
+      .not('event_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
