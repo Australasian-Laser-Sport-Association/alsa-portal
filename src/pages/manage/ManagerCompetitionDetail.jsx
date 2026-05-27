@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
+import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 
 // Per-competition detail page for managers. Auth: the page fetches
 // /api/superadmin/my-competitions and looks for a row matching :slug. If not
@@ -58,6 +59,42 @@ function Field({ label, value }) {
     <div>
       <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">{label}</p>
       <p className="text-white text-sm">{value || <span className="opacity-40">Not set</span>}</p>
+    </div>
+  )
+}
+
+// Edit Details tab body. Renders the shared CompetitionEditForm with the
+// manager's current row as the initial state. Pre-flights canEditAbbreviation
+// from the registrations_count field that handleMyCompetitions now annotates
+// onto every row.
+function EditPanel({ comp, onSaved }) {
+  const [savedFlash, setSavedFlash] = useState(false)
+  const canEditAbbreviation = (comp.registrations_count ?? 0) === 0
+
+  async function handleSubmit(payload) {
+    const saved = await apiFetch(`/api/superadmin/competitions?id=${comp.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    onSaved(saved)
+    setSavedFlash(true)
+    setTimeout(() => setSavedFlash(false), 1800)
+  }
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
+      {savedFlash && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-3 py-2">
+          <p className="text-green-400 text-xs font-semibold">Changes saved.</p>
+        </div>
+      )}
+      <CompetitionEditForm
+        mode="edit"
+        initial={comp}
+        canEditAbbreviation={canEditAbbreviation}
+        onSubmit={handleSubmit}
+        onCancel={() => {}}
+      />
     </div>
   )
 }
@@ -208,9 +245,9 @@ export default function ManagerCompetitionDetail() {
       {tab === 'overview' && <OverviewPanel comp={comp} />}
 
       {tab === 'edit' && (
-        <PlaceholderCard
-          title="Edit details"
-          body="Editing competition details ships in the next phase. For now, contact a superadmin to change name, dates, registration window, price, bank details, or payment visibility."
+        <EditPanel
+          comp={comp}
+          onSaved={saved => setComp({ ...saved, registrations_count: comp.registrations_count })}
         />
       )}
 

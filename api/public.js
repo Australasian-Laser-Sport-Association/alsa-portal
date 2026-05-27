@@ -18,7 +18,7 @@ import supabaseAdmin from './_lib/supabase.js'
 // the API enforces the column filter so anon never sees bank details even via
 // this endpoint.
 const PUBLIC_COMPETITION_COLUMNS =
-  'id, slug, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible'
+  'id, slug, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible, description, links'
 
 // Columns shown on the public ZLTAC card. Mirrors the displayable surface of
 // the zltac_events row without exposing fees or admin metadata.

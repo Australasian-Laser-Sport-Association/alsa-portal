@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { isSuperAdmin } from '../../lib/roles'
+import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 
 // Superadmin-only competition management.
 //   - List competitions in a table
@@ -15,29 +16,6 @@ import { isSuperAdmin } from '../../lib/roles'
 // gates itself via useOutletContext(): non-superadmin admins see a "not
 // authorised" message rather than the page UI. AdminLayout already filters
 // the sidebar entry so this is defence-in-depth.
-
-// Converts ISO timestamp to the datetime-local input format (YYYY-MM-DDTHH:MM)
-// in the user's local timezone, since <input type="datetime-local"> expects
-// local time, not UTC. Returns '' for null/undefined so the input is empty.
-function isoToLocalInput(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-// Mirror of the server-side deriveAbbreviation in api/superadmin/[resource].js.
-// Kept in sync by hand for the live preview; the server is authoritative.
-function deriveAbbreviation(name) {
-  const words = (name ?? '').trim().split(/\s+/)
-  const letters = []
-  for (const w of words) {
-    if (/^\d+$/.test(w)) continue
-    const first = w[0]
-    if (first && /[A-Z]/.test(first)) letters.push(first.toUpperCase())
-  }
-  return letters.join('').slice(0, 8)
-}
 
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
@@ -88,74 +66,32 @@ function Pill({ tone, children }) {
 
 
 // ── Competition modal (create + edit) ────────────────────────────────────────
-// One modal serves both flows; mode is inferred from `initial` (null = create,
-// row = edit). Slug is server-derived on create and read-only on edit (shown
-// as the URL line at the top of the modal). Archive lives at the bottom of
-// the edit modal, separated by danger styling.
+// Thin wrapper around the shared CompetitionEditForm. The modal owns the
+// overlay chrome, the close button, the archive flow, and the wiring between
+// the form's onSubmit and the /api/superadmin/competitions endpoint. The form
+// itself owns all field state, validation, and the submit/cancel button row.
 function CompetitionFormModal({ initial, onClose, onSaved }) {
   const isEdit = !!initial
-  const [name, setName] = useState(initial?.name ?? '')
-  const [startDate, setStartDate] = useState(initial?.start_date ?? '')
-  const [endDate, setEndDate] = useState(initial?.end_date ?? '')
-  const [regOpen, setRegOpen] = useState(isoToLocalInput(initial?.registration_open_at))
-  const [regClose, setRegClose] = useState(isoToLocalInput(initial?.registration_close_at))
-  const [price, setPrice] = useState(initial?.price_per_player != null ? String(initial.price_per_player) : '')
-  const [bankName, setBankName] = useState(initial?.bank_account_name ?? '')
-  const [bankBsb, setBankBsb] = useState(initial?.bank_bsb ?? '')
-  const [bankAccount, setBankAccount] = useState(initial?.bank_account_number ?? '')
-  const [paymentVisible, setPaymentVisible] = useState(initial?.payment_info_visible ?? false)
-  const [abbreviation, setAbbreviation] = useState(initial?.abbreviation ?? '')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState(null)
+  const canEditAbbreviation = !isEdit || (initial?.registrations_count ?? 0) === 0
 
-  // Archive flow state — edit modal only.
   const [archiveConfirm, setArchiveConfirm] = useState(false)
   const [archiving, setArchiving] = useState(false)
+  const [archiveError, setArchiveError] = useState(null)
 
-  async function submit(e) {
-    e.preventDefault()
-    setError(null)
-
-    if (!name.trim()) return setError('Name is required.')
-    if (!startDate || !endDate) return setError('Start and end dates are required.')
-    if (new Date(endDate) < new Date(startDate)) return setError('End date must be on or after start date.')
-    if (regOpen && regClose && new Date(regClose) < new Date(regOpen)) {
-      return setError('Registration close must be on or after registration open.')
-    }
-
-    setSubmitting(true)
-    try {
-      const payload = {
-        name: name.trim(),
-        abbreviation: abbreviation.trim() || null,
-        start_date: startDate,
-        end_date: endDate,
-        registration_open_at: regOpen ? new Date(regOpen).toISOString() : null,
-        registration_close_at: regClose ? new Date(regClose).toISOString() : null,
-        price_per_player: price ? Number(price) : null,
-        bank_account_name: bankName.trim() || null,
-        bank_bsb: bankBsb.trim() || null,
-        bank_account_number: bankAccount.trim() || null,
-        payment_info_visible: paymentVisible,
-      }
-      const url = isEdit
-        ? `/api/superadmin/competitions?id=${initial.id}`
-        : '/api/superadmin/competitions'
-      const saved = await apiFetch(url, {
-        method: isEdit ? 'PATCH' : 'POST',
-        body: JSON.stringify(payload),
-      })
-      onSaved(saved)
-    } catch (err) {
-      setError(err.message || `Could not ${isEdit ? 'save' : 'create'} competition.`)
-    } finally {
-      setSubmitting(false)
-    }
+  async function handleSubmit(payload) {
+    const url = isEdit
+      ? `/api/superadmin/competitions?id=${initial.id}`
+      : '/api/superadmin/competitions'
+    const saved = await apiFetch(url, {
+      method: isEdit ? 'PATCH' : 'POST',
+      body: JSON.stringify(payload),
+    })
+    onSaved(saved)
   }
 
   async function archive() {
     setArchiving(true)
-    setError(null)
+    setArchiveError(null)
     try {
       const saved = await apiFetch(`/api/superadmin/competitions?id=${initial.id}`, {
         method: 'PATCH',
@@ -163,7 +99,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
       })
       onSaved(saved, { archived: true })
     } catch (err) {
-      setError(err.message || 'Could not archive competition.')
+      setArchiveError(err.message || 'Could not archive competition.')
       setArchiving(false)
       setArchiveConfirm(false)
     }
@@ -171,7 +107,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-      <form onSubmit={submit} className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
             <p className="text-white font-bold text-lg">{isEdit ? 'Edit competition' : 'Create competition'}</p>
@@ -182,192 +118,31 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
         </div>
 
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
-            <p className="text-red-400 text-xs">{error}</p>
-          </div>
-        )}
+        <CompetitionEditForm
+          mode={isEdit ? 'edit' : 'create'}
+          initial={initial}
+          canEditAbbreviation={canEditAbbreviation}
+          onSubmit={handleSubmit}
+          onCancel={onClose}
+        />
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="ALSA Pre-Nationals 2027"
-              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-            />
-            {!isEdit && (
-              <p className="text-white text-[11px] mt-1 opacity-60">URL slug is generated from the name automatically.</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Abbreviation</label>
-            <input
-              type="text"
-              value={abbreviation}
-              onChange={e => setAbbreviation(e.target.value.toUpperCase())}
-              placeholder="VPN"
-              maxLength={8}
-              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white font-mono uppercase tracking-wider focus:outline-none focus:border-brand"
-            />
-            <p className="text-white text-[11px] mt-1 opacity-60">
-              Used as payment reference prefix (e.g. VPN for Victorian Pre Nats). 2 to 8 letters and digits, uppercase only. Leave blank to auto-derive from name.
-            </p>
-            {(() => {
-              const effective = abbreviation.trim() || deriveAbbreviation(name)
-              const year = startDate ? new Date(startDate).getFullYear() : 'YYYY'
-              const sample = effective.length >= 2 ? `${effective}${year}CROUCHY` : null
-              return (
-                <p className="text-white text-[11px] mt-1 opacity-60">
-                  Payment references will look like:{' '}
-                  {sample
-                    ? <span className="font-mono text-brand">{sample}</span>
-                    : <span className="opacity-50">enter a name or abbreviation to preview</span>}
-                </p>
-              )
-            })()}
-            {isEdit && (
-              <p className="text-yellow-400 text-[11px] mt-2 opacity-80">
-                Changing this affects new registrations only. Existing payment references remain as they were.
-              </p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Start date</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">End date</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration opens</label>
-              <input
-                type="datetime-local"
-                value={regOpen}
-                onChange={e => setRegOpen(e.target.value)}
-                className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration closes</label>
-              <input
-                type="datetime-local"
-                value={regClose}
-                onChange={e => setRegClose(e.target.value)}
-                className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Price per player (AUD)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              placeholder="e.g. 75.00"
-              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
-            />
-          </div>
-
-          <div className="bg-base border border-line rounded-xl p-4 space-y-3">
-            <p className="text-white text-xs font-bold uppercase tracking-wider">Payment details</p>
-            <p className="text-white text-[11px] opacity-60">Visible to registered players only when the toggle below is on.</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account name</label>
-                <input
-                  type="text"
-                  value={bankName}
-                  onChange={e => setBankName(e.target.value)}
-                  className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-                />
+        {isEdit && (
+          <div className="border-t border-line mt-6 pt-4">
+            {archiveError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-3">
+                <p className="text-red-400 text-xs">{archiveError}</p>
               </div>
-              <div>
-                <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">BSB</label>
-                <input
-                  type="text"
-                  value={bankBsb}
-                  onChange={e => setBankBsb(e.target.value)}
-                  placeholder="XXX-XXX"
-                  className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account number</label>
-              <input
-                type="text"
-                value={bankAccount}
-                onChange={e => setBankAccount(e.target.value)}
-                className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
-              />
-            </div>
-
-            <label className="flex items-center gap-3 cursor-pointer mt-1">
-              <input
-                type="checkbox"
-                checked={paymentVisible}
-                onChange={e => setPaymentVisible(e.target.checked)}
-                className="accent-[#00FF41]"
-              />
-              <span className="text-white text-xs">Payment info visible to registered players</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mt-6 gap-3 flex-wrap">
-          {isEdit ? (
+            )}
             <button
               type="button"
               onClick={() => setArchiveConfirm(true)}
-              disabled={submitting || archiving}
+              disabled={archiving}
               className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold px-4 py-2 rounded-xl text-sm transition-colors disabled:opacity-50"
             >
               Archive
             </button>
-          ) : <span />}
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={submitting || archiving}
-              className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all"
-            >
-              {submitting ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save changes' : 'Create competition')}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting || archiving}
-              className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
-            >
-              Cancel
-            </button>
           </div>
-        </div>
+        )}
 
         {archiveConfirm && (
           <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-4">
@@ -397,7 +172,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
             </div>
           </div>
         )}
-      </form>
+      </div>
     </div>
   )
 }

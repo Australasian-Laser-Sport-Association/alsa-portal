@@ -6,7 +6,9 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 // Vercel function to stay under the Hobby plan's 12-function ceiling.
 //
 // URL surface preserved exactly so existing callers/tests don't need changes:
-//   /api/superadmin/competitions               → POST, GET, PATCH    (superadmin)
+//   /api/superadmin/competitions               → GET, POST           (superadmin)
+//                                              → PATCH               (superadmin OR competition manager of the target row)
+//                                              → DELETE              (always 405; archive via PATCH)
 //   /api/superadmin/competition-managers       → POST, GET, DELETE   (superadmin)
 //   /api/superadmin/profile-search             → GET                 (any auth user)
 //   /api/superadmin/my-competitions            → GET                 (any auth user)
@@ -16,12 +18,14 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 //   /api/superadmin/competition-team-invite    → GET, PATCH          (any auth user)
 //
 // Vercel maps [resource].js to req.query.resource. Auth is per-branch because
-// most resources here serve any authenticated user — only competitions and
-// competition-managers are superadmin-gated. The "/superadmin/" path segment
-// is a directory-naming artefact of the function-count consolidation, not an
+// most resources here serve any authenticated user — only competition-managers
+// stays purely superadmin-gated. The "/superadmin/" path segment is a
+// directory-naming artefact of the function-count consolidation, not an
 // assertion that every resource here is gated by verifySuperAdmin (see Phase
 // 1d notes). profile-search was relaxed from superadmin-only to authenticated
-// in Phase 3d because the captain invite picker needs it.
+// in Phase 3d because the captain invite picker needs it. Phase 2a (Edit
+// Details) widens competitions PATCH to managers as well; that handler now
+// verifies auth per-method internally rather than relying on the dispatcher.
 //
 // Response shape mirrors /api/admin/*: bare object, no envelope, errors as
 // { error: '<message>' }. Creation responses use 201; everything else 200.
@@ -84,7 +88,8 @@ async function findAvailableSlug(baseSlug) {
 
 // Whitelist of fields the competitions PATCH endpoint will accept. slug is
 // intentionally omitted (URLs may already exist by the time anyone tries to
-// rename), and created_by / created_at are immutable.
+// rename), and created_by / created_at are immutable. archived_at is in this
+// list but is rejected for non-superadmin callers at handler entry.
 const COMPETITION_PATCH_FIELDS = [
   'name',
   'start_date',
@@ -97,7 +102,49 @@ const COMPETITION_PATCH_FIELDS = [
   'bank_account_number',
   'payment_info_visible',
   'archived_at',
+  'description',
+  'links',
 ]
+
+// Phase 2a content-field validation. The SQL constraint only enforces
+// "description ≤ 10k chars, links is an array of ≤ 20 entries". Per-element
+// shape (label non-empty ≤ 80 chars, url http/https ≤ 2048 chars) is
+// enforced here so a future migration can extend the schema without forcing
+// a constraint rewrite. Returns null on success, or a message on the first
+// failure.
+function validateContent(body) {
+  if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+    const d = body.description
+    if (d !== null && typeof d !== 'string') return 'description must be a string or null'
+    if (typeof d === 'string' && d.length > 10000) {
+      return 'description must be 10000 characters or fewer'
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'links')) {
+    const l = body.links
+    if (l === null) return null
+    if (!Array.isArray(l)) return 'links must be an array or null'
+    if (l.length > 20) return 'links may have at most 20 entries'
+    for (let i = 0; i < l.length; i++) {
+      const entry = l[i]
+      if (!entry || typeof entry !== 'object') return `links[${i}] must be an object`
+      const label = entry.label
+      const url = entry.url
+      if (typeof label !== 'string' || label.trim().length === 0) {
+        return `links[${i}].label is required`
+      }
+      if (label.length > 80) return `links[${i}].label must be 80 characters or fewer`
+      if (typeof url !== 'string' || url.trim().length === 0) {
+        return `links[${i}].url is required`
+      }
+      if (!/^https?:\/\//i.test(url)) {
+        return `links[${i}].url must start with http:// or https://`
+      }
+      if (url.length > 2048) return `links[${i}].url must be 2048 characters or fewer`
+    }
+  }
+  return null
+}
 
 function badRequest(res, message) {
   return res.status(400).json({ error: message })
@@ -118,18 +165,57 @@ function validateDates({ start_date, end_date, registration_open_at, registratio
 }
 
 
+// Annotates each competition row with `registrations_count` (integer ≥ 0).
+// Used by both the superadmin listing and the manager's my-competitions list
+// so the Edit form can disable abbreviation editing pre-flight on the same
+// condition the server enforces (existing payment refs must not drift).
+async function withRegistrationsCount(rows) {
+  if (!rows || rows.length === 0) return rows ?? []
+  const ids = rows.map(r => r.id)
+  const { data: regs, error } = await supabaseAdmin
+    .from('competition_registrations')
+    .select('competition_id')
+    .in('competition_id', ids)
+  if (error) {
+    // On failure, still return the rows with count=0 so the UI degrades to
+    // "server rejects abbreviation change if regs exist" rather than blanking
+    // the whole page.
+    return rows.map(r => ({ ...r, registrations_count: 0 }))
+  }
+  const counts = new Map()
+  for (const r of regs ?? []) {
+    counts.set(r.competition_id, (counts.get(r.competition_id) ?? 0) + 1)
+  }
+  return rows.map(r => ({ ...r, registrations_count: counts.get(r.id) ?? 0 }))
+}
+
+
 // ── competitions ──────────────────────────────────────────────────────────────
-async function handleCompetitions(req, res, user) {
+// Auth model (Phase 2a):
+//   GET, POST  -> superadmin
+//   PATCH      -> superadmin OR caller is in competition_managers for the target row
+//                 (managers cannot set archived_at — that stays superadmin-only)
+//   DELETE     -> 405 in all cases (archive via PATCH)
+// Verification happens per-method inside this handler rather than in the
+// dispatcher because PATCH has a wider audience than the other methods.
+async function handleCompetitions(req, res) {
   if (req.method === 'GET') {
+    const { error: authErr } = await verifySuperAdmin(req)
+    if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
     const includeArchived = req.query.include_archived === '1'
     let q = supabaseAdmin.from('competitions').select('*').order('start_date', { ascending: false })
     if (!includeArchived) q = q.is('archived_at', null)
     const { data, error } = await q
     if (error) return res.status(500).json({ error: error.message })
-    return res.json(data ?? [])
+
+    return res.json(await withRegistrationsCount(data ?? []))
   }
 
   if (req.method === 'POST') {
+    const { user, error: authErr } = await verifySuperAdmin(req)
+    if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
     const body = req.body ?? {}
     const name = (body.name ?? '').trim()
     const { start_date, end_date } = body
@@ -137,6 +223,8 @@ async function handleCompetitions(req, res, user) {
     if (!start_date || !end_date) return badRequest(res, 'start_date and end_date are required')
     const dateErr = validateDates(body)
     if (dateErr) return badRequest(res, dateErr)
+    const contentErr = validateContent(body)
+    if (contentErr) return badRequest(res, contentErr)
 
     // Slug derivation. Caller may pass body.slug (admin tooling); otherwise
     // we derive from the name. The format regex is enforced post-derivation so
@@ -185,6 +273,9 @@ async function handleCompetitions(req, res, user) {
       bank_account_name: body.bank_account_name ?? null,
       bank_bsb: body.bank_bsb ?? null,
       bank_account_number: body.bank_account_number ?? null,
+      description:
+        typeof body.description === 'string' ? body.description.trim() : (body.description ?? null),
+      links: Array.isArray(body.links) ? body.links : null,
       created_by: user.id,
     }
     const { data, error } = await supabaseAdmin
@@ -205,13 +296,53 @@ async function handleCompetitions(req, res, user) {
   }
 
   if (req.method === 'PATCH') {
+    const { user, error: authErr } = await verifyUser(req)
+    if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
     const id = req.query.id ?? req.body?.id
     if (!id) return badRequest(res, 'competition id is required (?id= or body.id)')
 
+    // Determine the caller's authority: superadmin can edit anything,
+    // including archive; a competition manager can edit only their own row
+    // and cannot set archived_at.
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('roles')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profileErr) return res.status(500).json({ error: profileErr.message })
+    const isSuperadmin = Array.isArray(profile?.roles) && profile.roles.includes('superadmin')
+
+    if (!isSuperadmin) {
+      const { count: mgrCount, error: mgrErr } = await supabaseAdmin
+        .from('competition_managers')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('competition_id', id)
+        .eq('user_id', user.id)
+      if (mgrErr) return res.status(500).json({ error: mgrErr.message })
+      if ((mgrCount ?? 0) === 0) {
+        return res.status(403).json({ error: 'Not authorised to edit this competition.' })
+      }
+    }
+
     const body = req.body ?? {}
+
+    // Managers may not archive — only superadmins.
+    if (!isSuperadmin && Object.prototype.hasOwnProperty.call(body, 'archived_at')) {
+      return res.status(403).json({ error: 'Only superadmins can archive a competition.' })
+    }
+
+    const contentErr = validateContent(body)
+    if (contentErr) return badRequest(res, contentErr)
+
     const updates = {}
     for (const k of COMPETITION_PATCH_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(body, k)) updates[k] = body[k]
+      if (!Object.prototype.hasOwnProperty.call(body, k)) continue
+      if (k === 'description' && typeof body[k] === 'string') {
+        updates[k] = body[k].trim()
+      } else {
+        updates[k] = body[k]
+      }
     }
 
     // Abbreviation gets its own handling: uppercase + validate, then refuse
@@ -462,7 +593,7 @@ async function handleMyCompetitions(req, res) {
     .order('start_date', { ascending: true })
   if (cErr) return res.status(500).json({ error: cErr.message })
 
-  return res.json(comps ?? [])
+  return res.json(await withRegistrationsCount(comps ?? []))
 }
 
 
@@ -1232,9 +1363,10 @@ async function handleCompetitionTeamInvite(req, res) {
 
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
-// Most resources serve any authenticated user; only competitions and
-// competition-managers stay superadmin-gated. profile-search was relaxed in
-// Phase 3d (captain invite picker needs it).
+// competition-managers stays purely superadmin-gated. Every other resource
+// verifies auth internally because the audience differs per method (e.g.
+// competitions PATCH admits competition managers, GET/POST do not). See the
+// header comment block for the full per-method auth matrix.
 export default async function handler(req, res) {
   const resource = req.query.resource
 
@@ -1244,13 +1376,12 @@ export default async function handler(req, res) {
   if (resource === 'competition-team')           return handleCompetitionTeam(req, res)
   if (resource === 'competition-team-member')    return handleCompetitionTeamMember(req, res)
   if (resource === 'competition-team-invite')    return handleCompetitionTeamInvite(req, res)
+  if (resource === 'competitions')               return handleCompetitions(req, res)
 
-  // The remaining resources require superadmin. Verify once and share the user
-  // object across the two handlers.
+  // competition-managers is the one remaining purely-superadmin resource.
   const { user, error: authErr } = await verifySuperAdmin(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
-  if (resource === 'competitions')         return handleCompetitions(req, res, user)
   if (resource === 'competition-managers') return handleCompetitionManagers(req, res, user)
   return res.status(404).json({ error: 'unknown resource' })
 }

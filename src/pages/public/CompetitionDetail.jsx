@@ -60,6 +60,52 @@ function fullName(p) {
   return [p.first_name, p.last_name].filter(Boolean).join(' ')
 }
 
+// Description + structured links sections. Rendered when either field is
+// populated; the whole region is omitted if both are empty so the page reads
+// the same as before Phase 2a.
+function DescriptionAndLinks({ description, links }) {
+  const trimmed = typeof description === 'string' ? description.trim() : ''
+  const hasDescription = trimmed.length > 0
+  const cleanLinks = Array.isArray(links)
+    ? links.filter(l => l && typeof l.label === 'string' && typeof l.url === 'string' && l.label.trim() && l.url.trim())
+    : []
+  const hasLinks = cleanLinks.length > 0
+  if (!hasDescription && !hasLinks) return null
+
+  return (
+    <>
+      {hasDescription && (
+        <div>
+          <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">About</h2>
+          <div className="bg-surface border border-line rounded-2xl p-6">
+            <p className="text-white text-sm leading-relaxed whitespace-pre-wrap">{trimmed}</p>
+          </div>
+        </div>
+      )}
+
+      {hasLinks && (
+        <div>
+          <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">Schedule + Resources</h2>
+          <div className="space-y-2">
+            {cleanLinks.map((l, i) => (
+              <a
+                key={`link-${i}`}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block bg-surface hover:bg-line/40 border border-line rounded-2xl px-4 py-3 transition-colors"
+              >
+                <p className="text-brand font-bold text-sm">{l.label}</p>
+                <p className="text-white text-[11px] opacity-50 mt-0.5 break-all">{l.url}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function PlayerLine({ player }) {
   const name = fullName(player)
   return (
@@ -343,6 +389,8 @@ export default function CompetitionDetail() {
             </>
           )}
         </div>
+
+        <DescriptionAndLinks description={comp.description} links={comp.links} />
 
         <RosterSection slug={comp.slug} />
       </section>
