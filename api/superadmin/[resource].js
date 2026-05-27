@@ -348,27 +348,43 @@ async function handleCompetitions(req, res) {
     // Abbreviation gets its own handling: uppercase + validate, then refuse
     // the change if any registrations already exist (their payment refs were
     // generated against the old prefix and we don't rewrite history).
+    //
+    // Change-detection: if the normalised incoming value equals the stored
+    // value, this is a no-op. Regex validation and the registrations lock
+    // check are both skipped so a client re-sending the full payload with
+    // the unchanged abbreviation does not trip the 409 — relevant for the
+    // manager Edit Details form, which always sends every field.
     if (Object.prototype.hasOwnProperty.call(body, 'abbreviation')) {
       const raw = body.abbreviation
-      if (raw === null || (typeof raw === 'string' && raw.trim() === '')) {
-        updates.abbreviation = null
-      } else {
-        const next = String(raw).trim().toUpperCase()
-        if (!ABBREV_RE.test(next)) {
+      const normalised = (raw === null || (typeof raw === 'string' && raw.trim() === ''))
+        ? null
+        : String(raw).trim().toUpperCase()
+
+      const { data: current, error: curErr } = await supabaseAdmin
+        .from('competitions')
+        .select('abbreviation')
+        .eq('id', id)
+        .maybeSingle()
+      if (curErr) return res.status(500).json({ error: curErr.message })
+      if (!current) return res.status(404).json({ error: 'competition not found' })
+
+      if (normalised !== current.abbreviation) {
+        if (normalised !== null && !ABBREV_RE.test(normalised)) {
           return badRequest(res, 'abbreviation must be 2 to 8 uppercase letters or digits')
         }
-        updates.abbreviation = next
-      }
 
-      const { count, error: cntErr } = await supabaseAdmin
-        .from('competition_registrations')
-        .select('id', { count: 'exact', head: true })
-        .eq('competition_id', id)
-      if (cntErr) return res.status(500).json({ error: cntErr.message })
-      if ((count ?? 0) > 0) {
-        return res.status(409).json({
-          error: 'Cannot change abbreviation while registrations exist. Existing payment references would become inconsistent.',
-        })
+        const { count, error: cntErr } = await supabaseAdmin
+          .from('competition_registrations')
+          .select('id', { count: 'exact', head: true })
+          .eq('competition_id', id)
+        if (cntErr) return res.status(500).json({ error: cntErr.message })
+        if ((count ?? 0) > 0) {
+          return res.status(409).json({
+            error: 'Cannot change abbreviation while registrations exist. Existing payment references would become inconsistent.',
+          })
+        }
+
+        updates.abbreviation = normalised
       }
     }
 
