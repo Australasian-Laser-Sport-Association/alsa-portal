@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Briefcase } from 'lucide-react'
 import { useAuth } from '../lib/useAuth'
 import { COMMITTEE_ROLES } from '../lib/roles'
 import { apiFetch } from '../lib/apiFetch.js'
@@ -71,7 +72,15 @@ const NAV_ITEMS = [
     ),
     label: 'Volunteers',
   },
-  { sectionLabel: 'Competitions', superadminOnly: true },
+  // The Competitions section header and the superadmin "Competitions"
+  // link below are gated dynamically in buildNavItems(). Managed
+  // competition links are injected after the superadmin link so the
+  // section shows the right set per role:
+  //   superadmin only           → Competitions
+  //   superadmin + manager      → Competitions + per-comp manage links
+  //   committee manager only    → per-comp manage links
+  //   committee, no grants      → section is hidden entirely
+  { sectionLabel: 'Competitions' },
   {
     to: '/admin/competitions',
     icon: (
@@ -129,6 +138,34 @@ const NAV_ITEMS = [
     label: 'ZLTAC Results',
   },
 ]
+
+// Walks NAV_ITEMS and injects manager-scope entries: the Competitions
+// section header shows when superadmin OR there's at least one managed
+// competition; the "Competitions" CRUD link shows for superadmin only;
+// each managed competition becomes a /manage/competitions/{slug} link.
+function buildNavItems(managedCompetitions, isSuperAdmin) {
+  const hasManaged = managedCompetitions.length > 0
+  const out = []
+  for (const item of NAV_ITEMS) {
+    if (item.sectionLabel === 'Competitions') {
+      if (isSuperAdmin || hasManaged) out.push(item)
+      continue
+    }
+    if (item.to === '/admin/competitions') {
+      if (isSuperAdmin) out.push(item)
+      for (const c of managedCompetitions) {
+        out.push({
+          to: `/manage/competitions/${c.slug}`,
+          icon: <Briefcase className="w-4 h-4" />,
+          label: c.name,
+        })
+      }
+      continue
+    }
+    out.push(item)
+  }
+  return out
+}
 
 function SidebarLink({ to, end, icon, label, bold, onClick }) {
   return (
@@ -241,7 +278,7 @@ export default function AdminLayout() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto">
-          {NAV_ITEMS.filter(item => !item.superadminOnly || isSuperAdmin).map((item, i) =>
+          {buildNavItems(managedCompetitions ?? [], isSuperAdmin).filter(item => !item.superadminOnly || isSuperAdmin).map((item, i) =>
             item.sectionLabel ? (
               <div key={`section-${i}`} className="mt-4 mb-1 px-2 flex items-center gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/25">{item.sectionLabel}</p>

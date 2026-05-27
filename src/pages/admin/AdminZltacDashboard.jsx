@@ -73,15 +73,27 @@ const TILE_SECTIONS = [
   },
 ]
 
-function Tile({ label, to, description, Icon }) {
+// Tiles support two visual tones. `brand` (default) is the standard green
+// admin look. `purple` is reserved for the "My Dashboard" section at the
+// top of the page, which surfaces the caller's managed competitions and
+// is intentionally visually distinct from the general admin tiles below.
+// Purple tokens mirror the existing superadmin-badge palette used in
+// AdminUsers / PlayerDashboard (bg-purple-500/15, text-purple-400,
+// border-purple-500/30) so no new colour values are introduced.
+function Tile({ label, to, description, Icon, tone = 'brand' }) {
+  const isPurple = tone === 'purple'
+  const outerCls = isPurple
+    ? 'bg-surface border border-purple-500/30 rounded-xl p-5 hover:border-purple-500/50 hover:bg-purple-500/5 transition-colors block'
+    : 'bg-surface border border-line rounded-xl p-5 hover:border-brand/40 hover:bg-line/20 transition-colors block'
+  const badgeCls = isPurple
+    ? 'w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0'
+    : 'w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center flex-shrink-0'
+  const iconCls = isPurple ? 'w-5 h-5 text-purple-400' : 'w-5 h-5 text-brand'
   return (
-    <Link
-      to={to}
-      className="bg-surface border border-line rounded-xl p-5 hover:border-brand/40 hover:bg-line/20 transition-colors block"
-    >
+    <Link to={to} className={outerCls}>
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center flex-shrink-0">
-          <Icon className="w-5 h-5 text-brand" strokeWidth={1.75} />
+        <div className={badgeCls}>
+          <Icon className={iconCls} strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
           <p className="text-white font-bold text-sm">{label}</p>
@@ -92,10 +104,13 @@ function Tile({ label, to, description, Icon }) {
   )
 }
 
-function TileSection({ title, children }) {
+function TileSection({ title, children, tone = 'default' }) {
+  const headerCls = tone === 'purple'
+    ? 'text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-3'
+    : 'text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-3'
   return (
     <div className="mb-8">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-3">{title}</p>
+      <p className={headerCls}>{title}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {children}
       </div>
@@ -307,9 +322,29 @@ export default function AdminZltacDashboard() {
         </p>
       </div>
 
-      {/* Tile grid — sections role-gated. Non-committee managers see only
-          the Managed Competitions section; committee sees the full set
-          plus any competitions they manage. */}
+      {/* My Dashboard — promoted to the top so managers see their
+          competitions immediately on entering the hub. Purple-toned to
+          differentiate from the green admin tile sections below; the
+          section only renders when the caller has at least one managed
+          competition (superadmins implicitly manage every non-archived
+          competition via the my-competitions shortcut). */}
+      {hasManagedCompetitions && (
+        <TileSection title="My Dashboard" tone="purple">
+          {managedCompetitions.map(c => (
+            <Tile
+              key={c.id}
+              label={c.name}
+              to={`/manage/competitions/${c.slug}`}
+              description={c.start_date ? 'Manages registrations, payments, and content.' : 'Pre-nationals competition.'}
+              Icon={Briefcase}
+              tone="purple"
+            />
+          ))}
+        </TileSection>
+      )}
+
+      {/* Tile grid — sections role-gated. Non-committee managers see
+          nothing in this block; committee sees the full set. */}
       {TILE_SECTIONS.filter(section => {
         if (!isCommittee) return false
         if (section.superadminOnly && !isSuperAdmin) return false
@@ -319,20 +354,6 @@ export default function AdminZltacDashboard() {
           {section.tiles.map(t => <Tile key={t.to} {...t} />)}
         </TileSection>
       ))}
-
-      {hasManagedCompetitions && (
-        <TileSection title="Managed Competitions">
-          {managedCompetitions.map(c => (
-            <Tile
-              key={c.id}
-              label={c.name}
-              to={`/manage/competitions/${c.slug}`}
-              description={c.start_date ? `Manages registrations, payments, and content.` : 'Pre-nationals competition.'}
-              Icon={Briefcase}
-            />
-          ))}
-        </TileSection>
-      )}
 
       {/* Stats + activity feed — ZLTAC-scoped, committee-only. Hidden
           entirely for non-committee managers. */}
