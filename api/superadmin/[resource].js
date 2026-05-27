@@ -629,10 +629,31 @@ async function handleMyCompetitions(req, res) {
   const { user, error: authErr } = await verifyUser(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
-  // Fetch the manager grants, then the competitions they point at. Could be a
-  // join via PostgREST embed; doing it in two steps keeps the row shape
-  // identical to the superadmin list (so the client renders both with the same
-  // code path).
+  // Superadmins implicitly manage every non-archived competition. This
+  // avoids forcing a manual competition_managers grant per superadmin per
+  // event, which is friction with no security value (superadmin already
+  // bypasses the manager-or-superadmin gate on every write path).
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .select('roles')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profileErr) return res.status(500).json({ error: profileErr.message })
+  const isSuperadmin = Array.isArray(profile?.roles) && profile.roles.includes('superadmin')
+
+  if (isSuperadmin) {
+    const { data: allComps, error: allErr } = await supabaseAdmin
+      .from('competitions')
+      .select('*')
+      .is('archived_at', null)
+      .order('start_date', { ascending: true })
+    if (allErr) return res.status(500).json({ error: allErr.message })
+    return res.json(await withRegistrationsCount(allComps ?? []))
+  }
+
+  // Non-superadmin: fetch the manager grants, then the competitions they
+  // point at. Two-step keeps the row shape identical to the superadmin list
+  // (so the client renders both with the same code path).
   const { data: grants, error: gErr } = await supabaseAdmin
     .from('competition_managers')
     .select('competition_id')

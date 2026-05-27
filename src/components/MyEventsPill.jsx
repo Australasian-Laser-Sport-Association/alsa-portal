@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { apiFetch } from '../lib/apiFetch.js'
 
 // Single dropdown that gathers a player's active event memberships into one
@@ -50,22 +50,26 @@ export default function MyEventsPill({
   teamStatus = null,
   onNavigate,
 }) {
-  const [regs, setRegs] = useState(null) // null = loading; array = loaded
+  const [regs, setRegs] = useState(null) // null = loading; array = loaded (player scope)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef(null)
   const panelRef = useRef(null)
+  const location = useLocation()
 
-  // Refetch when the user (auth identity) changes. No polling — the rest of
-  // the app refreshes by navigation, and pre-nats registrations don't churn
-  // mid-session in normal flow. No anon-reset branch: NavBar gates this
-  // component on `{user && ...}`, so it never mounts without a user.
+  // Refetch on user identity change AND on route navigation. The
+  // location.pathname dep keeps this fresh after the user registers /
+  // cancels without needing a global refresh signal. setState is inside the
+  // async .then() so the cascading-renders lint rule does not fire. No
+  // anon-reset branch: NavBar gates this component on `{user && ...}`, so
+  // it never mounts without a user. Manager-scope rows live on
+  // AdminHubPill — this pill is player-scope only.
   useEffect(() => {
     let cancelled = false
     apiFetch('/api/superadmin/my-registrations')
       .then(data => { if (!cancelled) setRegs(Array.isArray(data) ? data : []) })
       .catch(() => { if (!cancelled) setRegs([]) })
     return () => { cancelled = true }
-  }, [user])
+  }, [user, location.pathname])
 
   // Close on outside click / Escape. Attached only while open to avoid
   // document-listener cost on every render.
@@ -87,7 +91,8 @@ export default function MyEventsPill({
     }
   }, [open])
 
-  // Hide while loading on first fetch. Hide if no memberships at all.
+  // Hide while loading on first fetch. Hide if the user has no event
+  // memberships (ZLTAC registration or any pre-nats registration).
   if (regs === null) return null
   const hasPreNats = regs.length > 0
   if (!hasZltacReg && !hasPreNats) return null

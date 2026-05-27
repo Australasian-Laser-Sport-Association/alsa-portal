@@ -6,6 +6,7 @@ import { isCommittee } from '../lib/roles'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
 import ActiveEventsPill from './ActiveEventsPill'
 import MyEventsPill from './MyEventsPill'
+import AdminHubPill from './AdminHubPill'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -97,14 +98,11 @@ function MobileDropdown({ link, onNavigate }) {
   )
 }
 
-// Player Hub / Team Hub previously lived here as top-level pills. They moved
-// inside the My Events dropdown (src/components/MyEventsPill.jsx) so users
-// with mixed ZLTAC + pre-nats memberships see one entry-point instead of
-// several. Admin Hub stays as a top-level pill since it's a different
-// audience (committee, not players).
-const HUB_PILLS = [
-  { key: 'admin',  label: 'Admin Hub',  to: '/admin',        color: '#7C3AED' },
-]
+// Player Hub / Team Hub moved into the My Events dropdown
+// (src/components/MyEventsPill.jsx). Admin Hub also became a dropdown
+// (src/components/AdminHubPill.jsx) so non-committee managers can land on
+// /manage/competitions/:slug without a UI dead end. No top-level
+// destination pills remain.
 
 export default function NavBar() {
   const { user, signOut, profile } = useAuth()
@@ -152,26 +150,13 @@ export default function NavBar() {
     return () => { cancelled = true }
   }, [user])
 
-  const visiblePills = user
-    ? { admin: isCommittee(profile) }
-    : { admin: false }
   const hasZltacTeam = !!myTeamStatus
+  const userIsCommittee = isCommittee(profile)
 
   async function handleSignOut() {
     await signOut()
     navigate('/login')
   }
-
-  const pillStyle = (color) => ({
-    backgroundColor: color,
-    fontSize: '13px',
-    fontWeight: 500,
-    padding: '6px 14px',
-    borderRadius: '20px',
-    color: '#fff',
-    transition: 'opacity 0.15s',
-    whiteSpace: 'nowrap',
-  })
 
   return (
     <header className="sticky top-0 z-50 bg-surface border-b border-line">
@@ -214,17 +199,13 @@ export default function NavBar() {
               teamStatus={myTeamStatus}
             />
           )}
-          {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
-            <Link
-              key={p.key}
-              to={p.to}
-              style={pillStyle(p.color)}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-            >
-              {p.label}
-            </Link>
-          ))}
+          {user && (
+            <AdminHubPill
+              variant="desktop"
+              user={user}
+              isCommittee={userIsCommittee}
+            />
+          )}
 
           {user ? (
             <>
@@ -281,17 +262,14 @@ export default function NavBar() {
               onNavigate={() => setMobileOpen(false)}
             />
           )}
-          {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
-            <Link
-              key={p.key}
-              to={p.to}
-              onClick={() => setMobileOpen(false)}
-              className="py-2.5 px-3 text-sm font-semibold rounded-lg transition-colors"
-              style={{ backgroundColor: p.color, color: '#fff' }}
-            >
-              {p.label}
-            </Link>
-          ))}
+          {user && (
+            <AdminHubPill
+              variant="mobile"
+              user={user}
+              isCommittee={userIsCommittee}
+              onNavigate={() => setMobileOpen(false)}
+            />
+          )}
 
           {navLinks.map(link =>
             link.children
