@@ -104,6 +104,7 @@ const COMPETITION_PATCH_FIELDS = [
   'archived_at',
   'description',
   'links',
+  'banner_url',
 ]
 
 // Phase 2a content-field validation. The SQL constraint only enforces
@@ -141,6 +142,14 @@ function validateContent(body) {
         return `links[${i}].url must start with http:// or https://`
       }
       if (url.length > 2048) return `links[${i}].url must be 2048 characters or fewer`
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'banner_url')) {
+    const b = body.banner_url
+    if (b !== null && typeof b !== 'string') return 'banner_url must be a string or null'
+    if (typeof b === 'string' && b.trim() !== '') {
+      if (!/^https:\/\//i.test(b)) return 'banner_url must start with https://'
+      if (b.length > 2048) return 'banner_url must be 2048 characters or fewer'
     }
   }
   return null
@@ -276,6 +285,9 @@ async function handleCompetitions(req, res) {
       description:
         typeof body.description === 'string' ? body.description.trim() : (body.description ?? null),
       links: Array.isArray(body.links) ? body.links : null,
+      banner_url: typeof body.banner_url === 'string' && body.banner_url.trim() !== ''
+        ? body.banner_url.trim()
+        : null,
       created_by: user.id,
     }
     const { data, error } = await supabaseAdmin
@@ -385,6 +397,31 @@ async function handleCompetitions(req, res) {
         }
 
         updates.abbreviation = normalised
+      }
+    }
+
+    // Banner URL no-op detection: if the incoming value matches the stored
+    // value (treating empty string as null), skip writing it so an unchanged
+    // form save does not churn the row. Same shape as the abbreviation
+    // dirty-check above. Validation already ran in validateContent.
+    if (Object.prototype.hasOwnProperty.call(updates, 'banner_url')) {
+      const raw = updates.banner_url
+      const normalised = (raw === null || (typeof raw === 'string' && raw.trim() === ''))
+        ? null
+        : String(raw).trim()
+
+      const { data: currentBanner, error: bErr } = await supabaseAdmin
+        .from('competitions')
+        .select('banner_url')
+        .eq('id', id)
+        .maybeSingle()
+      if (bErr) return res.status(500).json({ error: bErr.message })
+      if (!currentBanner) return res.status(404).json({ error: 'competition not found' })
+
+      if (normalised === currentBanner.banner_url) {
+        delete updates.banner_url
+      } else {
+        updates.banner_url = normalised
       }
     }
 

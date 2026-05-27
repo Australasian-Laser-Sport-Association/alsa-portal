@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { supabase } from '../../lib/supabase.js'
 
 // Shared competition create/edit form. Used by:
 //   - the admin Create / Edit modal in AdminCompetitions.jsx
@@ -14,6 +15,9 @@ const DESCRIPTION_MAX = 10000
 const LINK_LABEL_MAX = 80
 const LINK_URL_MAX = 2048
 const MAX_LINKS = 20
+const BANNER_BUCKET = 'competition-banners'
+const BANNER_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+const BANNER_MAX_BYTES = 5 * 1024 * 1024
 
 // ISO timestamp to the YYYY-MM-DDTHH:MM format that <input type="datetime-local">
 // expects in the user's local timezone.
@@ -70,6 +74,10 @@ export default function CompetitionEditForm({
   const [description, setDescription] = useState(initial?.description ?? '')
   const [links, setLinks] = useState(() => linksFromInitial(initial?.links))
   const [keySeed, setKeySeed] = useState(links.length)
+  const [bannerUrl, setBannerUrl] = useState(initial?.banner_url ?? null)
+  const [bannerUploading, setBannerUploading] = useState(false)
+  const [bannerError, setBannerError] = useState(null)
+  const bannerInputRef = useRef(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
@@ -90,6 +98,8 @@ export default function CompetitionEditForm({
     const reseeded = linksFromInitial(initial?.links)
     setLinks(reseeded)
     setKeySeed(reseeded.length)
+    setBannerUrl(initial?.banner_url ?? null)
+    setBannerError(null)
     setError(null)
   }
 
@@ -105,6 +115,55 @@ export default function CompetitionEditForm({
 
   function removeLink(i) {
     setLinks(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  // Banner upload — direct to Supabase Storage. The path encodes the
+  // competition id, which the storage write policy joins against
+  // competition_managers. The resulting public URL is held in form state and
+  // sent on the next Save; we do NOT write to the row until the user submits.
+  // Orphaned files on cancel-after-upload are an accepted trade-off (a future
+  // cleanup job can sweep storage objects not referenced by any
+  // competitions.banner_url).
+  async function handleBannerSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBannerError(null)
+    if (!initial?.id) {
+      setBannerError('Save the competition first before uploading a banner.')
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+      return
+    }
+    if (!BANNER_ACCEPTED_TYPES.includes(file.type)) {
+      setBannerError('Banner must be PNG, JPEG, or WebP.')
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+      return
+    }
+    if (file.size > BANNER_MAX_BYTES) {
+      setBannerError('Banner must be 5 MB or less.')
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+      return
+    }
+    setBannerUploading(true)
+    try {
+      const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+      const path = `${initial.id}/${Date.now()}.${ext}`
+      const { data: up, error: upErr } = await supabase.storage
+        .from(BANNER_BUCKET)
+        .upload(path, file, { upsert: false, cacheControl: '3600', contentType: file.type })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from(BANNER_BUCKET).getPublicUrl(up.path)
+      setBannerUrl(urlData.publicUrl)
+    } catch (err) {
+      setBannerError(err?.message || 'Banner upload failed. Please try again.')
+    } finally {
+      setBannerUploading(false)
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+    }
+  }
+
+  function clearBanner() {
+    setBannerUrl(null)
+    setBannerError(null)
   }
 
   async function submit(e) {
@@ -154,6 +213,7 @@ export default function CompetitionEditForm({
         payment_info_visible: paymentVisible,
         description: description.trim(),
         links: cleanedLinks,
+        banner_url: bannerUrl,
       }
       await onSubmit(payload)
     } catch (err) {
@@ -328,6 +388,72 @@ export default function CompetitionEditForm({
           <span className="text-white text-xs">Payment info visible to registered players</span>
         </label>
       </div>
+
+      {isEdit && (
+        <div className="bg-base border border-line rounded-xl p-4 space-y-3">
+          <p className="text-white text-xs font-bold uppercase tracking-wider">Header Banner</p>
+          <p className="text-white text-[11px] opacity-60">
+            Recommended size 4096 x 1716. Maximum 5 MB. PNG, JPEG, or WebP.
+          </p>
+
+          <input
+            ref={bannerInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={handleBannerSelect}
+            className="hidden"
+          />
+
+          {bannerError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+              <p className="text-red-400 text-xs">{bannerError}</p>
+            </div>
+          )}
+
+          {bannerUrl ? (
+            <div className="space-y-3">
+              <img
+                src={bannerUrl}
+                alt="Banner preview"
+                className="w-full max-w-[240px] aspect-[4096/1716] object-cover rounded-lg border border-line"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={bannerUploading}
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="text-xs bg-line hover:bg-[#374056] disabled:opacity-50 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {bannerUploading ? 'Uploading...' : 'Replace'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bannerUploading}
+                  onClick={clearBanner}
+                  className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+              <p className="text-white text-[11px] opacity-50">
+                Changes apply when you save the form.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={bannerUploading}
+              onClick={() => bannerInputRef.current?.click()}
+              className="w-full border border-dashed border-line hover:border-brand disabled:opacity-50 rounded-xl py-6 text-center transition-colors"
+            >
+              <p className="text-white text-sm font-semibold">
+                {bannerUploading ? 'Uploading...' : 'Upload banner'}
+              </p>
+              <p className="text-white text-[11px] opacity-50 mt-1">PNG, JPEG, or WebP. Up to 5 MB.</p>
+            </button>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Description</label>

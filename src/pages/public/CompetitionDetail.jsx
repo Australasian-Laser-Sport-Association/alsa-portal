@@ -305,6 +305,16 @@ export default function CompetitionDetail() {
 
   return (
     <div className="bg-base text-white min-h-screen flex flex-col">
+      {comp.banner_url && (
+        <section className="max-w-5xl mx-auto px-6 pt-8">
+          <img
+            src={comp.banner_url}
+            alt={`${comp.name} banner`}
+            className="w-full aspect-[4096/1716] object-cover rounded-2xl"
+          />
+        </section>
+      )}
+
       <section
         className="relative py-20 border-b border-line overflow-hidden"
         style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,255,65,0.07) 0%, transparent 60%), #0F0F0F' }}
