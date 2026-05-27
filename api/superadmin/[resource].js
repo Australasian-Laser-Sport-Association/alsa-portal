@@ -6,19 +6,22 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 // Vercel function to stay under the Hobby plan's 12-function ceiling.
 //
 // URL surface preserved exactly so existing callers/tests don't need changes:
-//   /api/superadmin/competitions             → POST, GET, PATCH    (superadmin)
-//   /api/superadmin/competition-managers     → POST, GET, DELETE   (superadmin)
-//   /api/superadmin/profile-search           → GET                 (superadmin)
-//   /api/superadmin/my-competitions          → GET                 (any auth user)
-//   /api/superadmin/competition-registration → POST, GET, DELETE   (any auth user)
-//   /api/superadmin/competition-team         → POST, GET, PATCH, DELETE (any auth user)
+//   /api/superadmin/competitions               → POST, GET, PATCH    (superadmin)
+//   /api/superadmin/competition-managers       → POST, GET, DELETE   (superadmin)
+//   /api/superadmin/profile-search             → GET                 (any auth user)
+//   /api/superadmin/my-competitions            → GET                 (any auth user)
+//   /api/superadmin/competition-registration   → POST, GET, DELETE   (any auth user)
+//   /api/superadmin/competition-team           → POST, GET, PATCH, DELETE (any auth user)
+//   /api/superadmin/competition-team-member    → POST, GET, DELETE   (any auth user)
+//   /api/superadmin/competition-team-invite    → GET, PATCH          (any auth user)
 //
 // Vercel maps [resource].js to req.query.resource. Auth is per-branch because
-// 'my-competitions', 'competition-registration', and 'competition-team' serve
-// any authenticated user, unlike the four admin resources. The "/superadmin/"
-// path segment is a directory-naming artefact of the function-count
-// consolidation, not an assertion that every resource here is gated by
-// verifySuperAdmin — see Phase 1d notes.
+// most resources here serve any authenticated user — only competitions and
+// competition-managers are superadmin-gated. The "/superadmin/" path segment
+// is a directory-naming artefact of the function-count consolidation, not an
+// assertion that every resource here is gated by verifySuperAdmin (see Phase
+// 1d notes). profile-search was relaxed from superadmin-only to authenticated
+// in Phase 3d because the captain invite picker needs it.
 //
 // Response shape mirrors /api/admin/*: bare object, no envelope, errors as
 // { error: '<message>' }. Creation responses use 201; everything else 200.
@@ -387,12 +390,17 @@ async function handleCompetitionManagers(req, res, user) {
 
 
 // ── profile-search ────────────────────────────────────────────────────────────
-// Lightweight alias-only profile lookup the manager-grant UI uses. Deliberately
-// narrow on purpose: only superadmins can call it, only non-placeholder
-// profiles are returned, no email is included (that surfaces on the
-// manager-list response). Case-insensitive ilike on alias, capped at 10 rows.
+// Lightweight alias-only profile lookup. Two callers today: the superadmin
+// manager-grant UI and the Phase 3d captain invite picker. Auth was relaxed
+// to authenticated in Phase 3d (captain isn't a superadmin). Only
+// non-placeholder profiles are returned; no email is exposed (that surfaces
+// on the manager-list response). Case-insensitive ilike on alias, capped at
+// 10 rows.
 async function handleProfileSearch(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
   const q = (req.query.q ?? '').trim()
   if (q.length < 2) return badRequest(res, 'q must be at least 2 characters')
@@ -615,6 +623,26 @@ async function handleCompetitionRegistration(req, res) {
       }
     }
 
+    // Pending invites for this competition are abandoned alongside the
+    // registration so the user can cleanly re-register later. PostgREST does
+    // not accept a subquery in DELETE, so fetch the competition's team ids
+    // first then DELETE WHERE team_id IN (...).
+    const { data: compTeams, error: compTeamsErr } = await supabaseAdmin
+      .from('teams')
+      .select('id')
+      .eq('competition_id', competitionId)
+    if (compTeamsErr) return res.status(500).json({ error: `pending invite cleanup (teams lookup): ${compTeamsErr.message}` })
+    const compTeamIds = (compTeams ?? []).map(t => t.id)
+    if (compTeamIds.length > 0) {
+      const { error: pendingErr } = await supabaseAdmin
+        .from('team_members')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('invite_status', 'pending')
+        .in('team_id', compTeamIds)
+      if (pendingErr) return res.status(500).json({ error: `pending invite cleanup: ${pendingErr.message}` })
+    }
+
     const { error: delErr } = await supabaseAdmin
       .from('competition_registrations')
       .delete()
@@ -633,7 +661,7 @@ async function handleCompetitionRegistration(req, res) {
 // add the invite flow on top of this.
 
 const TEAM_NAME_MAX = 50
-const TEAM_MEMBER_COLUMNS = 'user_id, roles, invite_status, invited_at, responded_at, profile:profiles!user_id(id, alias, first_name, last_name)'
+const TEAM_MEMBER_COLUMNS = 'id, user_id, roles, invite_status, invited_at, responded_at, invited_by, profile:profiles!user_id(id, alias, first_name, last_name)'
 
 async function loadTeamWithMembers(teamId) {
   const [{ data: team, error: tErr }, { data: members, error: mErr }] = await Promise.all([
@@ -662,10 +690,14 @@ async function handleCompetitionTeam(req, res) {
     const competitionId = req.query.competition_id
     if (!competitionId) return badRequest(res, 'competition_id query param is required')
 
+    // Filter to accepted memberships so pending invitees do NOT see the team
+    // they have been invited to via this endpoint — they fetch from
+    // competition-team-invite until they accept.
     const { data: membership, error: memErr } = await supabaseAdmin
       .from('team_members')
       .select('team_id, teams!inner(id, competition_id)')
       .eq('user_id', user.id)
+      .eq('invite_status', 'accepted')
       .eq('teams.competition_id', competitionId)
       .maybeSingle()
     if (memErr) return res.status(500).json({ error: memErr.message })
@@ -799,16 +831,21 @@ async function handleCompetitionTeam(req, res) {
 
     const { data: members, error: memErr } = await supabaseAdmin
       .from('team_members')
-      .select('user_id, roles')
+      .select('user_id, roles, invite_status')
       .eq('team_id', teamId)
     if (memErr) return res.status(500).json({ error: memErr.message })
 
-    const callerRow = (members ?? []).find(m => m.user_id === user.id)
+    const callerRow = (members ?? []).find(m => m.user_id === user.id && m.invite_status === 'accepted')
     const isCaptain = !!callerRow && Array.isArray(callerRow.roles) && callerRow.roles.includes('captain')
     if (!isCaptain) {
       return res.status(403).json({ error: 'Only the team captain can disband the team.' })
     }
-    if ((members?.length ?? 0) > 1) {
+    // Count only accepted members. Pending invitees do not block disbandment
+    // (the team_members ON DELETE CASCADE on the teams delete cleans them up).
+    const acceptedOthers = (members ?? []).filter(
+      m => m.invite_status === 'accepted' && m.user_id !== user.id
+    )
+    if (acceptedOthers.length > 0) {
       return res.status(409).json({ error: 'Remove all team members before disbanding.' })
     }
 
@@ -837,24 +874,383 @@ async function handleCompetitionTeam(req, res) {
 }
 
 
+// ── competition-team-member ──────────────────────────────────────────────────
+// Phase 3d: captain-driven invite / revoke / remove + member self-leave. Plan
+// term -> column mapping is recorded in the Phase 3d migration header
+// (20260527020000_team_members_invite_flow.sql). Summary:
+//   POST   { team_id, invitee_user_id }  -> captain invites a player (pending row)
+//   GET    ?team_id=...                  -> roster (accepted + pending), sorted
+//   DELETE ?id=...                       -> captain revokes/removes OR member leaves
+//
+// Pending invitees use competition-team-invite PATCH (accept/decline), not
+// this DELETE, so the audit trail keeps the declined row.
+
+async function handleCompetitionTeamMember(req, res) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  if (req.method === 'POST') {
+    const body = req.body ?? {}
+    const teamId = body.team_id
+    const inviteeId = body.invitee_user_id
+    if (!teamId) return badRequest(res, 'team_id is required')
+    if (!inviteeId) return badRequest(res, 'invitee_user_id is required')
+
+    // Caller must be an accepted captain of the team.
+    const { data: callerRow, error: cErr } = await supabaseAdmin
+      .from('team_members')
+      .select('roles, invite_status')
+      .eq('team_id', teamId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (cErr) return res.status(500).json({ error: cErr.message })
+    if (
+      !callerRow ||
+      callerRow.invite_status !== 'accepted' ||
+      !Array.isArray(callerRow.roles) ||
+      !callerRow.roles.includes('captain')
+    ) {
+      return res.status(403).json({ error: 'Only the team captain can invite players.' })
+    }
+
+    // Team must exist and its competition must still be open for registration.
+    const { data: team, error: tErr } = await supabaseAdmin
+      .from('teams')
+      .select('id, competition_id, competition:competitions!inner(id, archived_at, registration_close_at)')
+      .eq('id', teamId)
+      .maybeSingle()
+    if (tErr) return res.status(500).json({ error: tErr.message })
+    if (!team) return res.status(404).json({ error: 'team not found' })
+    const comp = team.competition
+    if (comp.archived_at) return res.status(400).json({ error: 'This competition has been archived.' })
+    if (comp.registration_close_at && new Date(comp.registration_close_at) < new Date()) {
+      return res.status(400).json({ error: 'Registration has closed for this competition.' })
+    }
+
+    // Invitee must be registered for the competition.
+    const { data: reg, error: regErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .select('id')
+      .eq('competition_id', team.competition_id)
+      .eq('user_id', inviteeId)
+      .maybeSingle()
+    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (!reg) {
+      return res.status(400).json({ error: 'Player must register for this competition before they can be invited.' })
+    }
+
+    // Invitee must not already be on another team in this competition
+    // (accepted OR pending). One team per player per competition.
+    const { data: existing, error: exErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, teams!inner(competition_id)')
+      .eq('user_id', inviteeId)
+      .in('invite_status', ['accepted', 'pending'])
+      .eq('teams.competition_id', team.competition_id)
+    if (exErr) return res.status(500).json({ error: exErr.message })
+    if ((existing ?? []).length > 0) {
+      return res.status(409).json({ error: 'Player is already on a team in this competition.' })
+    }
+
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from('team_members')
+      .insert({
+        team_id: teamId,
+        user_id: inviteeId,
+        roles: ['player'],
+        invite_status: 'pending',
+        invited_at: new Date().toISOString(),
+        invited_by: user.id,
+      })
+      .select(TEAM_MEMBER_COLUMNS)
+      .single()
+    if (insErr) return res.status(500).json({ error: `team_members insert: ${insErr.message}` })
+
+    return res.status(201).json(inserted)
+  }
+
+  if (req.method === 'GET') {
+    const teamId = req.query.team_id
+    if (!teamId) return badRequest(res, 'team_id query param is required')
+
+    // Caller must be on the team with any invite_status.
+    const { data: callerRow, error: cErr } = await supabaseAdmin
+      .from('team_members')
+      .select('invite_status')
+      .eq('team_id', teamId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (cErr) return res.status(500).json({ error: cErr.message })
+    if (!callerRow) return res.status(403).json({ error: 'Not on this team.' })
+
+    const { data: members, error: mErr } = await supabaseAdmin
+      .from('team_members')
+      .select(TEAM_MEMBER_COLUMNS)
+      .eq('team_id', teamId)
+    if (mErr) return res.status(500).json({ error: mErr.message })
+
+    // Sort in JS: captain first, then accepted alphabetically by alias, then
+    // pending by invited_at desc.
+    const sorted = (members ?? []).slice().sort((a, b) => {
+      const aCap = (a.roles ?? []).includes('captain')
+      const bCap = (b.roles ?? []).includes('captain')
+      if (aCap !== bCap) return aCap ? -1 : 1
+      const aPending = a.invite_status === 'pending'
+      const bPending = b.invite_status === 'pending'
+      if (aPending !== bPending) return aPending ? 1 : -1
+      if (aPending) {
+        return new Date(b.invited_at).getTime() - new Date(a.invited_at).getTime()
+      }
+      const aAlias = (a.profile?.alias ?? '').toLowerCase()
+      const bAlias = (b.profile?.alias ?? '').toLowerCase()
+      return aAlias.localeCompare(bAlias)
+    })
+
+    return res.json(sorted)
+  }
+
+  if (req.method === 'DELETE') {
+    const rowId = req.query.id
+    if (!rowId) return badRequest(res, 'id query param is required')
+
+    const { data: target, error: tErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, team_id, user_id, roles, invite_status')
+      .eq('id', rowId)
+      .maybeSingle()
+    if (tErr) return res.status(500).json({ error: tErr.message })
+    if (!target) return res.status(404).json({ error: 'membership not found' })
+
+    const { data: members, error: mErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, user_id, roles, invite_status')
+      .eq('team_id', target.team_id)
+    if (mErr) return res.status(500).json({ error: mErr.message })
+
+    const callerRow = (members ?? []).find(
+      m => m.user_id === user.id && m.invite_status === 'accepted'
+    )
+    const callerIsCaptain = !!callerRow && Array.isArray(callerRow.roles) && callerRow.roles.includes('captain')
+    const callerIsSelf = target.user_id === user.id
+
+    // Captain self-remove is rejected — they must disband instead.
+    if (callerIsCaptain && callerIsSelf) {
+      return res.status(400).json({ error: 'Captains cannot remove themselves. Disband the team instead.' })
+    }
+    // Non-captain caller may only remove their own accepted row. Pending
+    // invitees decline via competition-team-invite PATCH.
+    if (!callerIsCaptain) {
+      if (!callerIsSelf || target.invite_status !== 'accepted') {
+        return res.status(403).json({ error: 'You do not have permission to remove this membership.' })
+      }
+    }
+
+    // Orphan guard: if the target is the only accepted captain and other
+    // accepted members remain, refuse.
+    if (target.invite_status === 'accepted' && (target.roles ?? []).includes('captain')) {
+      const otherCaptains = (members ?? []).filter(
+        m => m.id !== target.id && m.invite_status === 'accepted' && (m.roles ?? []).includes('captain')
+      )
+      const otherAccepted = (members ?? []).filter(
+        m => m.id !== target.id && m.invite_status === 'accepted'
+      )
+      if (otherCaptains.length === 0 && otherAccepted.length > 0) {
+        return res.status(409).json({ error: 'You are the only captain. Transfer captaincy or remove other members first.' })
+      }
+    }
+
+    const { error: delErr } = await supabaseAdmin
+      .from('team_members')
+      .delete()
+      .eq('id', rowId)
+    if (delErr) return res.status(500).json({ error: `membership delete: ${delErr.message}` })
+
+    const remainingAccepted = (members ?? []).filter(
+      m => m.id !== target.id && m.invite_status === 'accepted'
+    )
+
+    if (remainingAccepted.length === 0) {
+      // Disband cascade: clear all linked registrations + delete the team.
+      // teams.team_id FK is ON DELETE CASCADE on team_members, so pending
+      // rows that remain on the team are wiped automatically.
+      const { error: nullErr } = await supabaseAdmin
+        .from('competition_registrations')
+        .update({ team_id: null })
+        .eq('team_id', target.team_id)
+      if (nullErr) return res.status(500).json({ error: `team unlink: ${nullErr.message}` })
+
+      const { error: teamDelErr } = await supabaseAdmin
+        .from('teams')
+        .delete()
+        .eq('id', target.team_id)
+      if (teamDelErr) return res.status(500).json({ error: `team delete: ${teamDelErr.message}` })
+    } else if (target.invite_status === 'accepted') {
+      // Departing accepted member (not last): unlink their registration from
+      // this team so the registration is free to join elsewhere.
+      const { error: regUpdErr } = await supabaseAdmin
+        .from('competition_registrations')
+        .update({ team_id: null })
+        .eq('team_id', target.team_id)
+        .eq('user_id', target.user_id)
+      if (regUpdErr) return res.status(500).json({ error: `registration unlink: ${regUpdErr.message}` })
+    }
+
+    return res.json({ deleted: true })
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
+// ── competition-team-invite ──────────────────────────────────────────────────
+// Phase 3d: invitee-facing accept / decline. Separate resource from
+// competition-team-member because the caller here is pending (not yet on the
+// team for permission purposes).
+//
+//   GET   ?competition_id=...                       -> caller's pending invites
+//   PATCH ?id=... body: { action: 'accept'|'decline' }
+//
+// Accepting auto-declines sibling pending invites for the same competition,
+// since a player can only be on one team per competition.
+
+async function handleCompetitionTeamInvite(req, res) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  if (req.method === 'GET') {
+    const competitionId = req.query.competition_id
+    if (!competitionId) return badRequest(res, 'competition_id query param is required')
+
+    const { data, error } = await supabaseAdmin
+      .from('team_members')
+      .select(`
+        id, team_id, invite_status, invited_at, invited_by,
+        team:teams!inner(id, name, colour, captain_id, competition_id),
+        inviter:profiles!invited_by(id, alias, first_name, last_name)
+      `)
+      .eq('user_id', user.id)
+      .eq('invite_status', 'pending')
+      .eq('team.competition_id', competitionId)
+      .order('invited_at', { ascending: false })
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json(data ?? [])
+  }
+
+  if (req.method === 'PATCH') {
+    const rowId = req.query.id
+    const action = req.body?.action
+    if (!rowId) return badRequest(res, 'id query param is required')
+    if (action !== 'accept' && action !== 'decline') {
+      return badRequest(res, 'action must be "accept" or "decline"')
+    }
+
+    const { data: target, error: tErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, team_id, user_id, invite_status, team:teams!inner(id, competition_id)')
+      .eq('id', rowId)
+      .maybeSingle()
+    if (tErr) return res.status(500).json({ error: tErr.message })
+    if (!target) return res.status(404).json({ error: 'invite not found' })
+    if (target.user_id !== user.id) return res.status(403).json({ error: 'This invite is not addressed to you.' })
+    if (target.invite_status !== 'pending') {
+      return res.status(409).json({ error: 'This invite has already been resolved.' })
+    }
+
+    const competitionId = target.team.competition_id
+    const nowIso = new Date().toISOString()
+
+    if (action === 'decline') {
+      const { data: updated, error: uErr } = await supabaseAdmin
+        .from('team_members')
+        .update({ invite_status: 'declined', responded_at: nowIso })
+        .eq('id', rowId)
+        .select(TEAM_MEMBER_COLUMNS)
+        .single()
+      if (uErr) return res.status(500).json({ error: uErr.message })
+      return res.json(updated)
+    }
+
+    // action === 'accept'. Guard against the caller already being on a team
+    // in this competition (race: another invite was just accepted, or a team
+    // was created in parallel).
+    const { data: existing, error: exErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, teams!inner(competition_id)')
+      .eq('user_id', user.id)
+      .eq('invite_status', 'accepted')
+      .eq('teams.competition_id', competitionId)
+    if (exErr) return res.status(500).json({ error: exErr.message })
+    if ((existing ?? []).length > 0) {
+      return res.status(409).json({ error: 'You are already on a team in this competition.' })
+    }
+
+    // 1. Flip the row to accepted.
+    const { error: acceptErr } = await supabaseAdmin
+      .from('team_members')
+      .update({ invite_status: 'accepted', responded_at: nowIso })
+      .eq('id', rowId)
+    if (acceptErr) return res.status(500).json({ error: `invite accept: ${acceptErr.message}` })
+
+    // 2. Link the caller's competition_registrations row to the team.
+    const { error: regErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .update({ team_id: target.team_id })
+      .eq('user_id', user.id)
+      .eq('competition_id', competitionId)
+    if (regErr) return res.status(500).json({ error: `registration link: ${regErr.message}` })
+
+    // 3. Auto-decline sibling pending invites in the same competition.
+    // PostgREST does not support UPDATE ... FROM, so fetch ids then UPDATE.
+    const { data: siblings, error: sibErr } = await supabaseAdmin
+      .from('team_members')
+      .select('id, teams!inner(competition_id)')
+      .eq('user_id', user.id)
+      .eq('invite_status', 'pending')
+      .eq('teams.competition_id', competitionId)
+      .neq('id', rowId)
+    if (sibErr) return res.status(500).json({ error: `sibling lookup: ${sibErr.message}` })
+    const siblingIds = (siblings ?? []).map(s => s.id)
+    if (siblingIds.length > 0) {
+      const { error: sibUpdErr } = await supabaseAdmin
+        .from('team_members')
+        .update({ invite_status: 'declined', responded_at: nowIso })
+        .in('id', siblingIds)
+      if (sibUpdErr) return res.status(500).json({ error: `sibling auto-decline: ${sibUpdErr.message}` })
+    }
+
+    const { data: updated, error: fetchErr } = await supabaseAdmin
+      .from('team_members')
+      .select(TEAM_MEMBER_COLUMNS)
+      .eq('id', rowId)
+      .single()
+    if (fetchErr) return res.status(500).json({ error: fetchErr.message })
+    return res.json(updated)
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
-// Each branch picks its own auth helper because 'my-competitions',
-// 'competition-registration', and 'competition-team' deliberately serve any
-// authenticated user, unlike the four admin resources below.
+// Most resources serve any authenticated user; only competitions and
+// competition-managers stay superadmin-gated. profile-search was relaxed in
+// Phase 3d (captain invite picker needs it).
 export default async function handler(req, res) {
   const resource = req.query.resource
 
-  if (resource === 'my-competitions')          return handleMyCompetitions(req, res)
-  if (resource === 'competition-registration') return handleCompetitionRegistration(req, res)
-  if (resource === 'competition-team')         return handleCompetitionTeam(req, res)
+  if (resource === 'profile-search')             return handleProfileSearch(req, res)
+  if (resource === 'my-competitions')            return handleMyCompetitions(req, res)
+  if (resource === 'competition-registration')   return handleCompetitionRegistration(req, res)
+  if (resource === 'competition-team')           return handleCompetitionTeam(req, res)
+  if (resource === 'competition-team-member')    return handleCompetitionTeamMember(req, res)
+  if (resource === 'competition-team-invite')    return handleCompetitionTeamInvite(req, res)
 
   // The remaining resources require superadmin. Verify once and share the user
-  // object across the three handlers.
+  // object across the two handlers.
   const { user, error: authErr } = await verifySuperAdmin(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
   if (resource === 'competitions')         return handleCompetitions(req, res, user)
   if (resource === 'competition-managers') return handleCompetitionManagers(req, res, user)
-  if (resource === 'profile-search')       return handleProfileSearch(req, res)
   return res.status(404).json({ error: 'unknown resource' })
 }

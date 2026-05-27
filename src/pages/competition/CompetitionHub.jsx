@@ -178,7 +178,7 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
 
 
 // ── Captain team edit card ──────────────────────────────────────────────────
-function CaptainTeamCard({ team, onSaved }) {
+function CaptainTeamCard({ team, onChanged }) {
   const [name, setName] = useState(team.name)
   const [colour, setColour] = useState(team.colour ?? TEAM_COLOURS[0])
   const [saving, setSaving] = useState(false)
@@ -194,11 +194,11 @@ function CaptainTeamCard({ team, onSaved }) {
     setSaveError(null)
     setSaving(true)
     try {
-      const updated = await apiFetch(`/api/superadmin/competition-team?team_id=${team.id}`, {
+      await apiFetch(`/api/superadmin/competition-team?team_id=${team.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ name: name.trim(), colour }),
       })
-      onSaved(updated)
+      onChanged()
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
     } catch (err) {
@@ -213,15 +213,18 @@ function CaptainTeamCard({ team, onSaved }) {
     setDisbanding(true)
     try {
       await apiFetch(`/api/superadmin/competition-team?team_id=${team.id}`, { method: 'DELETE' })
-      onSaved(null)
+      onChanged()
     } catch (err) {
       setDisbandError(err.message || 'Could not disband team.')
       setDisbanding(false)
     }
   }
 
-  const otherMembers = (team.members ?? []).filter(m => !(m.roles ?? []).includes('captain'))
-  const canDisband = otherMembers.length === 0
+  // Disband gate: only ACCEPTED non-captain members block it. Pending invitees
+  // are wiped by the team CASCADE so they should not prevent disbandment.
+  const acceptedMembers = (team.members ?? []).filter(m => m.invite_status === 'accepted')
+  const otherAccepted = acceptedMembers.filter(m => !(m.roles ?? []).includes('captain'))
+  const canDisband = otherAccepted.length === 0
 
   return (
     <div className="space-y-5">
@@ -285,30 +288,24 @@ function CaptainTeamCard({ team, onSaved }) {
       <div className="bg-surface border border-line rounded-2xl p-5">
         <p className="text-white text-xs font-bold uppercase tracking-wider mb-3">Roster</p>
         <div className="space-y-2">
-          {team.members.map(m => {
+          {acceptedMembers.map(m => {
             const isCaptainRow = (m.roles ?? []).includes('captain')
             const fullName = [m.profile?.first_name, m.profile?.last_name].filter(Boolean).join(' ')
             return (
-              <div key={m.user_id} className="flex items-center justify-between gap-3 bg-base border border-line rounded-xl px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-white text-sm font-semibold">
-                    {m.profile?.alias ? <span className="text-brand">"{m.profile.alias}"</span> : <span className="opacity-50">(no alias)</span>}
-                    {fullName && <span className="ml-2">{fullName}</span>}
-                  </p>
-                </div>
-                {isCaptainRow && <Pill tone="green">Captain</Pill>}
-              </div>
+              <CaptainRosterRow
+                key={m.id}
+                member={m}
+                isCaptainRow={isCaptainRow}
+                fullName={fullName}
+                canRemove={!isCaptainRow}
+                onChanged={onChanged}
+              />
             )
           })}
         </div>
       </div>
 
-      <div className="bg-surface border border-line rounded-2xl p-5">
-        <p className="text-white text-xs font-bold uppercase tracking-wider mb-2">Invite players</p>
-        <p className="text-white text-sm opacity-70">
-          Invite functionality ships in the next phase. Players will be invitable by alias.
-        </p>
-      </div>
+      <CaptainInvitePanel team={team} onChanged={onChanged} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
@@ -365,9 +362,28 @@ function CaptainTeamCard({ team, onSaved }) {
 }
 
 
-// ── Read-only team card (member view; Phase 3d will populate via invites) ──
-function MemberTeamCard({ team }) {
-  const captain = (team.members ?? []).find(m => (m.roles ?? []).includes('captain'))
+// ── Read-only team card (member view) ──────────────────────────────────────
+function MemberTeamCard({ team, userId, onChanged }) {
+  const acceptedMembers = (team.members ?? []).filter(m => m.invite_status === 'accepted')
+  const captain = acceptedMembers.find(m => (m.roles ?? []).includes('captain'))
+  const ownRow = acceptedMembers.find(m => m.user_id === userId)
+  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [leaveError, setLeaveError] = useState(null)
+
+  async function leave() {
+    if (!ownRow?.id) return
+    setLeaveError(null)
+    setLeaving(true)
+    try {
+      await apiFetch(`/api/superadmin/competition-team-member?id=${ownRow.id}`, { method: 'DELETE' })
+      onChanged()
+    } catch (err) {
+      setLeaveError(err.message || 'Could not leave team.')
+      setLeaving(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="bg-surface border border-line rounded-2xl p-5">
@@ -387,11 +403,11 @@ function MemberTeamCard({ team }) {
       <div className="bg-surface border border-line rounded-2xl p-5">
         <p className="text-white text-xs font-bold uppercase tracking-wider mb-3">Roster</p>
         <div className="space-y-2">
-          {team.members.map(m => {
+          {acceptedMembers.map(m => {
             const isCap = (m.roles ?? []).includes('captain')
             const fullName = [m.profile?.first_name, m.profile?.last_name].filter(Boolean).join(' ')
             return (
-              <div key={m.user_id} className="flex items-center justify-between gap-3 bg-base border border-line rounded-xl px-3 py-2">
+              <div key={m.id} className="flex items-center justify-between gap-3 bg-base border border-line rounded-xl px-3 py-2">
                 <p className="text-white text-sm font-semibold">
                   {m.profile?.alias ? <span className="text-brand">"{m.profile.alias}"</span> : <span className="opacity-50">(no alias)</span>}
                   {fullName && <span className="ml-2">{fullName}</span>}
@@ -403,10 +419,413 @@ function MemberTeamCard({ team }) {
         </div>
       </div>
 
-      {/* "Leave team" intentionally hidden in Phase 3c. Until Phase 3d ships
-          the invite flow, there's no way to be on a team you didn't create,
-          so this state is architecturally present but unreachable. The leave
-          action lands with invites. */}
+      {ownRow && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setLeaveOpen(true)}
+            className="text-xs text-red-400 opacity-70 hover:opacity-100 transition-opacity"
+          >
+            Leave team
+          </button>
+        </div>
+      )}
+
+      {leaveOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Leave team?</p>
+            <p className="text-white text-sm mb-5 opacity-80">
+              Leave <span className="font-semibold">{team.name}</span>? You will need to be re-invited to rejoin.
+            </p>
+            {leaveError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{leaveError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={leave}
+                disabled={leaving}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {leaving ? 'Leaving...' : 'Leave team'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setLeaveOpen(false); setLeaveError(null) }}
+                disabled={leaving}
+                className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Captain roster row (with remove action) ────────────────────────────────
+function CaptainRosterRow({ member, isCaptainRow, fullName, canRemove, onChanged }) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function remove() {
+    setError(null)
+    setRemoving(true)
+    try {
+      await apiFetch(`/api/superadmin/competition-team-member?id=${member.id}`, { method: 'DELETE' })
+      onChanged()
+    } catch (err) {
+      setError(err.message || 'Could not remove member.')
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 bg-base border border-line rounded-xl px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-white text-sm font-semibold">
+            {member.profile?.alias
+              ? <span className="text-brand">"{member.profile.alias}"</span>
+              : <span className="opacity-50">(no alias)</span>}
+            {fullName && <span className="ml-2">{fullName}</span>}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isCaptainRow && <Pill tone="green">Captain</Pill>}
+          {canRemove && (
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              className="text-[11px] text-red-400 opacity-70 hover:opacity-100 transition-opacity"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+
+      {confirmOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Remove {member.profile?.alias ?? 'member'}?</p>
+            <p className="text-white text-sm mb-5 opacity-80">
+              They will need to be re-invited if they want to rejoin the team.
+            </p>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{error}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={remove}
+                disabled={removing}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {removing ? 'Removing...' : 'Remove'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmOpen(false); setError(null) }}
+                disabled={removing}
+                className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+
+// ── Captain invite panel ───────────────────────────────────────────────────
+// Pending invites + alias search + invite button. Server enforces the
+// "registered for this competition" and "not on another team" rules, so the
+// client surfaces those as inline error chips on the matching row.
+function CaptainInvitePanel({ team, onChanged }) {
+  const pending = (team.members ?? []).filter(m => m.invite_status === 'pending')
+  const excludeUserIds = new Set((team.members ?? []).map(m => m.user_id))
+
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState(null)
+  const [rowError, setRowError] = useState({}) // { [profileId]: string }
+  const [inviting, setInviting] = useState({}) // { [profileId]: boolean }
+  const [revoking, setRevoking] = useState({}) // { [membershipId]: boolean }
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setResults([]); setSearchError(null); return }
+    let cancelled = false
+    setSearching(true)
+    setSearchError(null)
+    const t = setTimeout(async () => {
+      try {
+        const data = await apiFetch(`/api/superadmin/profile-search?q=${encodeURIComponent(q)}`)
+        if (!cancelled) setResults(Array.isArray(data) ? data : [])
+      } catch (err) {
+        if (!cancelled) setSearchError(err.message || 'Search failed.')
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }, 250)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [query])
+
+  async function invite(profile) {
+    setRowError(prev => ({ ...prev, [profile.id]: null }))
+    setInviting(prev => ({ ...prev, [profile.id]: true }))
+    try {
+      await apiFetch('/api/superadmin/competition-team-member', {
+        method: 'POST',
+        body: JSON.stringify({ team_id: team.id, invitee_user_id: profile.id }),
+      })
+      setQuery('')
+      setResults([])
+      onChanged()
+    } catch (err) {
+      setRowError(prev => ({ ...prev, [profile.id]: err.message || 'Could not invite.' }))
+    } finally {
+      setInviting(prev => ({ ...prev, [profile.id]: false }))
+    }
+  }
+
+  async function revoke(membershipId) {
+    setRevoking(prev => ({ ...prev, [membershipId]: true }))
+    try {
+      await apiFetch(`/api/superadmin/competition-team-member?id=${membershipId}`, { method: 'DELETE' })
+      onChanged()
+    } catch (err) {
+      setRowError(prev => ({ ...prev, [membershipId]: err.message || 'Could not revoke.' }))
+    } finally {
+      setRevoking(prev => ({ ...prev, [membershipId]: false }))
+    }
+  }
+
+  const filteredResults = results.filter(r => !excludeUserIds.has(r.id))
+
+  return (
+    <div className="space-y-4">
+      {pending.length > 0 && (
+        <div className="bg-surface border border-line rounded-2xl p-5">
+          <p className="text-white text-xs font-bold uppercase tracking-wider mb-3">Pending invites</p>
+          <div className="space-y-2">
+            {pending.map(m => {
+              const fullName = [m.profile?.first_name, m.profile?.last_name].filter(Boolean).join(' ')
+              return (
+                <div key={m.id} className="bg-base border border-line rounded-xl px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-semibold">
+                        {m.profile?.alias
+                          ? <span className="text-brand">"{m.profile.alias}"</span>
+                          : <span className="opacity-50">(no alias)</span>}
+                        {fullName && <span className="ml-2">{fullName}</span>}
+                      </p>
+                      <p className="text-white text-[11px] opacity-50 mt-0.5">
+                        Invited {relativeTime(m.invited_at)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => revoke(m.id)}
+                      disabled={revoking[m.id]}
+                      className="text-[11px] text-red-400 opacity-70 hover:opacity-100 transition-opacity disabled:opacity-30"
+                    >
+                      {revoking[m.id] ? 'Revoking...' : 'Revoke'}
+                    </button>
+                  </div>
+                  {rowError[m.id] && (
+                    <p className="text-red-400 text-[11px] mt-2">{rowError[m.id]}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-surface border border-line rounded-2xl p-5">
+        <p className="text-white text-xs font-bold uppercase tracking-wider mb-3">Invite player</p>
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search by alias"
+          className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand"
+        />
+        <div className="mt-3 space-y-2 min-h-[2rem]">
+          {searchError && (
+            <p className="text-red-400 text-xs">{searchError}</p>
+          )}
+          {!searchError && query.trim().length < 2 && (
+            <p className="text-white text-[11px] opacity-50">
+              Search by alias to find players who have registered for this competition.
+            </p>
+          )}
+          {!searchError && query.trim().length >= 2 && searching && filteredResults.length === 0 && (
+            <p className="text-white text-[11px] opacity-50">Searching...</p>
+          )}
+          {!searchError && query.trim().length >= 2 && !searching && filteredResults.length === 0 && (
+            <p className="text-white text-[11px] opacity-50">No matching players.</p>
+          )}
+          {filteredResults.map(p => {
+            const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ')
+            const err = rowError[p.id]
+            return (
+              <div key={p.id} className="bg-base border border-line rounded-xl px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-white text-sm font-semibold min-w-0">
+                    {p.alias ? <span className="text-brand">"{p.alias}"</span> : <span className="opacity-50">(no alias)</span>}
+                    {fullName && <span className="ml-2">{fullName}</span>}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => invite(p)}
+                    disabled={!!inviting[p.id]}
+                    className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-3 py-1 rounded-lg text-xs transition-all"
+                    title={err ?? ''}
+                  >
+                    {inviting[p.id] ? 'Inviting...' : 'Invite'}
+                  </button>
+                </div>
+                {err && <p className="text-red-400 text-[11px] mt-2">{err}</p>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Invitee alerts (top of hub) ────────────────────────────────────────────
+// Renders one card per pending invite for this competition. Accept becomes
+// the user's active team membership; decline marks the row declined for
+// audit. Both refresh the hub via onChanged so state recomputes.
+function InviteeAlerts({ invites, onChanged }) {
+  const [busy, setBusy] = useState({}) // { [inviteId]: 'accept' | 'decline' }
+  const [error, setError] = useState({}) // { [inviteId]: string }
+  const [declineConfirm, setDeclineConfirm] = useState(null) // invite row or null
+
+  async function act(invite, action) {
+    setError(prev => ({ ...prev, [invite.id]: null }))
+    setBusy(prev => ({ ...prev, [invite.id]: action }))
+    try {
+      await apiFetch(`/api/superadmin/competition-team-invite?id=${invite.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action }),
+      })
+      setDeclineConfirm(null)
+      onChanged()
+    } catch (err) {
+      setError(prev => ({ ...prev, [invite.id]: err.message || 'Action failed.' }))
+    } finally {
+      setBusy(prev => ({ ...prev, [invite.id]: null }))
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">
+        {invites.length === 1 ? 'Pending invitation' : 'Pending invitations'}
+      </h2>
+      <div className="space-y-3">
+        {invites.map(inv => {
+          const captainAlias = inv.inviter?.alias ?? '?'
+          const teamName = inv.team?.name ?? 'this team'
+          const e = error[inv.id]
+          const accepting = busy[inv.id] === 'accept'
+          const declining = busy[inv.id] === 'decline'
+          return (
+            <div key={inv.id} className="bg-surface border border-line rounded-2xl p-5">
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-12 h-12 rounded-xl border border-line flex-shrink-0"
+                  style={{ background: inv.team?.colour ?? '#374056' }}
+                  aria-label="Team colour"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm">
+                    <span className="text-brand font-bold">"{captainAlias}"</span> has invited you to join{' '}
+                    <span className="font-bold text-white">{teamName}</span>.
+                  </p>
+                  <p className="text-white text-[11px] opacity-50 mt-1">
+                    Invited {relativeTime(inv.invited_at)}
+                  </p>
+                  {e && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mt-3">
+                      <p className="text-red-400 text-xs">{e}</p>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => act(inv, 'accept')}
+                      disabled={accepting || declining}
+                      className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-4 py-1.5 rounded-lg text-sm transition-all"
+                    >
+                      {accepting ? 'Accepting...' : 'Accept'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeclineConfirm(inv)}
+                      disabled={accepting || declining}
+                      className="border border-line text-white font-semibold px-4 py-1.5 rounded-lg text-sm transition-colors"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {declineConfirm && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+            <p className="text-white font-bold mb-2">Decline invitation?</p>
+            <p className="text-white text-sm mb-5 opacity-80">
+              Decline the invitation to <span className="font-semibold">{declineConfirm.team?.name ?? 'this team'}</span>?
+              The captain will need to invite you again if you change your mind.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => act(declineConfirm, 'decline')}
+                disabled={busy[declineConfirm.id] === 'decline'}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {busy[declineConfirm.id] === 'decline' ? 'Declining...' : 'Decline'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeclineConfirm(null)}
+                disabled={busy[declineConfirm.id] === 'decline'}
+                className="border border-line text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -421,6 +840,7 @@ export default function CompetitionHub() {
   const [comp, setComp] = useState(null)            // null = loading; false = not found
   const [registration, setRegistration] = useState(null) // null = loading; false = not registered
   const [team, setTeam] = useState(null)            // null = loading; false = no team
+  const [invites, setInvites] = useState([])        // pending invites for this comp; [] = none or unloaded
   const [error, setError] = useState(null)
 
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -447,10 +867,11 @@ export default function CompetitionHub() {
       const compData = await compRes.json()
       setComp(compData)
 
-      // Registration + team in parallel.
-      const [regResult, teamResult] = await Promise.allSettled([
+      // Registration + team + pending invites in parallel.
+      const [regResult, teamResult, inviteResult] = await Promise.allSettled([
         apiFetch(`/api/superadmin/competition-registration?competition_id=${compData.id}`),
         apiFetch(`/api/superadmin/competition-team?competition_id=${compData.id}`),
+        apiFetch(`/api/superadmin/competition-team-invite?competition_id=${compData.id}`),
       ])
 
       if (regResult.status === 'fulfilled') {
@@ -467,6 +888,14 @@ export default function CompetitionHub() {
         const msg = teamResult.reason?.message ?? ''
         if (msg.includes('not on a team')) setTeam(false)
         else throw teamResult.reason
+      }
+
+      // Invites are best-effort: a fetch error here should not block the
+      // rest of the hub from rendering.
+      if (inviteResult.status === 'fulfilled' && Array.isArray(inviteResult.value)) {
+        setInvites(inviteResult.value)
+      } else {
+        setInvites([])
       }
     } catch (err) {
       setError(err.message || 'Could not load competition hub.')
@@ -560,7 +989,20 @@ export default function CompetitionHub() {
 
   const win = windowState(comp)
   const compRow = registration.competition ?? comp
-  const isCaptain = team && (team.members ?? []).some(m => m.user_id === user.id && (m.roles ?? []).includes('captain'))
+  const isCaptain =
+    team &&
+    (team.members ?? []).some(
+      m =>
+        m.user_id === user.id &&
+        m.invite_status === 'accepted' &&
+        (m.roles ?? []).includes('captain'),
+    )
+  const otherAcceptedCount =
+    team
+      ? (team.members ?? []).filter(
+          m => m.invite_status === 'accepted' && m.user_id !== user.id,
+        ).length
+      : 0
   const payStatus = registration.payment_status ?? 'unpaid'
   const payPill = PAY_PILL[payStatus] ?? PAY_PILL.unpaid
   const amountOwing = Number(registration.amount_owing ?? 0)
@@ -599,6 +1041,10 @@ export default function CompetitionHub() {
           <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
             <p className="text-red-400 text-sm"><strong>Error:</strong> {error}</p>
           </div>
+        )}
+
+        {invites.length > 0 && (
+          <InviteeAlerts invites={invites} onChanged={load} />
         )}
 
         {/* Section 1 — Registration */}
@@ -640,11 +1086,11 @@ export default function CompetitionHub() {
           </h2>
 
           {team && isCaptain && (
-            <CaptainTeamCard team={team} onSaved={updated => setTeam(updated ?? false)} />
+            <CaptainTeamCard team={team} onChanged={load} />
           )}
 
           {team && !isCaptain && (
-            <MemberTeamCard team={team} />
+            <MemberTeamCard team={team} userId={user.id} onChanged={load} />
           )}
 
           {!team && (
@@ -709,7 +1155,7 @@ export default function CompetitionHub() {
             <p className="text-white font-bold mb-2">Cancel registration?</p>
             <p className="text-white text-sm mb-5 opacity-80">
               Cancel your registration for <span className="font-semibold">{comp.name}</span>?
-              {team && isCaptain && (team.members ?? []).length > 1
+              {team && isCaptain && otherAcceptedCount > 0
                 ? ' You will need to remove your team members or transfer captaincy first.'
                 : ''}
             </p>
