@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { relativeTime } from '../../lib/relativeTime.js'
 import { TEAM_COLOURS } from '../../lib/teamColours'
 
 // Unified competition hub (Phase 3c). One page combines:
@@ -26,21 +27,6 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('en-AU', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   })
-}
-
-function relativeTime(iso) {
-  if (!iso) return ''
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.round(ms / 1000)
-  if (s < 60) return 'just now'
-  const m = Math.round(s / 60)
-  if (m < 60) return `${m} min ago`
-  const h = Math.round(m / 60)
-  if (h < 24) return `${h} hr ago`
-  const d = Math.round(h / 24)
-  if (d < 30) return `${d} day${d === 1 ? '' : 's'} ago`
-  const mo = Math.round(d / 30)
-  return `${mo} mo ago`
 }
 
 function windowState(comp) {

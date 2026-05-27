@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 // Public competition detail page. Anon-readable. The registration CTA gates
 // on auth: unauthenticated users are routed to /login?redirect=<this page>
@@ -247,6 +248,16 @@ export default function CompetitionDetail() {
   const { user, loading: authLoading } = useAuth()
   const [comp, setComp] = useState(null) // null = loading; false = not found
   const [error, setError] = useState(null)
+  // null             = no probe result yet (anon: stays null forever;
+  //                    authenticated: transient while the probe is in flight)
+  // 'registered'     = caller has a registration row for this competition
+  // 'not_registered' = caller authenticated but no row (also the fallback on
+  //                    probe failure — the register page handles duplicate-
+  //                    registration cleanly if the fallback was wrong)
+  // The "checking" UI state is derived from (user && regState === null) at
+  // render time rather than stored, so we never sync-setState inside the
+  // effect.
+  const [regState, setRegState] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -260,6 +271,19 @@ export default function CompetitionDetail() {
       .catch(err => { if (!cancelled) { setError(err.message); setComp(false) } })
     return () => { cancelled = true }
   }, [slug])
+
+  // Registration probe — only runs once we know who the caller is AND have
+  // the competition id. Anon callers skip the probe entirely (regState stays
+  // null and the CTA falls into the !user branch).
+  useEffect(() => {
+    if (authLoading || !user) return
+    if (!comp || comp === false) return
+    let cancelled = false
+    apiFetch(`/api/superadmin/competition-registration?competition_id=${comp.id}`)
+      .then(() => { if (!cancelled) setRegState('registered') })
+      .catch(() => { if (!cancelled) setRegState('not_registered') })
+    return () => { cancelled = true }
+  }, [authLoading, user, comp])
 
   if (comp === null) {
     return (
@@ -373,28 +397,44 @@ export default function CompetitionDetail() {
 
           {state === 'open' && (
             <>
-              <p className="text-white text-lg font-bold mb-4">Ready to compete?</p>
-              {authLoading ? (
-                <div className="w-6 h-6 mx-auto border-2 border-brand border-t-transparent rounded-full animate-spin" />
-              ) : user ? (
-                <Link
-                  to={registerPath}
-                  className="inline-block bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
-                >
-                  Register now
-                </Link>
+              {regState === 'registered' ? (
+                <>
+                  <p className="text-white text-xs opacity-60 mb-3">You're registered for this event.</p>
+                  <Link
+                    to={`/competitions/${comp.slug}/hub`}
+                    className="inline-block bg-line hover:bg-[#374056] text-white font-bold px-6 py-3 rounded-xl text-sm transition-colors border border-line"
+                  >
+                    Manage your registration
+                  </Link>
+                </>
               ) : (
-                <Link
-                  to={signInPath}
-                  className="inline-block bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
-                >
-                  Sign in to register
-                </Link>
-              )}
-              {comp.registration_close_at && (
-                <p className="text-white opacity-50 text-xs mt-4">
-                  Closes {formatDateTime(comp.registration_close_at)}
-                </p>
+                <>
+                  <p className="text-white text-lg font-bold mb-4">Ready to compete?</p>
+                  {authLoading ? (
+                    <div className="w-6 h-6 mx-auto border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                  ) : user && regState === null ? (
+                    <p className="text-white text-sm opacity-60">Checking your registration...</p>
+                  ) : user ? (
+                    <Link
+                      to={registerPath}
+                      className="inline-block bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
+                    >
+                      Register now
+                    </Link>
+                  ) : (
+                    <Link
+                      to={signInPath}
+                      className="inline-block bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
+                    >
+                      Sign in to register
+                    </Link>
+                  )}
+                  {comp.registration_close_at && (
+                    <p className="text-white opacity-50 text-xs mt-4">
+                      Closes {formatDateTime(comp.registration_close_at)}
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}

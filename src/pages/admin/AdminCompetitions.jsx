@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { isSuperAdmin } from '../../lib/roles'
+import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 
 // Superadmin-only competition management.
@@ -33,21 +34,6 @@ function registrationWindowStatus(comp) {
   if (open && now < open) return { label: 'Not yet open', tone: 'amber' }
   if (close && now > close) return { label: 'Closed', tone: 'grey' }
   return { label: 'Open', tone: 'green' }
-}
-
-function relativeTime(iso) {
-  if (!iso) return ''
-  const ms = Date.now() - new Date(iso).getTime()
-  const s = Math.round(ms / 1000)
-  if (s < 60) return 'just now'
-  const m = Math.round(s / 60)
-  if (m < 60) return `${m} min ago`
-  const h = Math.round(m / 60)
-  if (h < 24) return `${h} hr ago`
-  const d = Math.round(h / 24)
-  if (d < 30) return `${d} day${d === 1 ? '' : 's'} ago`
-  const mo = Math.round(d / 30)
-  return `${mo} mo ago`
 }
 
 const TONE = {
