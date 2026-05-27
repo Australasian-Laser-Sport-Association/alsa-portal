@@ -56,6 +56,146 @@ function Fact({ label, value }) {
   )
 }
 
+function fullName(p) {
+  return [p.first_name, p.last_name].filter(Boolean).join(' ')
+}
+
+function PlayerLine({ player }) {
+  const name = fullName(player)
+  return (
+    <p className="text-white text-sm">
+      {player.alias
+        ? <span className="text-brand font-semibold">"{player.alias}"</span>
+        : <span className="opacity-50">(no alias)</span>}
+      {name && <span className="ml-2 opacity-80">{name}</span>}
+    </p>
+  )
+}
+
+function TeamCard({ team }) {
+  const memberCount = (team.captain ? 1 : 0) + team.members.length
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-5">
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className="w-7 h-7 rounded-lg border border-line flex-shrink-0"
+          style={{ background: team.colour }}
+          aria-label="Team colour"
+        />
+        <p className="text-white font-bold flex-1 min-w-0 truncate">{team.name}</p>
+        <span className="text-white text-[11px] opacity-50 whitespace-nowrap">
+          {memberCount === 1 ? '1 player' : `${memberCount} players`}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {team.captain && (
+          <div className="flex items-center gap-2">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 border border-green-500/30">
+              C
+            </span>
+            <PlayerLine player={team.captain} />
+          </div>
+        )}
+        {team.members.map((m, i) => (
+          <div key={`${team.id}-m-${i}`} className="pl-6">
+            <PlayerLine player={m} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RosterSection({ slug }) {
+  const [roster, setRoster] = useState(null) // null = loading; false = error
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/public?resource=roster&slug=${encodeURIComponent(slug)}`)
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then(data => { if (!cancelled) setRoster(data) })
+      .catch(() => { if (!cancelled) setRoster(false) })
+    return () => { cancelled = true }
+  }, [slug, reloadKey])
+
+  function retry() {
+    setRoster(null)
+    setReloadKey(k => k + 1)
+  }
+
+  if (roster === null) {
+    return (
+      <div>
+        <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">Registered Teams</h2>
+        <p className="text-white text-sm opacity-50">Loading roster...</p>
+      </div>
+    )
+  }
+
+  if (roster === false) {
+    return (
+      <div>
+        <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">Registered Teams</h2>
+        <div className="bg-surface border border-line rounded-2xl p-5">
+          <p className="text-white text-sm mb-3">Could not load the roster right now. Please try again.</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="border border-line text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-line/40 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const hasTeams = roster.teams.length > 0
+  const hasUnteamed = roster.unteamed_players.length > 0
+  if (!hasTeams && !hasUnteamed) return null
+
+  // Header copy varies: pure-unteamed renders as "Registered Players"; any
+  // teams present render as "Registered Teams" with a follow-on unteamed
+  // section if applicable.
+  if (!hasTeams && hasUnteamed) {
+    return (
+      <div>
+        <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">Registered Players</h2>
+        <div className="bg-surface border border-line rounded-2xl p-5 space-y-1.5">
+          {roster.unteamed_players.map((p, i) => (
+            <PlayerLine key={`u-${i}`} player={p} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <h2 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">Registered Teams</h2>
+      <div className="space-y-3">
+        {roster.teams.map(t => <TeamCard key={t.id} team={t} />)}
+      </div>
+      {hasUnteamed && (
+        <div className="mt-8">
+          <h3 className="text-white text-xs font-bold uppercase tracking-[0.2em] mb-4 opacity-70">
+            Registered Players (Not On A Team)
+          </h3>
+          <div className="bg-surface border border-line rounded-2xl p-5 space-y-1.5">
+            {roster.unteamed_players.map((p, i) => (
+              <PlayerLine key={`u-${i}`} player={p} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CompetitionDetail() {
   const { slug } = useParams()
   const { user, loading: authLoading } = useAuth()
@@ -203,6 +343,8 @@ export default function CompetitionDetail() {
             </>
           )}
         </div>
+
+        <RosterSection slug={comp.slug} />
       </section>
 
       <Footer />

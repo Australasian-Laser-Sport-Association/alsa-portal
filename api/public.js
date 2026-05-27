@@ -5,6 +5,7 @@ import supabaseAdmin from './_lib/supabase.js'
 //   ?resource=committee       → ALSA + ZLTAC committee members
 //   ?resource=members         → current ALSA membership period + member list
 //   ?resource=competitions    → pre-nationals listings (list or single by slug)
+//   ?resource=roster&slug=…   → pre-nationals public roster (grouped by team)
 //
 // All resources are GET, all public (no auth). Consolidated from
 // api/event.js + api/committee.js + api/members.js to stay under the
@@ -158,6 +159,95 @@ async function handleCompetitions(req, res) {
   })
 }
 
+// ── roster ──────────────────────────────────────────────────────────────────
+// Anon-facing public roster for a pre-nationals competition. Reads from the
+// definer-mode view public.public_competition_roster (see migration
+// 20260527030000), which exposes only alias / first_name / last_name plus
+// team metadata. Payment fields, audit timestamps, emails, etc. stay inside
+// the locked-down base tables. The view's WHERE clause also enforces:
+//   - competition not archived
+//   - registration not yet closed
+//   - team_members.invite_status = 'accepted' (pending invites stay private)
+//
+// This handler turns the flat view rows into the grouped response shape:
+//   { competition, teams: [...], unteamed_players: [...] }
+// Grouping happens server-side so the client stays decoupled from the
+// view's column layout.
+
+async function handleRoster(req, res) {
+  const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : ''
+  if (!slug) return res.status(400).json({ error: 'slug query param is required' })
+
+  // Look up the competition to source its name (the view does not expose
+  // name) and to surface a clean 404 when the slug is unknown / archived /
+  // closed — even though the view itself also filters on those predicates.
+  const nowIso = new Date().toISOString()
+  const { data: comp, error: compErr } = await supabaseAdmin
+    .from('competitions')
+    .select('id, slug, name, archived_at, registration_close_at')
+    .eq('slug', slug)
+    .is('archived_at', null)
+    .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
+    .maybeSingle()
+  if (compErr) return res.status(500).json({ error: compErr.message })
+  if (!comp) return res.status(404).json({ error: 'competition not found' })
+
+  const { data: rows, error: rosterErr } = await supabaseAdmin
+    .from('public_competition_roster')
+    .select('team_id, team_name, team_colour, alias, first_name, last_name, role_in_team')
+    .eq('competition_slug', slug)
+  if (rosterErr) return res.status(500).json({ error: rosterErr.message })
+
+  // Group flat rows into { teams[], unteamed_players[] }. Each player entry
+  // exposes only the three public columns.
+  const teamMap = new Map()
+  const unteamed = []
+  for (const row of rows ?? []) {
+    const entry = {
+      alias: row.alias,
+      first_name: row.first_name,
+      last_name: row.last_name,
+    }
+    if (row.team_id == null) {
+      unteamed.push(entry)
+      continue
+    }
+    let team = teamMap.get(row.team_id)
+    if (!team) {
+      team = {
+        id: row.team_id,
+        name: row.team_name,
+        colour: row.team_colour,
+        captain: null,
+        members: [],
+      }
+      teamMap.set(row.team_id, team)
+    }
+    if (row.role_in_team === 'captain') {
+      team.captain = entry
+    } else {
+      team.members.push(entry)
+    }
+  }
+
+  const aliasCmp = (a, b) =>
+    (a.alias ?? '').toLowerCase().localeCompare((b.alias ?? '').toLowerCase())
+
+  const teams = Array.from(teamMap.values()).sort((a, b) =>
+    (a.name ?? '').toLowerCase().localeCompare((b.name ?? '').toLowerCase())
+  )
+  for (const team of teams) {
+    team.members.sort(aliasCmp)
+  }
+  unteamed.sort(aliasCmp)
+
+  return res.json({
+    competition: { id: comp.id, slug: comp.slug, name: comp.name },
+    teams,
+    unteamed_players: unteamed,
+  })
+}
+
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -168,5 +258,6 @@ export default async function handler(req, res) {
   if (resource === 'committee')    return handleCommittee(req, res)
   if (resource === 'members')      return handleMembers(req, res)
   if (resource === 'competitions') return handleCompetitions(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "committee", "members", or "competitions"' })
+  if (resource === 'roster')       return handleRoster(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "committee", "members", "competitions", or "roster"' })
 }
