@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { isCommittee } from '../lib/roles'
 
@@ -36,6 +36,7 @@ function SidebarLink({ to, end, icon, label, onClick }) {
 export default function ManagerLayout() {
   const { user, profile, loading, profileLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     if (loading || profileLoading) return
@@ -43,12 +44,15 @@ export default function ManagerLayout() {
       navigate('/login')
       return
     }
-    // Committee users belong on /admin — kick them there so they don't see a
-    // narrower shell than they actually have access to.
-    if (isCommittee(profile)) {
+    // Committee users land on the per-competition page from the Admin Hub
+    // tile + sidebar (post feature/admin-hub-separation). They should NOT
+    // see the bare /manage listing — they have richer tooling on /admin —
+    // so the redirect fires only when the route is exactly /manage.
+    const onManageIndex = location.pathname.replace(/\/$/, '') === '/manage'
+    if (isCommittee(profile) && onManageIndex) {
       navigate('/admin', { replace: true })
     }
-  }, [user, profile, loading, profileLoading, navigate])
+  }, [user, profile, loading, profileLoading, navigate, location.pathname])
 
   if (loading || profileLoading) {
     return (

@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
-import {
-  Calendar, ClipboardList, FileText, ShieldCheck, BookOpen, HandHelping,
-  Trophy, LayoutDashboard, Users, BadgeCheck, Award, Medal, Briefcase,
-} from 'lucide-react'
+import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { dollars } from '../../lib/pricing'
 import { formatDate } from '../../lib/dateFormat'
@@ -35,88 +31,10 @@ function fmt(d) {
   return formatDate(d, 'shortWithTime') || '—'
 }
 
-// Tile groups for the admin landing. Order + grouping mirrors the sidebar
-// (AdminLayout.NAV_ITEMS) so committee members see a familiar list.
-//   ZLTAC Event Management   — all committee
-//   Competitions             — superadmin only
-//   ALSA Portal Management   — all committee
-// Managed Competitions is rendered separately because its tiles are
-// dynamic (one per row from /api/superadmin/my-competitions).
-const TILE_SECTIONS = [
-  {
-    title: 'ZLTAC Event Management',
-    tiles: [
-      { label: 'Event Settings',      to: '/admin/event',              description: 'Configure dates, fees, side events, and lifecycle phase.', Icon: Calendar },
-      { label: 'Registrations',       to: '/admin/registrations',      description: 'Review players, manage payments, edit registrations.',      Icon: ClipboardList },
-      { label: 'Required Documents',  to: '/admin/required-documents', description: 'Upload Code of Conduct, Media Release, Under-18 forms.',    Icon: FileText },
-      { label: 'Under 18 Approvals',  to: '/admin/under-18-approvals', description: 'Review and approve guardian forms for under-18 players.',   Icon: ShieldCheck },
-      { label: 'Rules Test',          to: '/admin/referee-test',       description: 'Manage test questions, settings, and player results.',      Icon: BookOpen },
-      { label: 'Volunteers',          to: '/admin/volunteers',         description: 'Recruit, assign, and confirm event volunteers.',            Icon: HandHelping },
-    ],
-  },
-  {
-    title: 'Competitions',
-    superadminOnly: true,
-    tiles: [
-      { label: 'Competitions', to: '/admin/competitions', description: 'Create and manage non-ZLTAC competitions (pre-nationals, etc.).', Icon: Trophy },
-    ],
-  },
-  {
-    title: 'ALSA Portal Management',
-    tiles: [
-      { label: 'Portal Dashboard',   to: '/admin/portal-dashboard',  description: 'ALSA portal-wide statistics and trends.',            Icon: LayoutDashboard },
-      { label: 'Users',              to: '/admin/users',             description: 'Search, edit, and grant roles to portal users.',     Icon: Users },
-      { label: 'ALSA Members',       to: '/admin/members',           description: 'Manage the paid-membership register and approvals.', Icon: BadgeCheck },
-      { label: 'ZLTAC Hall of Fame', to: '/admin/zltac-hall-of-fame', description: 'Historical results, dynasties, and yearly winners.', Icon: Award },
-      { label: 'ZLTAC Results',      to: '/admin/zltac-results',     description: 'Record and edit event results.',                     Icon: Medal },
-    ],
-  },
-]
-
-// Tiles support two visual tones. `brand` (default) is the standard green
-// admin look. `purple` is reserved for the "My Dashboard" section at the
-// top of the page, which surfaces the caller's managed competitions and
-// is intentionally visually distinct from the general admin tiles below.
-// Purple tokens mirror the existing superadmin-badge palette used in
-// AdminUsers / PlayerDashboard (bg-purple-500/15, text-purple-400,
-// border-purple-500/30) so no new colour values are introduced.
-function Tile({ label, to, description, Icon, tone = 'brand' }) {
-  const isPurple = tone === 'purple'
-  const outerCls = isPurple
-    ? 'bg-surface border border-purple-500/30 rounded-xl p-5 hover:border-purple-500/50 hover:bg-purple-500/5 transition-colors block'
-    : 'bg-surface border border-line rounded-xl p-5 hover:border-brand/40 hover:bg-line/20 transition-colors block'
-  const badgeCls = isPurple
-    ? 'w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center flex-shrink-0'
-    : 'w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center flex-shrink-0'
-  const iconCls = isPurple ? 'w-5 h-5 text-purple-400' : 'w-5 h-5 text-brand'
-  return (
-    <Link to={to} className={outerCls}>
-      <div className="flex items-start gap-3">
-        <div className={badgeCls}>
-          <Icon className={iconCls} strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-white font-bold text-sm">{label}</p>
-          <p className="text-[#e5e5e5]/50 text-xs mt-1 leading-snug">{description}</p>
-        </div>
-      </div>
-    </Link>
-  )
-}
-
-function TileSection({ title, children, tone = 'default' }) {
-  const headerCls = tone === 'purple'
-    ? 'text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-3'
-    : 'text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-3'
-  return (
-    <div className="mb-8">
-      <p className={headerCls}>{title}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {children}
-      </div>
-    </div>
-  )
-}
+// Tile-grid navigation moved to AdminHub at /admin (feature/admin-hub-
+// separation). This page is now stats-only — eight stat cards + Recent
+// Activity feed, scoped to the active ZLTAC event. Committee-only; non-
+// committee managers reach the hub but not this sub-page.
 
 // "X / N (Y%)" — guards against divide-by-zero. Returns "X / 0" when N is 0.
 function ratioLabel(x, n) {
@@ -128,10 +46,8 @@ function ratioLabel(x, n) {
 }
 
 export default function AdminZltacDashboard() {
-  const { role, userRoles = [], managedCompetitions = [] } = useOutletContext() ?? {}
-  const isSuperAdmin = role === 'superadmin'
+  const { userRoles = [] } = useOutletContext() ?? {}
   const isCommittee = userRoles.some(r => ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor'].includes(r))
-  const hasManagedCompetitions = managedCompetitions.length > 0
 
   const [stats, setStats] = useState({})
   const [activity, setActivity] = useState([])
@@ -314,46 +230,9 @@ export default function AdminZltacDashboard() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-black text-white">Admin Hub</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">
-          {isCommittee
-            ? 'Manage events, players, and the portal.'
-            : 'Manage your competitions.'}
-        </p>
+        <h1 className="text-2xl font-black text-white">ZLTAC Dashboard</h1>
+        <p className="text-[#e5e5e5]/40 text-sm mt-1">Overview of the active ZLTAC event.</p>
       </div>
-
-      {/* My Dashboard — promoted to the top so managers see their
-          competitions immediately on entering the hub. Purple-toned to
-          differentiate from the green admin tile sections below; the
-          section only renders when the caller has at least one managed
-          competition (superadmins implicitly manage every non-archived
-          competition via the my-competitions shortcut). */}
-      {hasManagedCompetitions && (
-        <TileSection title="My Dashboard" tone="purple">
-          {managedCompetitions.map(c => (
-            <Tile
-              key={c.id}
-              label={c.name}
-              to={`/manage/competitions/${c.slug}`}
-              description={c.start_date ? 'Manages registrations, payments, and content.' : 'Pre-nationals competition.'}
-              Icon={Briefcase}
-              tone="purple"
-            />
-          ))}
-        </TileSection>
-      )}
-
-      {/* Tile grid — sections role-gated. Non-committee managers see
-          nothing in this block; committee sees the full set. */}
-      {TILE_SECTIONS.filter(section => {
-        if (!isCommittee) return false
-        if (section.superadminOnly && !isSuperAdmin) return false
-        return true
-      }).map(section => (
-        <TileSection key={section.title} title={section.title}>
-          {section.tiles.map(t => <Tile key={t.to} {...t} />)}
-        </TileSection>
-      ))}
 
       {/* Stats + activity feed — ZLTAC-scoped, committee-only. Hidden
           entirely for non-committee managers. */}

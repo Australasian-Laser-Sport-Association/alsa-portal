@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Briefcase } from 'lucide-react'
+import { Briefcase, LayoutDashboard } from 'lucide-react'
 import { useAuth } from '../lib/useAuth'
 import { COMMITTEE_ROLES } from '../lib/roles'
 import { apiFetch } from '../lib/apiFetch.js'
 
 const NAV_ITEMS = [
-  { sectionLabel: 'ZLTAC Event Management' },
+  // Admin section sits at the top. Purple tone differentiates the hub
+  // entry from the green ZLTAC / Portal sections below, mirroring the
+  // landing's "My Dashboard" purple distinction.
+  { sectionLabel: 'Admin', tone: 'purple' },
   {
     to: '/admin',
     end: true,
+    icon: <LayoutDashboard className="w-4 h-4" />,
+    label: 'Admin Hub',
+    tone: 'purple',
+  },
+  { sectionLabel: 'ZLTAC Event Management' },
+  {
+    to: '/admin/zltac-dashboard',
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -167,7 +177,14 @@ function buildNavItems(managedCompetitions, isSuperAdmin) {
   return out
 }
 
-function SidebarLink({ to, end, icon, label, bold, onClick }) {
+function SidebarLink({ to, end, icon, label, bold, onClick, tone }) {
+  const isPurple = tone === 'purple'
+  const activeCls = isPurple
+    ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+    : 'bg-brand/10 text-brand border border-brand/20'
+  const inactiveCls = isPurple
+    ? 'text-purple-400/70 hover:text-purple-300 hover:bg-purple-500/10'
+    : 'text-[#e5e5e5]/60 hover:text-white hover:bg-line'
   return (
     <NavLink
       to={to}
@@ -175,9 +192,7 @@ function SidebarLink({ to, end, icon, label, bold, onClick }) {
       onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-          isActive
-            ? 'bg-brand/10 text-brand border border-brand/20'
-            : 'text-[#e5e5e5]/60 hover:text-white hover:bg-line'
+          isActive ? activeCls : inactiveCls
         }`
       }
     >
@@ -281,8 +296,12 @@ export default function AdminLayout() {
           {buildNavItems(managedCompetitions ?? [], isSuperAdmin).filter(item => !item.superadminOnly || isSuperAdmin).map((item, i) =>
             item.sectionLabel ? (
               <div key={`section-${i}`} className="mt-4 mb-1 px-2 flex items-center gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/25">{item.sectionLabel}</p>
-                <div className="flex-1 h-px bg-line" />
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${
+                  item.tone === 'purple' ? 'text-purple-400' : 'text-[#e5e5e5]/25'
+                }`}>{item.sectionLabel}</p>
+                <div className={`flex-1 h-px ${
+                  item.tone === 'purple' ? 'bg-purple-500/30' : 'bg-line'
+                }`} />
               </div>
             ) : (
               <SidebarLink key={item.to} {...item} onClick={() => setSidebarOpen(false)} />

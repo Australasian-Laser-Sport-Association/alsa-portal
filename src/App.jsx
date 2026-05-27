@@ -30,6 +30,7 @@ import RefereeTest from './pages/RefereeTest'
 
 // Admin
 import AdminLayout from './components/AdminLayout'
+import AdminHub from './pages/admin/AdminHub'
 import AdminZltacDashboard from './pages/admin/AdminZltacDashboard'
 import AdminAlsaDashboard from './pages/admin/AdminAlsaDashboard'
 import AdminEvent from './pages/admin/AdminEvent'
@@ -114,7 +115,8 @@ function App() {
 
           {/* Admin panel */}
           <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
-            <Route index element={<AdminZltacDashboard />} />
+            <Route index element={<AdminHub />} />
+            <Route path="zltac-dashboard" element={<AdminZltacDashboard />} />
             <Route path="portal-dashboard" element={<AdminAlsaDashboard />} />
             <Route path="event" element={<AdminEvent />} />
             <Route path="zltac-results" element={<AdminZLTACResults />} />
