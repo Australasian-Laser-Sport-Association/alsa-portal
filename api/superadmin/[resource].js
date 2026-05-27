@@ -1,21 +1,24 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyUser, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 
 // Catch-all dispatcher for superadmin-mostly endpoints, consolidated into one
 // Vercel function to stay under the Hobby plan's 12-function ceiling.
 //
 // URL surface preserved exactly so existing callers/tests don't need changes:
-//   /api/superadmin/competitions         → POST, GET, PATCH    (superadmin)
-//   /api/superadmin/competition-managers → POST, GET, DELETE   (superadmin)
-//   /api/superadmin/profile-search       → GET                 (superadmin)
-//   /api/superadmin/my-competitions      → GET                 (any auth user)
+//   /api/superadmin/competitions             → POST, GET, PATCH    (superadmin)
+//   /api/superadmin/competition-managers     → POST, GET, DELETE   (superadmin)
+//   /api/superadmin/profile-search           → GET                 (superadmin)
+//   /api/superadmin/my-competitions          → GET                 (any auth user)
+//   /api/superadmin/competition-registration → POST, GET, DELETE   (any auth user)
+//   /api/superadmin/competition-team         → POST, GET, PATCH, DELETE (any auth user)
 //
 // Vercel maps [resource].js to req.query.resource. Auth is per-branch because
-// 'my-competitions' deliberately serves any authenticated user (a pre-nationals
-// manager who has no superadmin role), unlike the other three. The
-// "/superadmin/" path segment is a directory-naming artefact of the
-// function-count consolidation, not an assertion that every resource here is
-// gated by verifySuperAdmin — see Phase 1d notes.
+// 'my-competitions', 'competition-registration', and 'competition-team' serve
+// any authenticated user, unlike the four admin resources. The "/superadmin/"
+// path segment is a directory-naming artefact of the function-count
+// consolidation, not an assertion that every resource here is gated by
+// verifySuperAdmin — see Phase 1d notes.
 //
 // Response shape mirrors /api/admin/*: bare object, no envelope, errors as
 // { error: '<message>' }. Creation responses use 201; everything else 200.
@@ -384,14 +387,395 @@ async function handleMyCompetitions(req, res) {
 }
 
 
+// ── competition-registration ─────────────────────────────────────────────────
+// Player-self registration into a competition. The BEFORE-INSERT triggers
+// from Phase 1a populate payment_reference + amount_owing automatically.
+//
+// Returns the joined competition row alongside the registration so the hub
+// can render its header without a second fetch.
+
+const PAID_STATUSES = new Set(['paid', 'partial', 'overpaid'])
+
+// Subset of competition columns the hub needs. Bank details + payment_info_visible
+// included so the registered player can see them when the manager toggles
+// visibility on.
+const HUB_COMPETITION_COLUMNS =
+  'id, slug, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible, bank_account_name, bank_bsb, bank_account_number, archived_at'
+
+async function handleCompetitionRegistration(req, res) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  // GET — fetch caller's own registration for a competition.
+  if (req.method === 'GET') {
+    const competitionId = req.query.competition_id
+    if (!competitionId) return badRequest(res, 'competition_id query param is required')
+
+    const { data, error } = await supabaseAdmin
+      .from('competition_registrations')
+      .select(`*, competition:competitions(${HUB_COMPETITION_COLUMNS})`)
+      .eq('competition_id', competitionId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (error) return res.status(500).json({ error: error.message })
+    if (!data) return res.status(404).json({ error: 'not registered for this competition' })
+    return res.json(data)
+  }
+
+  // POST — register the caller.
+  if (req.method === 'POST') {
+    const competitionId = req.body?.competition_id
+    if (!competitionId) return badRequest(res, 'competition_id is required')
+
+    const { data: comp, error: compErr } = await supabaseAdmin
+      .from('competitions')
+      .select('id, archived_at, registration_open_at, registration_close_at')
+      .eq('id', competitionId)
+      .maybeSingle()
+    if (compErr) return res.status(500).json({ error: compErr.message })
+    if (!comp) return res.status(404).json({ error: 'competition not found' })
+    if (comp.archived_at) return res.status(400).json({ error: 'This competition has been archived.' })
+
+    const now = new Date()
+    if (comp.registration_close_at && new Date(comp.registration_close_at) < now) {
+      return res.status(400).json({ error: 'Registration has closed for this competition.' })
+    }
+    if (comp.registration_open_at && new Date(comp.registration_open_at) > now) {
+      return res.status(400).json({ error: 'Registration is not yet open for this competition.' })
+    }
+
+    const { data: existing, error: exErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .select('id')
+      .eq('competition_id', competitionId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (exErr) return res.status(500).json({ error: exErr.message })
+    if (existing) return res.status(409).json({ error: 'You are already registered for this competition.' })
+
+    const { data, error } = await supabaseAdmin
+      .from('competition_registrations')
+      .insert({ competition_id: competitionId, user_id: user.id })
+      .select(`*, competition:competitions(${HUB_COMPETITION_COLUMNS})`)
+      .single()
+    if (error) {
+      if (error.code === '23505') {
+        return res.status(409).json({ error: 'You are already registered for this competition.' })
+      }
+      return res.status(500).json({ error: error.message })
+    }
+    return res.status(201).json(data)
+  }
+
+  // DELETE — cancel caller's registration.
+  if (req.method === 'DELETE') {
+    const competitionId = req.query.competition_id ?? req.body?.competition_id
+    if (!competitionId) return badRequest(res, 'competition_id is required')
+
+    const { data: reg, error: regErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .select('id, payment_status, team_id')
+      .eq('competition_id', competitionId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (!reg) return res.status(404).json({ error: 'You are not registered for this competition.' })
+
+    if (PAID_STATUSES.has(reg.payment_status)) {
+      return res.status(409).json({
+        error: 'You have already made a payment for this event. Contact the event organiser to arrange a refund.',
+      })
+    }
+
+    // Team-membership tidy-up. Three cases:
+    //   - not on a team             → nothing to do
+    //   - on a team, not captain    → delete only the caller's team_members row
+    //   - on a team, captain        → if team has other members, refuse (captain
+    //                                 must transfer or remove members first); if
+    //                                 caller is the only member, cascade-delete
+    //                                 the team itself.
+    if (reg.team_id) {
+      const { data: members, error: memErr } = await supabaseAdmin
+        .from('team_members')
+        .select('user_id, roles')
+        .eq('team_id', reg.team_id)
+      if (memErr) return res.status(500).json({ error: memErr.message })
+
+      const callerRow = (members ?? []).find(m => m.user_id === user.id)
+      const isCaptain = !!callerRow && Array.isArray(callerRow.roles) && callerRow.roles.includes('captain')
+      const otherCount = (members ?? []).length - (callerRow ? 1 : 0)
+
+      if (isCaptain && otherCount > 0) {
+        return res.status(409).json({
+          error: 'Transfer captaincy or remove all team members before cancelling registration.',
+        })
+      }
+
+      if (isCaptain && otherCount === 0) {
+        // Disband: clear any registrations pointing at this team, delete
+        // members, then delete the team. competition_registrations.team_id is
+        // ON DELETE SET NULL but we null it explicitly first for clarity.
+        const { error: nullErr } = await supabaseAdmin
+          .from('competition_registrations')
+          .update({ team_id: null })
+          .eq('team_id', reg.team_id)
+        if (nullErr) return res.status(500).json({ error: `team unlink: ${nullErr.message}` })
+
+        const { error: memDelErr } = await supabaseAdmin
+          .from('team_members')
+          .delete()
+          .eq('team_id', reg.team_id)
+        if (memDelErr) return res.status(500).json({ error: `team members delete: ${memDelErr.message}` })
+
+        const { error: teamDelErr } = await supabaseAdmin
+          .from('teams')
+          .delete()
+          .eq('id', reg.team_id)
+        if (teamDelErr) return res.status(500).json({ error: `team delete: ${teamDelErr.message}` })
+      } else if (callerRow) {
+        // Plain member departure (Phase 3d invite flow path; included here
+        // for completeness — Phase 3c can't actually reach this branch).
+        const { error: leaveErr } = await supabaseAdmin
+          .from('team_members')
+          .delete()
+          .eq('team_id', reg.team_id)
+          .eq('user_id', user.id)
+        if (leaveErr) return res.status(500).json({ error: `team leave: ${leaveErr.message}` })
+      }
+    }
+
+    const { error: delErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .delete()
+      .eq('id', reg.id)
+    if (delErr) return res.status(500).json({ error: delErr.message })
+
+    return res.json({ deleted: true })
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
+// ── competition-team ─────────────────────────────────────────────────────────
+// Player-self team management: create, view, edit, disband. Phase 3d will
+// add the invite flow on top of this.
+
+const TEAM_NAME_MAX = 50
+const TEAM_MEMBER_COLUMNS = 'user_id, roles, invite_status, invited_at, responded_at, profile:profiles!user_id(id, alias, first_name, last_name)'
+
+async function loadTeamWithMembers(teamId) {
+  const [{ data: team, error: tErr }, { data: members, error: mErr }] = await Promise.all([
+    supabaseAdmin
+      .from('teams')
+      .select('id, competition_id, name, colour, captain_id, manager_id, status, created_at')
+      .eq('id', teamId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('team_members')
+      .select(TEAM_MEMBER_COLUMNS)
+      .eq('team_id', teamId),
+  ])
+  if (tErr) return { error: tErr.message }
+  if (mErr) return { error: mErr.message }
+  if (!team) return { error: 'team not found', notFound: true }
+  return { team: { ...team, members: members ?? [] } }
+}
+
+async function handleCompetitionTeam(req, res) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  // GET — caller's team for a competition.
+  if (req.method === 'GET') {
+    const competitionId = req.query.competition_id
+    if (!competitionId) return badRequest(res, 'competition_id query param is required')
+
+    const { data: membership, error: memErr } = await supabaseAdmin
+      .from('team_members')
+      .select('team_id, teams!inner(id, competition_id)')
+      .eq('user_id', user.id)
+      .eq('teams.competition_id', competitionId)
+      .maybeSingle()
+    if (memErr) return res.status(500).json({ error: memErr.message })
+    if (!membership) return res.status(404).json({ error: 'not on a team for this competition' })
+
+    const result = await loadTeamWithMembers(membership.team_id)
+    if (result.error) {
+      return res.status(result.notFound ? 404 : 500).json({ error: result.error })
+    }
+    return res.json(result.team)
+  }
+
+  // POST — create a team for a competition the caller is registered for.
+  if (req.method === 'POST') {
+    const body = req.body ?? {}
+    const competitionId = body.competition_id
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const colour = body.colour
+
+    if (!competitionId) return badRequest(res, 'competition_id is required')
+    if (!name) return badRequest(res, 'name is required')
+    if (name.length > TEAM_NAME_MAX) return badRequest(res, `name must be ${TEAM_NAME_MAX} characters or fewer`)
+    if (!TEAM_COLOURS.includes(colour)) return badRequest(res, 'colour must be one of the team palette values')
+
+    // Caller must be registered for this competition.
+    const { data: reg, error: regErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .select('id, team_id')
+      .eq('competition_id', competitionId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (!reg) return res.status(400).json({ error: 'You must register for the competition before creating a team.' })
+    if (reg.team_id) return res.status(409).json({ error: 'You are already on a team for this competition.' })
+
+    // Three-step write (service role bypasses RLS so no rollback needed at the
+    // policy layer; we do best-effort cleanup on partial failure). teams.event_id
+    // stays NULL to satisfy the xor check from Phase 1a. status='approved' —
+    // pre-nats has no committee approval gate.
+    const { data: team, error: teamErr } = await supabaseAdmin
+      .from('teams')
+      .insert({
+        competition_id: competitionId,
+        name,
+        colour,
+        captain_id: user.id,
+        manager_id: user.id,
+        status: 'approved',
+        format: 'team',
+      })
+      .select('id, competition_id, name, colour, captain_id, manager_id, status, created_at')
+      .single()
+    if (teamErr) return res.status(500).json({ error: `team insert: ${teamErr.message}` })
+
+    const { error: memErr } = await supabaseAdmin
+      .from('team_members')
+      .insert({
+        team_id: team.id,
+        user_id: user.id,
+        roles: ['captain'],
+        invite_status: 'accepted',
+        responded_at: new Date().toISOString(),
+      })
+    if (memErr) {
+      await supabaseAdmin.from('teams').delete().eq('id', team.id)
+      return res.status(500).json({ error: `team_members insert: ${memErr.message}` })
+    }
+
+    const { error: regUpdErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .update({ team_id: team.id })
+      .eq('id', reg.id)
+    if (regUpdErr) {
+      await supabaseAdmin.from('team_members').delete().eq('team_id', team.id)
+      await supabaseAdmin.from('teams').delete().eq('id', team.id)
+      return res.status(500).json({ error: `registration update: ${regUpdErr.message}` })
+    }
+
+    const result = await loadTeamWithMembers(team.id)
+    if (result.error) return res.status(500).json({ error: result.error })
+    return res.status(201).json(result.team)
+  }
+
+  // PATCH — caller must be captain.
+  if (req.method === 'PATCH') {
+    const teamId = req.query.team_id ?? req.body?.team_id
+    if (!teamId) return badRequest(res, 'team_id is required')
+
+    const { data: callerRow, error: cErr } = await supabaseAdmin
+      .from('team_members')
+      .select('roles')
+      .eq('team_id', teamId)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (cErr) return res.status(500).json({ error: cErr.message })
+    if (!callerRow || !Array.isArray(callerRow.roles) || !callerRow.roles.includes('captain')) {
+      return res.status(403).json({ error: 'Only the team captain can edit team details.' })
+    }
+
+    const body = req.body ?? {}
+    const updates = {}
+    if ('name' in body) {
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      if (!name) return badRequest(res, 'name is required')
+      if (name.length > TEAM_NAME_MAX) return badRequest(res, `name must be ${TEAM_NAME_MAX} characters or fewer`)
+      updates.name = name
+    }
+    if ('colour' in body) {
+      if (!TEAM_COLOURS.includes(body.colour)) return badRequest(res, 'colour must be one of the team palette values')
+      updates.colour = body.colour
+    }
+    if (Object.keys(updates).length === 0) {
+      return badRequest(res, 'no editable fields supplied')
+    }
+
+    const { error: updErr } = await supabaseAdmin
+      .from('teams')
+      .update(updates)
+      .eq('id', teamId)
+    if (updErr) return res.status(500).json({ error: updErr.message })
+
+    const result = await loadTeamWithMembers(teamId)
+    if (result.error) return res.status(500).json({ error: result.error })
+    return res.json(result.team)
+  }
+
+  // DELETE — disband. Only the captain, only when no other members remain.
+  if (req.method === 'DELETE') {
+    const teamId = req.query.team_id ?? req.body?.team_id
+    if (!teamId) return badRequest(res, 'team_id is required')
+
+    const { data: members, error: memErr } = await supabaseAdmin
+      .from('team_members')
+      .select('user_id, roles')
+      .eq('team_id', teamId)
+    if (memErr) return res.status(500).json({ error: memErr.message })
+
+    const callerRow = (members ?? []).find(m => m.user_id === user.id)
+    const isCaptain = !!callerRow && Array.isArray(callerRow.roles) && callerRow.roles.includes('captain')
+    if (!isCaptain) {
+      return res.status(403).json({ error: 'Only the team captain can disband the team.' })
+    }
+    if ((members?.length ?? 0) > 1) {
+      return res.status(409).json({ error: 'Remove all team members before disbanding.' })
+    }
+
+    const { error: nullErr } = await supabaseAdmin
+      .from('competition_registrations')
+      .update({ team_id: null })
+      .eq('team_id', teamId)
+    if (nullErr) return res.status(500).json({ error: `team unlink: ${nullErr.message}` })
+
+    const { error: memDelErr } = await supabaseAdmin
+      .from('team_members')
+      .delete()
+      .eq('team_id', teamId)
+    if (memDelErr) return res.status(500).json({ error: `team members delete: ${memDelErr.message}` })
+
+    const { error: teamDelErr } = await supabaseAdmin
+      .from('teams')
+      .delete()
+      .eq('id', teamId)
+    if (teamDelErr) return res.status(500).json({ error: `team delete: ${teamDelErr.message}` })
+
+    return res.json({ deleted: true })
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
-// Each branch picks its own auth helper because my-competitions deliberately
-// serves any authenticated user (a manager who is not a superadmin), unlike
-// the other three.
+// Each branch picks its own auth helper because 'my-competitions',
+// 'competition-registration', and 'competition-team' deliberately serve any
+// authenticated user, unlike the four admin resources below.
 export default async function handler(req, res) {
   const resource = req.query.resource
 
-  if (resource === 'my-competitions') return handleMyCompetitions(req, res)
+  if (resource === 'my-competitions')          return handleMyCompetitions(req, res)
+  if (resource === 'competition-registration') return handleCompetitionRegistration(req, res)
+  if (resource === 'competition-team')         return handleCompetitionTeam(req, res)
 
   // The remaining resources require superadmin. Verify once and share the user
   // object across the three handlers.

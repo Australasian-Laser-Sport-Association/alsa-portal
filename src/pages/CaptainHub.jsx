@@ -10,6 +10,7 @@ import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
 import { TeamShieldIcon } from '../components/icons.jsx'
+import { TEAM_COLOURS } from '../lib/teamColours'
 
 function isUnder18(dob, eventYear) {
   if (!dob) return false
@@ -130,8 +131,6 @@ function StatusBadge({ status }) {
 }
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
-// Mirrors CaptainRegister.jsx — keep in sync if the creation palette changes.
-const TEAM_COLOURS = ['#00E6FF', '#FF3B30', '#0A84FF', '#FF9F0A', '#BF5AF2', '#FF375F', '#30D158', '#64D2FF']
 
 export default function CaptainHub() {
   const { user, loading: authLoading } = useAuth()

@@ -50,7 +50,8 @@ import ManagerCompetitionDetail from './pages/manage/ManagerCompetitionDetail'
 // Public competitions (anon-readable)
 import CompetitionsList from './pages/public/CompetitionsList'
 import CompetitionDetail from './pages/public/CompetitionDetail'
-import CompetitionRegisterPlaceholder from './pages/public/CompetitionRegisterPlaceholder'
+import CompetitionRegister from './pages/public/CompetitionRegister'
+import CompetitionHub from './pages/competition/CompetitionHub'
 // ZLTAC history
 import ZLTACYearDetail from './pages/ZLTACYearDetail'
 
@@ -85,7 +86,8 @@ function App() {
           {/* Public competition listings (pre-nationals etc.) */}
           <Route path="/competitions" element={<CompetitionsList />} />
           <Route path="/competitions/:slug" element={<CompetitionDetail />} />
-          <Route path="/competitions/:slug/register" element={<CompetitionRegisterPlaceholder />} />
+          <Route path="/competitions/:slug/register" element={<CompetitionRegister />} />
+          <Route path="/competitions/:slug/hub" element={<CompetitionHub />} />
 
           {/* ZLTAC history */}
           <Route path="/zltac/:year" element={<ZLTACYearDetail />} />

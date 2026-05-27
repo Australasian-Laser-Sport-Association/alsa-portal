@@ -6,9 +6,9 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
+import { TEAM_COLOURS } from '../lib/teamColours'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
-const TEAM_COLOURS = ['#00E6FF', '#FF3B30', '#0A84FF', '#FF9F0A', '#BF5AF2', '#FF375F', '#30D158', '#64D2FF']
 
 export default function CaptainRegister() {
   const { year } = useParams()
