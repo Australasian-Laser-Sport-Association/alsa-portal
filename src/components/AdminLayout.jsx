@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { COMMITTEE_ROLES } from '../lib/roles'
+import { apiFetch } from '../lib/apiFetch.js'
 
 const NAV_ITEMS = [
   { sectionLabel: 'ZLTAC Event Management' },
@@ -153,8 +154,12 @@ export default function AdminLayout() {
   const { user, userRoles, loading: authLoading, profileLoading } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // null = still fetching managed competitions. Both "is committee" and
+  // "has a manager grant" admit the user into /admin; we need the manager
+  // fetch to resolve before we can decide.
+  const [managedCompetitions, setManagedCompetitions] = useState(null)
 
-  const hasAdminAccess = userRoles.some(r => COMMITTEE_ROLES.includes(r))
+  const isCommittee = userRoles.some(r => COMMITTEE_ROLES.includes(r))
   const isSuperAdmin = userRoles.includes('superadmin')
   const role = isSuperAdmin ? 'superadmin'
     : userRoles.includes('alsa_committee') ? 'alsa_committee'
@@ -162,14 +167,33 @@ export default function AdminLayout() {
     : userRoles.includes('advisor') ? 'advisor'
     : null
 
+  // Fetch my-competitions so non-committee competition managers can reach
+  // /admin and see their managed-competitions tile section. The same list
+  // is forwarded via outlet context so the landing renders without a
+  // second fetch.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    apiFetch('/api/superadmin/my-competitions')
+      .then(data => { if (!cancelled) setManagedCompetitions(Array.isArray(data) ? data : []) })
+      .catch(() => { if (!cancelled) setManagedCompetitions([]) })
+    return () => { cancelled = true }
+  }, [user])
+
+  const hasManagedCompetitions = (managedCompetitions ?? []).length > 0
+  const hasAdminAccess = isCommittee || hasManagedCompetitions
+
   useEffect(() => {
     if (authLoading || profileLoading) return
+    // Wait for the manager fetch before deciding. Otherwise non-committee
+    // managers get redirected to /dashboard before the gate can admit them.
+    if (managedCompetitions === null) return
     if (!user || !hasAdminAccess) {
       navigate('/dashboard', { state: { accessDenied: true } })
     }
-  }, [user, authLoading, profileLoading, hasAdminAccess, navigate])
+  }, [user, authLoading, profileLoading, managedCompetitions, hasAdminAccess, navigate])
 
-  if (authLoading || profileLoading) {
+  if (authLoading || profileLoading || managedCompetitions === null) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
@@ -179,17 +203,24 @@ export default function AdminLayout() {
 
   if (!hasAdminAccess) return null
 
+  // Non-committee managers see no sidebar — they have no business in
+  // event management. The page renders single-column.
+  const showSidebar = isCommittee
+
   return (
     <div className="min-h-screen bg-base flex">
       {/* Mobile overlay */}
-      {sidebarOpen && (
+      {showSidebar && sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-20 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — committee only. Non-committee managers get a
+          single-column layout (the tile grid on the landing is their only
+          /admin surface). */}
+      {showSidebar && (
       <aside
         className={`fixed top-16 bottom-0 left-0 z-30 w-56 bg-[#111] border-r border-line flex flex-col transform transition-transform duration-200 md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -235,24 +266,27 @@ export default function AdminLayout() {
           </Link>
         </div>
       </aside>
+      )}
 
       {/* Main content */}
-      <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
-        {/* Mobile top bar */}
-        <div className="md:hidden sticky top-16 z-10 bg-surface border-b border-line px-4 py-2 flex items-center gap-3">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-line text-[#e5e5e5]/70 hover:text-white"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <span className="text-sm font-bold text-brand uppercase tracking-widest">Admin Panel</span>
-        </div>
+      <div className={`flex-1 flex flex-col min-h-screen ${showSidebar ? 'md:ml-56' : ''}`}>
+        {/* Mobile top bar — only meaningful when there is a sidebar to toggle. */}
+        {showSidebar && (
+          <div className="md:hidden sticky top-16 z-10 bg-surface border-b border-line px-4 py-2 flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-lg hover:bg-line text-[#e5e5e5]/70 hover:text-white"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="text-sm font-bold text-brand uppercase tracking-widest">Admin Panel</span>
+          </div>
+        )}
 
         <div className="flex-1 p-6 md:p-8">
-          <Outlet context={{ role, userRoles }} />
+          <Outlet context={{ role, userRoles, managedCompetitions: managedCompetitions ?? [] }} />
         </div>
       </div>
     </div>
