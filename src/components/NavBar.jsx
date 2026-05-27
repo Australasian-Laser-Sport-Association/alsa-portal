@@ -4,6 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { isCommittee } from '../lib/roles'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
+import ActiveEventsPill from './ActiveEventsPill'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -16,11 +17,17 @@ const DEFAULT_NAV_LINKS = [
       { label: 'Member Register', href: '/members' },
     ],
   },
-  { label: 'ZLTAC', href: '/zltac', visible: true },
+  {
+    label: 'ZLTAC',
+    href: '/zltac',
+    visible: true,
+    children: [
+      { label: 'ZLTAC', href: '/zltac' },
+      { label: 'Competitions', href: '/competitions' },
+    ],
+  },
   { label: 'Contact', href: '/contact', visible: true },
 ]
-
-const PILL_STATUS_LABEL = { open: 'EVENT OPEN' }
 
 function navLinkClass({ isActive }) {
   return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'text-brand' : 'text-[#e5e5e5]/70 hover:text-white'}`
@@ -101,7 +108,6 @@ export default function NavBar() {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { event } = useCurrentEvent()
-  const pillStatusLabel = event ? PILL_STATUS_LABEL[event.status] : null
   const [hasPlayerReg, setHasPlayerReg] = useState(false)
   const [myTeamStatus, setMyTeamStatus] = useState(null)
   const navLinks = DEFAULT_NAV_LINKS
@@ -188,15 +194,7 @@ export default function NavBar() {
                 </NavLink>
               )
           )}
-          {event && pillStatusLabel && (
-            <Link
-              to={`/events/${event.year}`}
-              className="ml-2 flex items-center gap-1.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold px-3 py-1 rounded-full transition-colors whitespace-nowrap"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
-              {pillStatusLabel} — {event.name}
-            </Link>
-          )}
+          <ActiveEventsPill variant="desktop" />
         </nav>
 
         {/* Pills + auth controls */}
@@ -291,17 +289,9 @@ export default function NavBar() {
               )
           )}
 
-          {/* Current-event pill — sits in the link list, below Contact */}
-          {event && pillStatusLabel && (
-            <Link
-              to={`/events/${event.year}`}
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center justify-center gap-2 mt-1 py-2.5 px-3 rounded-full bg-green-500/15 hover:bg-green-500/25 border border-green-500/40 text-green-300 text-xs font-semibold transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              {pillStatusLabel} — {event.name}
-            </Link>
-          )}
+          {/* Active-events pill — sits in the link list, below Contact. Renders
+              a single pill or a dropdown depending on how many events are active. */}
+          <ActiveEventsPill variant="mobile" onNavigate={() => setMobileOpen(false)} />
 
           {(user
             ? [{ label: 'Dashboard', to: '/dashboard' }]
