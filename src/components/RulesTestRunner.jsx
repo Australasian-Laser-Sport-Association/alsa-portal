@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Footer from './Footer'
-import { ShieldAlert, BookOpen, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { ShieldAlert, BookOpen } from 'lucide-react'
 
 // Single source of truth for the Rules Test taking experience — used by both
 // the player route (src/pages/RefereeTest.jsx) and the admin preview overlay
@@ -66,12 +66,21 @@ export default function RulesTestRunner({
   const generalPool = questionPool?.general ?? []
   const hasAnyQuestions = safetyPool.length + generalPool.length > 0
 
-  const [phase, setPhase] = useState('intro') // intro | safety-intro | running | safety-result | general-intro | results
+  const [phase, setPhase] = useState('intro') // intro | safety-intro | running | results
   const [questions, setQuestions] = useState([]) // composed attempt (safety first, then general)
   const [idx, setIdx] = useState(0)
-  const [selected, setSelected] = useState(null) // chosen option's original letter
-  const [answered, setAnswered] = useState(false)
-  const [answers, setAnswers] = useState([])
+  // Keyed by question index. Each entry { letter } — the chosen option's
+  // original letter. Correctness is determined SERVER-SIDE after Submit
+  // (api/referee-test.js); the client never holds correct_answer in
+  // production, so we cannot derive isCorrect locally. Preview mode (admin
+  // surface) does have correct_answer in `questions` and scores locally at
+  // finishTest below.
+  const [answersByIdx, setAnswersByIdx] = useState({})
+  // The authoritative result after Submit. In production this comes from
+  // the server response; in preview mode it is computed locally from the
+  // pool's correct_answer. The results phase reads from here so the same
+  // render path handles both.
+  const [submittedResult, setSubmittedResult] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveErr, setSaveErr] = useState('')
 
@@ -90,96 +99,95 @@ export default function RulesTestRunner({
     const composed = composeAttempt()
     setQuestions(composed)
     setIdx(0)
-    setSelected(null)
-    setAnswered(false)
-    setAnswers([])
+    setAnswersByIdx({})
+    setSubmittedResult(null)
     setSaveErr('')
-    // Lead with the themed Safety intro; a general-only attempt (no active
-    // Safety questions) skips straight to the General intro.
-    setPhase(composed.some(q => q.section === 'safety') ? 'safety-intro' : 'general-intro')
+    // Lead with the themed Safety intro when there are any Safety
+    // questions in this attempt; otherwise drop straight into running.
+    // The mid-test safety result gate was removed in the integrity patch
+    // (correct_answer is no longer client-side, so the runner cannot
+    // authoritatively decide Safety pass/fail mid-attempt). Free
+    // navigation across the Safety/General boundary is allowed until
+    // final Submit.
+    setPhase(composed.some(q => q.section === 'safety') ? 'safety-intro' : 'running')
   }
 
   function beginSafety() { setPhase('running') }
-  function continueToGeneral() { setPhase('running') }
 
-  // From the Safety result gate: passing players proceed to the General intro
-  // (or straight to results if this attempt has no General questions).
-  function continueAfterSafety() {
-    const generalRemaining = questions.some(q => q.section !== 'safety')
-    if (generalRemaining) setPhase('general-intro')
-    else finishTest()
-  }
-
-  // Failing players retake Safety from scratch — a fresh composeAttempt()
-  // reshuffles the sample, question order and option order, clears all answers,
-  // and returns to the Safety intro as a clean reset moment. Failed attempts
-  // are never saved; only the final successful run is posted at the end.
-  function retakeSafety() {
-    startTest()
-  }
-
-  async function finishTest() {
-    setPhase('results')
-
-    const safetyTotal    = questions.filter(q => q.section === 'safety').length
-    const generalTotal   = questions.length - safetyTotal
-    const safetyCorrect  = answers.filter(a => a.q.section === 'safety' && a.isCorrect).length
-    const generalCorrect = answers.filter(a => a.q.section !== 'safety' && a.isCorrect).length
-
-    const totalCorrect = safetyCorrect + generalCorrect
-    const pct = questions.length > 0 ? Math.min(Math.round((totalCorrect / questions.length) * 100), 100) : 0
-
-    const safetyPct     = safetyTotal > 0 ? Math.round((safetyCorrect / safetyTotal) * 100) : 100
-    const safetyPassed  = safetyPct >= cfg.safetyPass
-    const generalPct    = generalTotal > 0 ? Math.round((generalCorrect / generalTotal) * 100) : 100
-    const generalPassed = generalPct >= cfg.generalPass
-    const passed = safetyPassed && generalPassed
-
-    if (onComplete) {
-      setSaving(true)
-      setSaveErr('')
-      try {
-        await onComplete({
-          score: pct, passed,
-          safety_correct: safetyCorrect, safety_total: safetyTotal,
-          general_correct: generalCorrect, general_total: generalTotal,
-          safety_passed: safetyPassed, general_passed: generalPassed,
-        })
-      } catch (err) {
-        setSaveErr(err.message)
-      } finally {
-        setSaving(false)
-      }
-    }
-  }
-
+  // Selecting an option records only the chosen letter. No correctness
+  // info is computed client-side — the server compares each letter to the
+  // stored correct_answer at Submit time.
   function selectAnswer(letter) {
-    if (answered) return
-    const q = questions[idx]
-    setSelected(letter)
-    setAnswered(true)
-    // No mid-test feedback — record the answer (matched by original letter) and
-    // reveal nothing until the final results page.
-    setAnswers(prev => [...prev, { q, selected: letter, isCorrect: letter === q.correct_answer }])
+    setAnswersByIdx(prev => ({ ...prev, [idx]: { letter } }))
+  }
+
+  function prev() {
+    if (idx === 0) return
+    setIdx(idx - 1)
   }
 
   function next() {
     const nextIdx = idx + 1
-    const safetyCount = questions.filter(q => q.section === 'safety').length
-    // Just answered the last Safety question → the Safety result gate (the
-    // player must pass before General). Checked before the end-of-test guard so
-    // a safety-only attempt still gets the gate.
-    if (safetyCount > 0 && nextIdx === safetyCount) {
-      setIdx(nextIdx)
-      setSelected(null)
-      setAnswered(false)
-      setPhase('safety-result')
-      return
-    }
     if (nextIdx >= questions.length) { finishTest(); return }
     setIdx(nextIdx)
-    setSelected(null)
-    setAnswered(false)
+  }
+
+  // Builds the raw answer payload from the keyed Map and dispatches it for
+  // scoring. Production goes through onComplete (which posts to the server
+  // and returns the authoritative result). Preview mode (admin surface)
+  // scores locally using correct_answer from the pool, since no server
+  // round-trip is desired.
+  async function finishTest() {
+    const submittedAnswers = []
+    for (let i = 0; i < questions.length; i++) {
+      const a = answersByIdx[i]
+      if (a) submittedAnswers.push({ question_id: questions[i].id, letter: a.letter })
+    }
+
+    if (isPreview) {
+      const perQuestion = submittedAnswers.map(({ question_id, letter }) => {
+        const q = questions.find(x => x.id === question_id)
+        return {
+          question_id,
+          section: q?.section ?? 'general',
+          selected_letter: letter,
+          correct_answer: q?.correct_answer ?? null,
+          is_correct: letter === q?.correct_answer,
+        }
+      })
+      const safetyTotal  = questions.filter(q => q.section === 'safety').length
+      const generalTotal = questions.length - safetyTotal
+      const safetyCorrect  = perQuestion.filter(p => p.section === 'safety' && p.is_correct).length
+      const generalCorrect = perQuestion.filter(p => p.section !== 'safety' && p.is_correct).length
+      const safetyPct  = safetyTotal > 0 ? Math.round((safetyCorrect / safetyTotal) * 100) : 100
+      const generalPct = generalTotal > 0 ? Math.round((generalCorrect / generalTotal) * 100) : 100
+      const safetyPassed  = safetyPct >= cfg.safetyPass
+      const generalPassed = generalPct >= cfg.generalPass
+      const totalCorrect = safetyCorrect + generalCorrect
+      const score = questions.length > 0 ? Math.min(Math.round((totalCorrect / questions.length) * 100), 100) : 0
+      setSubmittedResult({
+        score, passed: safetyPassed && generalPassed,
+        safety_correct: safetyCorrect, safety_total: safetyTotal,
+        general_correct: generalCorrect, general_total: generalTotal,
+        safety_passed: safetyPassed, general_passed: generalPassed,
+        per_question: perQuestion,
+      })
+      setPhase('results')
+      return
+    }
+
+    if (!onComplete) return
+    setSaving(true)
+    setSaveErr('')
+    try {
+      const data = await onComplete({ answers: submittedAnswers })
+      setSubmittedResult(data)
+      setPhase('results')
+    } catch (err) {
+      setSaveErr(err.message || 'Could not submit the test.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Empty (no active questions) ────────────────────────────────────────────
@@ -205,7 +213,18 @@ export default function RulesTestRunner({
   const currentSection = idx < safetyCount ? 'safety' : 'general'
   const sectionTotal = currentSection === 'safety' ? safetyCount : generalCount
   const sectionPosition = currentSection === 'safety' ? idx + 1 : idx - safetyCount + 1
-  const sectionProgress = sectionTotal > 0 ? (((sectionPosition - 1) + (answered ? 1 : 0)) / sectionTotal) * 100 : 0
+  const currentAnswer = answersByIdx[idx] ?? null
+  const isAnswered = currentAnswer !== null
+  // Section progress: count answered indices within the current section.
+  const sectionStart = currentSection === 'safety' ? 0 : safetyCount
+  const sectionEnd = currentSection === 'safety' ? safetyCount : questions.length
+  let sectionAnswered = 0
+  for (let i = sectionStart; i < sectionEnd; i++) {
+    if (answersByIdx[i]) sectionAnswered++
+  }
+  const sectionProgress = sectionTotal > 0 ? (sectionAnswered / sectionTotal) * 100 : 0
+  const canGoBack = idx > 0
+  const isLastQuestion = idx + 1 >= questions.length
   // Intro counts come from the pools (the attempt isn't composed until Start),
   // capped at the per-section sample size.
   const introSafetyCount = Math.min(cfg.safetyCount, safetyPool.length)
@@ -296,77 +315,6 @@ export default function RulesTestRunner({
     )
   }
 
-  // ── Safety result gate — player must pass Safety before General ────────────
-  if (phase === 'safety-result') {
-    const sTotal = safetyCount
-    const sCorrect = answers.filter(a => a.q.section === 'safety' && a.isCorrect).length
-    const sPct = sTotal > 0 ? Math.round((sCorrect / sTotal) * 100) : 100
-    const sPassed = sPct >= cfg.safetyPass
-    const hasGeneral = questions.some(q => q.section !== 'safety')
-    return (
-      <div className="min-h-screen bg-base text-white flex flex-col">
-        <div className="flex-1 flex items-center justify-center px-5 py-12">
-          <div className={`w-full max-w-lg rounded-2xl border p-7 sm:p-10 text-center ${sPassed ? 'border-yellow-500/30 bg-yellow-500/10' : 'border-red-400/40 bg-red-400/10'}`}>
-            {sPassed
-              ? <ShieldCheck className="h-14 w-14 sm:h-16 sm:w-16 text-yellow-300 mx-auto mb-5" strokeWidth={1.75} />
-              : <AlertTriangle className="h-14 w-14 sm:h-16 sm:w-16 text-red-400 mx-auto mb-5" strokeWidth={1.75} />}
-            <p className={`text-[11px] font-black uppercase tracking-widest mb-2 ${sPassed ? 'text-yellow-300/70' : 'text-red-400/80'}`}>Section 1 — Safety</p>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mb-3">
-              {sPassed ? 'Safety Section Passed ✓' : 'Safety Section Not Passed'}
-            </h1>
-            <p className="text-white text-base font-semibold mb-1">{sCorrect} of {sTotal} correct ({sPct}%)</p>
-            <p className="text-[#e5e5e5]/70 text-sm mb-8">
-              {sPassed
-                ? `Required: ${cfg.safetyPass}%`
-                : `Required: ${cfg.safetyPass}% — please review and retake the safety section`}
-            </p>
-            {sPassed ? (
-              <button
-                onClick={continueAfterSafety}
-                className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-4 rounded-xl text-base transition-all"
-              >
-                {hasGeneral ? 'Continue to General Rules Section →' : 'See Results →'}
-              </button>
-            ) : (
-              <button
-                onClick={retakeSafety}
-                className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-xl text-base transition-all"
-              >
-                Retake Safety Section
-              </button>
-            )}
-          </div>
-        </div>
-        <Footer />
-      </div>
-    )
-  }
-
-  // ── Section 2 intro — General Rules & Regulations (ALSA green themed) ───────
-  if (phase === 'general-intro') {
-    return (
-      <div className="min-h-screen bg-base text-white flex flex-col">
-        <div className="flex-1 flex items-center justify-center px-5 py-12">
-          <div className="w-full max-w-lg rounded-2xl border border-brand/30 bg-brand/10 p-7 sm:p-10 text-center">
-            <BookOpen className="h-14 w-14 sm:h-16 sm:w-16 text-brand mx-auto mb-5" strokeWidth={1.75} />
-            <p className="text-brand/70 text-[11px] font-black uppercase tracking-widest mb-2">Section 2</p>
-            <h1 className="text-2xl sm:text-3xl font-black text-white mb-3">General Rules &amp; Regulations</h1>
-            <p className="text-white text-sm mb-8">
-              {generalCount} question{generalCount === 1 ? '' : 's'} — requires {cfg.generalPass}% to pass
-            </p>
-            <button
-              onClick={continueToGeneral}
-              className="w-full bg-brand hover:bg-brand-hover text-black font-bold py-4 rounded-xl text-base transition-all"
-            >
-              Continue to General Section →
-            </button>
-          </div>
-        </div>
-        <Footer />
-      </div>
-    )
-  }
-
   // ── Running ──────────────────────────────────────────────────────────────
   if (phase === 'running' && currentQ) {
     return (
@@ -412,22 +360,21 @@ export default function RulesTestRunner({
           {/* Question */}
           <h2 className="text-xl font-bold text-white mb-8 leading-relaxed">{currentQ.question}</h2>
 
-          {/* Options — shuffled per question. Selecting highlights the choice
-              (no correct/wrong reveal). */}
-          <div className="space-y-3 mb-8">
+          {/* Options — shuffled per question. Selecting highlights the
+              choice; the player can change their selection at any time until
+              they cross the section boundary. No correct/wrong reveal mid
+              test. */}
+          <div className="space-y-3 mb-6">
             {currentQ.options.map((opt, i) => {
-              const isSelected = opt.letter === selected
+              const isSelected = opt.letter === (currentAnswer?.letter ?? null)
               const cls = isSelected
                 ? 'border-brand bg-brand/10 text-white'
-                : answered
-                  ? 'border-line bg-surface text-[#e5e5e5]/30 cursor-default'
-                  : 'border-line bg-surface text-[#e5e5e5]/80 hover:border-brand/50 hover:text-white cursor-pointer'
+                : 'border-line bg-surface text-[#e5e5e5]/80 hover:border-brand/50 hover:text-white cursor-pointer'
 
               return (
                 <button
                   key={opt.letter}
                   onClick={() => selectAnswer(opt.letter)}
-                  disabled={answered}
                   className={`w-full flex items-center gap-4 px-5 py-4 rounded-xl border-2 text-left transition-all ${cls}`}
                 >
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 border ${
@@ -441,16 +388,44 @@ export default function RulesTestRunner({
             })}
           </div>
 
-          {answered && (
+          {/* Answered indicator — within the current section. Helps the
+              player see what is left before they cross the boundary. */}
+          <p className="text-[#e5e5e5]/40 text-xs text-center mb-3">
+            Answered {sectionAnswered} of {sectionTotal} in this section
+          </p>
+
+          {/* Save-error surface: visible only when a submit failed. The
+              player stays on the last question and can retry by tapping
+              Submit again. */}
+          {saveErr && (
+            <div className="mb-3 rounded-xl border border-red-400/40 bg-red-400/10 px-4 py-2 text-red-400 text-xs">
+              {saveErr}
+            </div>
+          )}
+
+          {/* Bottom nav: Previous (disabled at idx 0) + Next / Submit
+              (disabled until the current question is answered, or while a
+              submit is in flight). Free navigation across the
+              Safety/General boundary — the server scores both sections at
+              final Submit. */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={prev}
+              disabled={!canGoBack || saving}
+              className="flex-1 sm:flex-none px-5 py-3.5 rounded-xl border border-line text-[#e5e5e5]/70 hover:text-white hover:border-[#374056] disabled:opacity-30 disabled:cursor-not-allowed font-bold text-sm transition-colors"
+            >
+              ← Previous
+            </button>
             <button
               onClick={next}
-              className="w-full bg-brand hover:bg-brand-hover text-black font-bold py-3.5 rounded-xl text-sm transition-all"
+              disabled={!isAnswered || saving}
+              className="flex-1 bg-brand hover:bg-brand-hover disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold py-3.5 rounded-xl text-sm transition-all"
             >
-              {(safetyCount > 0 && idx + 1 === safetyCount)
-                ? 'Finish Safety Section →'
-                : (idx + 1 >= questions.length ? 'See Results →' : 'Next Question →')}
+              {isLastQuestion
+                ? (saving ? 'Submitting...' : 'Submit →')
+                : 'Next Question →'}
             </button>
-          )}
+          </div>
         </div>
       </div>
     )
@@ -458,18 +433,21 @@ export default function RulesTestRunner({
 
   // ── Results ──────────────────────────────────────────────────────────────
   if (phase === 'results') {
-    const finalAnswers = answers
-    const resSafetyTotal    = questions.filter(q => q.section === 'safety').length
-    const resGeneralTotal   = questions.length - resSafetyTotal
-    const resSafetyCorrect  = finalAnswers.filter(a => a.q.section === 'safety' && a.isCorrect).length
-    const resGeneralCorrect = finalAnswers.filter(a => a.q.section !== 'safety' && a.isCorrect).length
+    // The server response (or preview-mode local computation) populated
+    // submittedResult before this phase activated. Defensive fallback for
+    // an impossible state where phase advanced without a result.
+    if (!submittedResult) return null
+    const r = submittedResult
+    const resSafetyTotal    = r.safety_total ?? 0
+    const resGeneralTotal   = r.general_total ?? 0
+    const resSafetyCorrect  = r.safety_correct ?? 0
+    const resGeneralCorrect = r.general_correct ?? 0
     const finalCorrect = resSafetyCorrect + resGeneralCorrect
-    const finalPct = questions.length > 0 ? Math.min(Math.round((finalCorrect / questions.length) * 100), 100) : 0
-    const safetyPct     = resSafetyTotal > 0 ? Math.round((resSafetyCorrect / resSafetyTotal) * 100) : 100
-    const safetyPassed  = safetyPct >= cfg.safetyPass
-    const generalPct    = resGeneralTotal > 0 ? Math.round((resGeneralCorrect / resGeneralTotal) * 100) : 100
-    const generalPassed = generalPct >= cfg.generalPass
-    const finalPassed = safetyPassed && generalPassed
+    const finalPct = r.score ?? 0
+    const safetyPassed  = r.safety_passed === true
+    const generalPassed = r.general_passed === true
+    const finalPassed   = r.passed === true
+    const perQuestion   = Array.isArray(r.per_question) ? r.per_question : []
 
     return (
       <div className="min-h-screen bg-base text-white">
@@ -559,27 +537,32 @@ export default function RulesTestRunner({
             )}
           </div>
 
-          {/* Breakdown — first reveal of answers. Option letters are omitted
-              because options were shuffled during the test; the text is shown. */}
+          {/* Breakdown — first reveal of answers. Option letters are
+              omitted because options were shuffled during the test; the
+              option text comes from the runner's still-in-memory question
+              array (looked up by question_id from the server response). */}
           <h3 className="text-white font-bold text-base mb-4">Question Breakdown</h3>
           <div className="space-y-3">
-            {finalAnswers.map((a, i) => {
-              const selText = a.q[`option_${a.selected}`]
-              const corrText = a.q[`option_${a.q.correct_answer}`]
+            {perQuestion.map((p, i) => {
+              const q = questions.find(x => x.id === p.question_id)
+              if (!q) return null
+              const selText = q[`option_${p.selected_letter}`]
+              const corrText = q[`option_${p.correct_answer}`]
+              const isCorrect = p.is_correct === true
               return (
-                <div key={i} className={`rounded-xl border p-4 ${a.isCorrect ? 'border-brand/20 bg-brand/5' : 'border-red-400/20 bg-red-400/5'}`}>
+                <div key={p.question_id ?? i} className={`rounded-xl border p-4 ${isCorrect ? 'border-brand/20 bg-brand/5' : 'border-red-400/20 bg-red-400/5'}`}>
                   <div className="flex items-start gap-2 mb-2">
-                    <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black mt-0.5 ${a.isCorrect ? 'bg-brand text-black' : 'bg-red-400 text-white'}`}>
-                      {a.isCorrect ? '✓' : '✗'}
+                    <span className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-black mt-0.5 ${isCorrect ? 'bg-brand text-black' : 'bg-red-400 text-white'}`}>
+                      {isCorrect ? '✓' : '✗'}
                     </span>
                     <div>
-                      <p className="text-white text-sm font-medium leading-snug">{a.q.question}</p>
+                      <p className="text-white text-sm font-medium leading-snug">{q.question}</p>
                       <span className="text-[10px] text-[#e5e5e5]/30 font-bold uppercase tracking-wider">
-                        {a.q.section === 'safety' ? 'Safety' : 'General'}
+                        {p.section === 'safety' ? 'Safety' : 'General'}
                       </span>
                     </div>
                   </div>
-                  {!a.isCorrect && (
+                  {!isCorrect && (
                     <div className="ml-7 space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-red-400/60 w-24 flex-shrink-0">Your answer:</span>
@@ -591,7 +574,7 @@ export default function RulesTestRunner({
                       </div>
                     </div>
                   )}
-                  {a.isCorrect && (
+                  {isCorrect && (
                     <p className="ml-7 text-xs text-brand/60">{selText}</p>
                   )}
                 </div>

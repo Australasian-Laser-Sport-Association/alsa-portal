@@ -120,7 +120,7 @@ async function handleRegistrations(req, res, user) {
       { data: doubles, error: e8 },
       { data: triples, error: e9 },
     ] = await Promise.all([
-      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18').eq('year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_coc_set_by, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_by, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_by, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_by, admin_override_u18_set_at, admin_override_u18_reason').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),
       supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),
       supabaseAdmin
@@ -166,7 +166,7 @@ async function handleRegistrations(req, res, user) {
 
     const { data: reg, error: regErr } = await supabaseAdmin
       .from('zltac_registrations')
-      .select('id, user_id, year, side_events, team_id, admin_note')
+      .select('id, user_id, year, side_events, team_id, admin_note, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18')
       .eq('id', registrationId)
       .maybeSingle()
     if (regErr) return res.status(500).json({ error: regErr.message })
@@ -186,8 +186,42 @@ async function handleRegistrations(req, res, user) {
     if ('has_confirmed_extras' in body) updates.has_confirmed_extras = !!body.has_confirmed_extras
     if ('emergency_contact_name' in body) updates.emergency_contact_name = body.emergency_contact_name?.trim() || null
     if ('emergency_contact_phone' in body) updates.emergency_contact_phone = body.emergency_contact_phone?.trim() || null
-    for (const k of ['admin_override_coc', 'admin_override_media', 'admin_override_ref_test', 'admin_override_u18']) {
-      if (k in body) updates[k] = !!body[k]
+    // Override transition logic. For each of the four overrides, branch
+    // on what the body is asking for and the current stored state:
+    //   off -> on: validate _reason (>= 5 chars), write _set_by / _set_at
+    //   on  -> on: update _reason (admin may edit it in place), preserve
+    //              _set_by / _set_at (audit records who first granted)
+    //   on  -> off: clear _reason, _set_by, _set_at
+    //   off -> off: no-op
+    // The reason is required whenever the override is being set to true,
+    // including same-true edits, because we always write _reason in that
+    // branch. The client mirrors this validation.
+    const OVERRIDES = ['admin_override_coc', 'admin_override_media', 'admin_override_ref_test', 'admin_override_u18']
+    for (const key of OVERRIDES) {
+      if (!(key in body)) continue
+      const newValue = !!body[key]
+      const reasonKey = `${key}_reason`
+      const setByKey  = `${key}_set_by`
+      const setAtKey  = `${key}_set_at`
+      const wasOn = !!reg[key]
+
+      if (newValue) {
+        const reason = typeof body[reasonKey] === 'string' ? body[reasonKey].trim() : ''
+        if (reason.length < 5) {
+          return res.status(400).json({ error: `${reasonKey} must be at least 5 characters when ${key} is on` })
+        }
+        updates[key] = true
+        updates[reasonKey] = reason
+        if (!wasOn) {
+          updates[setByKey] = user.id
+          updates[setAtKey] = new Date().toISOString()
+        }
+      } else {
+        updates[key] = false
+        updates[reasonKey] = null
+        updates[setByKey]  = null
+        updates[setAtKey]  = null
+      }
     }
 
     if (Object.keys(updates).length > 0) {

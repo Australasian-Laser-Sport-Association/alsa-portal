@@ -36,6 +36,18 @@ function Pill({ color, children }) {
   )
 }
 
+// OVR badge appended next to a "satisfied" pill to mark that the
+// satisfaction came from a committee override rather than the player's
+// actual completion of the underlying check. Tooltip on the parent cell
+// carries the audit detail (who, when, why).
+function OvrBadge() {
+  return (
+    <span className="inline-block text-[9px] font-black uppercase tracking-wide px-1 py-0.5 rounded border bg-yellow-500/15 text-yellow-400 border-yellow-500/30 ml-1 align-middle">
+      OVR
+    </span>
+  )
+}
+
 // Modal for the Chunk 2 manual link: committee picks any real user to absorb
 // a placeholder. The picker is local — we already have every profile loaded
 // for the registrations table, so filter the non-placeholders client-side.
@@ -283,14 +295,34 @@ export default function AdminRegistrations() {
   const cocRequired     = isCocRequired(event)
   const paymentRequired = isPaymentRequired(event)
 
+  // Builds a tooltip string for an override audit triplet. setBy is looked
+  // up in profMap so the admin's alias surfaces; falls back to "Committee
+  // override" if the setter has no profile (extremely old data with set_by
+  // = NULL won't happen post-migration, but defensive). Date format matches
+  // the rest of the page (en-AU, dd MMM yyyy).
+  function overrideAudit(setAt, reason, setBy) {
+    const setter = setBy ? profMap[setBy] : null
+    const setterName = setter?.alias || [setter?.first_name, setter?.last_name].filter(Boolean).join(' ')
+    const parts = [setterName ? `Committee override by "${setterName}"` : 'Committee override']
+    if (setAt) {
+      const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+      parts.push(`on ${d}`)
+    }
+    if (reason) parts.push(`Reason: ${reason}`)
+    return parts.join('. ')
+  }
+
   const players = regs.map(reg => {
     const profile = profMap[reg.user_id] ?? null
     const team    = teamMap[reg.team_id] ?? null
     // Committee manual overrides count as satisfied: normalCheck || override.
     const coc       = cocSet.has(reg.user_id) || !!reg.admin_override_coc
+    const cocOverride = !!reg.admin_override_coc
     const ref       = refMap[reg.user_id] ?? null
     const refPassed = ref?.passed === true || !!reg.admin_override_ref_test
+    const refOverride = !!reg.admin_override_ref_test
     const media     = mediaSet.has(reg.user_id) || !!reg.admin_override_media
+    const mediaOverride = !!reg.admin_override_media
     const payRecords  = recordsByReg[reg.id] ?? []
     const amountOwing = reg.amount_owing ?? 0
     const amountPaid  = payRecords.reduce((s, r) => s + r.amount, 0)
@@ -308,14 +340,24 @@ export default function AdminRegistrations() {
       ...(paymentRequired ? [paid] : []),
     ]
     const doneCount = checks.filter(Boolean).length
-    // Tooltip detail for the Rules Test pill: section breakdown when present,
-    // legacy note for pre-section results, override note when committee-waived.
-    const refTitle = ref
+    // Tooltip detail per concern. When the override is on, the audit string
+    // gets appended so the admin can see who set it / when / why on hover.
+    let refTitle = ref
       ? (ref.safety_total != null
           ? `Safety ${ref.safety_correct ?? 0}/${ref.safety_total}, General ${ref.general_correct ?? 0}/${ref.general_total ?? 0}`
           : 'Legacy result — no section breakdown')
-      : (reg.admin_override_ref_test ? 'Committee override — verified outside the system' : 'Not taken')
-    return { ...reg, profile, team, coc, ref, refPassed, refTitle, media, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
+      : 'Not taken'
+    if (refOverride) {
+      const audit = overrideAudit(reg.admin_override_ref_test_set_at, reg.admin_override_ref_test_reason, reg.admin_override_ref_test_set_by)
+      refTitle = ref ? `${refTitle}. ${audit}` : audit
+    }
+    const cocTitle = cocOverride
+      ? overrideAudit(reg.admin_override_coc_set_at, reg.admin_override_coc_reason, reg.admin_override_coc_set_by)
+      : (coc ? 'Code of Conduct signed' : 'Not signed')
+    const mediaTitle = mediaOverride
+      ? overrideAudit(reg.admin_override_media_set_at, reg.admin_override_media_reason, reg.admin_override_media_set_by)
+      : (media ? 'Media release submitted' : 'Not submitted')
+    return { ...reg, profile, team, coc, cocOverride, cocTitle, ref, refPassed, refOverride, refTitle, media, mediaOverride, mediaTitle, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
 
   // Phase + needs-follow-up derivation.
@@ -676,8 +718,9 @@ export default function AdminRegistrations() {
                               : <span className="text-[#e5e5e5]/25 text-xs">No team</span>}
                           </td>
                           {/* CoC */}
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3" title={p.cocTitle}>
                             {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
+                            {p.cocOverride && <OvrBadge />}
                           </td>
                           {/* Rules Test */}
                           <td className="px-4 py-3" title={p.refTitle}>
@@ -686,10 +729,12 @@ export default function AdminRegistrations() {
                               : p.ref
                                 ? <Pill color="amber">Failed ({p.ref.score}%)</Pill>
                                 : <Pill color="grey">Not taken</Pill>}
+                            {p.refOverride && <OvrBadge />}
                           </td>
                           {/* Media */}
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3" title={p.mediaTitle}>
                             {p.media ? <Pill color="green">Submitted</Pill> : <Pill color="grey">Pending</Pill>}
+                            {p.mediaOverride && <OvrBadge />}
                           </td>
                           {/* Owing */}
                           <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountOwing)}</td>

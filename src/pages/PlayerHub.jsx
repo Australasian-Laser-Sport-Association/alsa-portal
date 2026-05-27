@@ -1094,6 +1094,22 @@ export default function PlayerHub() {
   const refSatisfied = !!testResult?.passed || ovRef
   const u18Satisfied = u18Submitted || ovU18
 
+  // Player-facing override audit string. Shows the date + reason so the
+  // player can see why their requirement was waived. Admin alias is NOT
+  // surfaced to the player (internal accountability only).
+  const overrideLine = (setAt, reason) => {
+    const parts = []
+    if (setAt) {
+      const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+      parts.push(`on ${d}`)
+    }
+    if (reason) parts.push(`Reason: ${reason}`)
+    return parts.length > 0 ? `. ${parts.join('. ')}` : ''
+  }
+  const ovCocLine = overrideLine(registration?.admin_override_coc_set_at, registration?.admin_override_coc_reason)
+  const ovMediaLine = overrideLine(registration?.admin_override_media_set_at, registration?.admin_override_media_reason)
+  const ovRefLine = overrideLine(registration?.admin_override_ref_test_set_at, registration?.admin_override_ref_test_reason)
+
   // Side events from event JSONB
   const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled && se.slug !== 'presentation-dinner')
   const individualSideEvents = enabledSideEvents.filter(se => ['lord-of-the-rings', 'solos'].includes(se.slug))
@@ -1437,7 +1453,7 @@ export default function PlayerHub() {
                   cocStatus === 'current'
                     ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
                     : ovCoc
-                      ? 'Code of Conduct — recorded by committee'
+                      ? `Code of Conduct — recorded by committee${ovCocLine}`
                       : cocStatus === 'stale'
                         ? 'Code of Conduct — updated, please re-accept'
                         : 'Code of Conduct — not yet signed'
@@ -1487,7 +1503,7 @@ export default function PlayerHub() {
                           {testResult?.passed
                             ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Passed ({testResult.score}%)</span>
                             : ovRef
-                              ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Recorded by committee</span>
+                              ? <span title={`Committee override${ovRefLine}`} className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Recorded by committee</span>
                               : testResult
                                 ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">✗ Failed</span>
                                 : null}
@@ -1514,7 +1530,7 @@ export default function PlayerHub() {
                 mediaStatus === 'current'
                   ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
                   : ovMedia
-                    ? 'Media Release — recorded by committee'
+                    ? `Media Release — recorded by committee${ovMediaLine}`
                     : mediaStatus === 'stale'
                       ? 'Media Release — updated, please re-accept'
                       : 'Media Release — not yet submitted'

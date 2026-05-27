@@ -240,7 +240,7 @@ export default async function handler(req, res) {
         .eq('event_year', eventYear),
       supabaseAdmin
         .from('zltac_registrations')
-        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing, admin_override_coc, admin_override_media, admin_override_ref_test, admin_override_u18')
+        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing, admin_override_coc, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_at, admin_override_u18_reason')
         .in('user_id', playerIds)
         .eq('year', eventYear),
       supabaseAdmin
@@ -290,12 +290,22 @@ export default async function handler(req, res) {
 
     // Committee manual overrides per user, from the registration row. The
     // client ORs these into the completion map so a waived/offline-verified
-    // concern reads as satisfied (CoC, Media, Ref Test, U18).
+    // concern reads as satisfied (CoC, Media, Ref Test, U18). Each override
+    // carries its set_at + reason so the chip tooltip can surface the audit
+    // metadata without a second round-trip.
     const overrides = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, {
       coc:      r.admin_override_coc === true,
+      coc_set_at: r.admin_override_coc_set_at ?? null,
+      coc_reason: r.admin_override_coc_reason ?? null,
       media:    r.admin_override_media === true,
+      media_set_at: r.admin_override_media_set_at ?? null,
+      media_reason: r.admin_override_media_reason ?? null,
       ref_test: r.admin_override_ref_test === true,
+      ref_test_set_at: r.admin_override_ref_test_set_at ?? null,
+      ref_test_reason: r.admin_override_ref_test_reason ?? null,
       u18:      r.admin_override_u18 === true,
+      u18_set_at: r.admin_override_u18_set_at ?? null,
+      u18_reason: r.admin_override_u18_reason ?? null,
     }]))
 
     return res.json({

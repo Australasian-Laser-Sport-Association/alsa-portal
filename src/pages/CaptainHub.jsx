@@ -240,6 +240,19 @@ export default function CaptainHub() {
     const paidByUser = paid_cents_by_user ?? {}
     const overridesByUser = overrides ?? {}
 
+    // Audit suffix for chip tooltips when the committee has overridden a
+    // concern. Includes the date + reason so the captain can see why a
+    // teammate was waived, without exposing which admin recorded it.
+    const overrideSuffix = (setAt, reason) => {
+      const parts = []
+      if (setAt) {
+        const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+        parts.push(`on ${d}`)
+      }
+      if (reason) parts.push(`Reason: ${reason}`)
+      return parts.length > 0 ? ` ${parts.join('. ')}.` : ''
+    }
+
     const comp = {}
     playerIds.forEach(uid => {
       const reg = regsByUser[uid]
@@ -247,20 +260,35 @@ export default function CaptainHub() {
       // when the normal check passes OR the override is set.
       const ov = overridesByUser[uid] ?? {}
       // Rules Test section breakdown for the chip tooltip. Real result → section
-      // scores (or legacy note for pre-section rows); override → override note.
+      // scores (or legacy note for pre-section rows); override → audit note.
       const tRow = testMap[uid]
       const testDetail = tRow
         ? (tRow.safety_total != null
             ? `Safety ${tRow.safety_correct ?? 0}/${tRow.safety_total}, General ${tRow.general_correct ?? 0}/${tRow.general_total ?? 0}`
             : 'Legacy result — no section breakdown')
-        : (ov.ref_test ? 'Committee override' : null)
+        : (ov.ref_test
+            ? `Committee override.${overrideSuffix(ov.ref_test_set_at, ov.ref_test_reason)}`
+            : null)
       comp[uid] = {
         coc:           cocSet.has(uid) || ov.coc,
+        cocOverride:   !!ov.coc,
+        cocOverrideDetail: ov.coc
+          ? `Committee override.${overrideSuffix(ov.coc_set_at, ov.coc_reason)}`
+          : null,
         test:          testMap[uid]?.passed === true || ov.ref_test,
+        testOverride:  !!ov.ref_test,
         testScore:     testMap[uid]?.score,
         testDetail,
         u18:           u18Set.has(uid) || ov.u18,
+        u18Override:   !!ov.u18,
+        u18OverrideDetail: ov.u18
+          ? `Committee override.${overrideSuffix(ov.u18_set_at, ov.u18_reason)}`
+          : null,
         media:         mediaSet.has(uid) || ov.media,
+        mediaOverride: !!ov.media,
+        mediaOverrideDetail: ov.media
+          ? `Committee override.${overrideSuffix(ov.media_set_at, ov.media_reason)}`
+          : null,
         sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
         extras:        !!reg?.has_confirmed_extras,
         paymentStatus: derivePaymentStatus(reg, paidByUser[uid] ?? 0),
@@ -842,8 +870,11 @@ export default function CaptainHub() {
                                 : comp.coc ? 'complete' : 'incomplete'
                               const cocTitle = !cocRequired
                                 ? 'Code of Conduct: not required for this event'
-                                : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
-                              return <StatusChip state={cocState} label="CoC" title={cocTitle} />
+                                : comp.cocOverride
+                                  ? `Code of Conduct: ${comp.cocOverrideDetail}`
+                                  : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
+                              const cocLabel = comp.cocOverride ? 'CoC OVR' : 'CoC'
+                              return <StatusChip state={cocState} label={cocLabel} title={cocTitle} />
                             })()}
                             {/* Rules Test chip renders N/A when the event has
                                 disabled the requirement; otherwise reflects
@@ -860,15 +891,18 @@ export default function CaptainHub() {
                                 : comp.test
                                   ? `Rules Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}${detailSuffix}`
                                   : 'Rules Test: not yet passed'
-                              const refLabel = !refRequired
+                              const baseLabel = !refRequired
                                 ? 'Rules'
                                 : (comp.test && comp.testScore != null ? `Rules ${comp.testScore}%` : 'Rules')
+                              const refLabel = comp.testOverride ? `${baseLabel} OVR` : baseLabel
                               return <StatusChip state={refState} label={refLabel} title={refTitle} />
                             })()}
                             <StatusChip
                               state={comp.media ? 'complete' : 'incomplete'}
-                              label="Media"
-                              title={comp.media ? 'Media Release: signed' : 'Media Release: not yet signed'}
+                              label={comp.mediaOverride ? 'Media OVR' : 'Media'}
+                              title={comp.mediaOverride
+                                ? `Media Release: ${comp.mediaOverrideDetail}`
+                                : (comp.media ? 'Media Release: signed' : 'Media Release: not yet signed')}
                             />
                             <StatusChip
                               state={comp.sideEvents ? 'complete' : 'incomplete'}

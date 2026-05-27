@@ -36,8 +36,14 @@ export default function RefereeTest() {
   }, [authLoading, user]) // eslint-disable-line
 
   async function loadData() {
+    // Player-facing fetch uses the column-masked view. correct_answer is
+    // never sent to the browser; scoring happens server-side in
+    // api/referee-test.js. (Admin preview surface keeps base-table access
+    // through the committee FOR ALL policy; that path is untouched.)
     const [{ data: qData }, { data: sData }] = await Promise.all([
-      supabase.from('referee_questions').select('*').eq('active', true),
+      supabase
+        .from('referee_questions_public')
+        .select('id, section, question, option_a, option_b, option_c, option_d, category, image_url, video_url'),
       supabase.from('referee_test_settings').select('*').limit(1).maybeSingle(),
     ])
 
@@ -66,14 +72,19 @@ export default function RefereeTest() {
     setLoading(false)
   }
 
-  // Persist the completed attempt. The API is server-authoritative for the pass
-  // result; we still update the local "already passed" banner state.
-  async function handleComplete(result) {
-    await apiFetch('/api/referee-test', {
+  // Submit the raw answers and let the server score them. The response
+  // carries the authoritative result + per-question breakdown so the runner
+  // can render its results phase without ever holding correct_answer
+  // pre-submit. We bubble the response back to the runner; we also update
+  // the local "already passed" state so a follow-up refresh shows the
+  // locked banner.
+  async function handleComplete({ answers }) {
+    const data = await apiFetch('/api/referee-test', {
       method: 'POST',
-      body: JSON.stringify({ ...result, taken_at: new Date().toISOString() }),
+      body: JSON.stringify({ answers, taken_at: new Date().toISOString() }),
     })
-    setExistingResult({ passed: result.passed, score: result.score })
+    setExistingResult({ passed: data.passed, score: data.score })
+    return data
   }
 
   if (authLoading || loading) {
