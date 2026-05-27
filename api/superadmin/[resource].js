@@ -1,5 +1,6 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyUser, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { computeCompetitionAmountPaid } from '../_lib/computeCompetitionAmountPaid.js'
 import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 
 // Catch-all dispatcher for superadmin-mostly endpoints, consolidated into one
@@ -14,6 +15,7 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 //   /api/superadmin/my-competitions            → GET                 (any auth user)
 //   /api/superadmin/competition-registration   → POST, GET, DELETE   (any auth user; per-self)
 //   /api/superadmin/competition-registrations  → GET                 (superadmin OR competition manager)
+//   /api/superadmin/competition-payment-records → POST, GET, PATCH, DELETE (superadmin OR competition manager)
 //   /api/superadmin/competition-team           → POST, GET, PATCH, DELETE (any auth user)
 //   /api/superadmin/competition-team-member    → POST, GET, DELETE   (any auth user)
 //   /api/superadmin/competition-team-invite    → GET, PATCH          (any auth user)
@@ -972,6 +974,258 @@ async function handleCompetitionRegistrations(req, res) {
 }
 
 
+// ── competition-payment-records ──────────────────────────────────────────────
+// Manager-facing ledger writes for pre-nationals. Mirrors the ZLTAC
+// /api/admin/event?resource=payments shape (POST/GET/PATCH/DELETE) so
+// RecordPaymentModal can reuse its existing onChange contract; the modal
+// branches on apiResource for URL and body shape only.
+//
+// Auth on every method: superadmin OR competition_managers grant for the
+// competition that owns the targeted registration.
+//
+// UNIT NOTE: payment_records.amount is integer cents. Pre-nats parents
+// store dollars. Each POST/PATCH converts amount_dollars (signed) to cents
+// on the way in; computeCompetitionAmountPaid converts the ledger sum back
+// to dollars when it writes the parent.
+
+const PAYMENT_RECORD_COLUMNS =
+  'id, competition_registration_id, amount, recorded_at, recorded_by, bank_reference, notes, recorder:profiles!recorded_by(alias, first_name, last_name)'
+
+// Returns { records, summary } shaped for the modal's onChange. Records are
+// flattened so the recorder profile is at top level (matches the ZLTAC
+// response style without forcing the consumer to know the join column name).
+async function buildCompetitionPaymentResponse(competitionRegistrationId) {
+  const recompute = await computeCompetitionAmountPaid(competitionRegistrationId)
+  if (recompute.error) return { error: recompute.error }
+
+  const { data: records, error } = await supabaseAdmin
+    .from('payment_records')
+    .select(PAYMENT_RECORD_COLUMNS)
+    .eq('competition_registration_id', competitionRegistrationId)
+    .order('recorded_at', { ascending: false })
+  if (error) return { error: error.message }
+
+  const flatRecords = (records ?? []).map(r => ({
+    id: r.id,
+    competition_registration_id: r.competition_registration_id,
+    amount: r.amount,
+    amount_dollars: (r.amount ?? 0) / 100,
+    recorded_at: r.recorded_at,
+    recorded_by: r.recorded_by,
+    recorded_by_profile: r.recorder
+      ? { alias: r.recorder.alias, first_name: r.recorder.first_name, last_name: r.recorder.last_name }
+      : null,
+    bank_reference: r.bank_reference,
+    notes: r.notes,
+  }))
+
+  return {
+    records: flatRecords,
+    summary: {
+      // registrationId field name preserves parity with the ZLTAC modal
+      // consumer (RecordPaymentModal -> onChange(records, summary)).
+      registrationId: competitionRegistrationId,
+      competition_registration_id: competitionRegistrationId,
+      amount_paid: recompute.amount_paid,
+      payment_status: recompute.payment_status,
+    },
+  }
+}
+
+// Returns { isSuperadmin } or sends a 403 response. Caller bails out on
+// false return.
+async function gateCompetitionPaymentRecord(req, res, competitionRegistrationId) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) { res.status(statusForAuthError(authErr)).json({ error: authErr }); return null }
+
+  // Locate the parent competition_id.
+  const { data: reg, error: regErr } = await supabaseAdmin
+    .from('competition_registrations')
+    .select('competition_id')
+    .eq('id', competitionRegistrationId)
+    .maybeSingle()
+  if (regErr) { res.status(500).json({ error: regErr.message }); return null }
+  if (!reg) { res.status(404).json({ error: 'Competition registration not found' }); return null }
+
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .select('roles')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profileErr) { res.status(500).json({ error: profileErr.message }); return null }
+  const isSuperadmin = Array.isArray(profile?.roles) && profile.roles.includes('superadmin')
+
+  if (!isSuperadmin) {
+    const { count: mgrCount, error: mgrErr } = await supabaseAdmin
+      .from('competition_managers')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('competition_id', reg.competition_id)
+      .eq('user_id', user.id)
+    if (mgrErr) { res.status(500).json({ error: mgrErr.message }); return null }
+    if ((mgrCount ?? 0) === 0) {
+      res.status(403).json({ error: 'Not authorised to record payments for this competition.' })
+      return null
+    }
+  }
+
+  return { user, competitionId: reg.competition_id }
+}
+
+async function handleCompetitionPaymentRecords(req, res) {
+  if (req.method === 'POST') {
+    const body = req.body ?? {}
+    const competitionRegistrationId = body.competition_registration_id
+    if (!competitionRegistrationId) {
+      return badRequest(res, 'competition_registration_id is required')
+    }
+
+    const amountDollars = body.amount_dollars
+    if (typeof amountDollars !== 'number' || !Number.isFinite(amountDollars)) {
+      return badRequest(res, 'amount_dollars must be a finite number')
+    }
+    const amountCents = Math.round(amountDollars * 100)
+    if (amountCents === 0) {
+      return badRequest(res, 'amount_dollars must be non-zero')
+    }
+
+    const gate = await gateCompetitionPaymentRecord(req, res, competitionRegistrationId)
+    if (!gate) return
+
+    const { error: insErr } = await supabaseAdmin
+      .from('payment_records')
+      .insert({
+        competition_registration_id: competitionRegistrationId,
+        amount: amountCents,
+        recorded_at: body.recorded_at || new Date().toISOString(),
+        recorded_by: gate.user.id,
+        bank_reference: body.bank_reference?.trim() || null,
+        notes: body.notes?.trim() || null,
+      })
+    if (insErr) return res.status(500).json({ error: insErr.message })
+
+    const result = await buildCompetitionPaymentResponse(competitionRegistrationId)
+    if (result.error) return res.status(500).json({ error: result.error })
+    return res.status(201).json(result)
+  }
+
+  if (req.method === 'GET') {
+    const competitionRegistrationId = req.query.competition_registration_id
+    if (!competitionRegistrationId) {
+      return badRequest(res, 'competition_registration_id query param is required')
+    }
+
+    const gate = await gateCompetitionPaymentRecord(req, res, competitionRegistrationId)
+    if (!gate) return
+
+    const { data: records, error } = await supabaseAdmin
+      .from('payment_records')
+      .select(PAYMENT_RECORD_COLUMNS)
+      .eq('competition_registration_id', competitionRegistrationId)
+      .order('recorded_at', { ascending: false })
+    if (error) return res.status(500).json({ error: error.message })
+
+    const out = (records ?? []).map(r => ({
+      id: r.id,
+      competition_registration_id: r.competition_registration_id,
+      amount: r.amount,
+      amount_dollars: (r.amount ?? 0) / 100,
+      recorded_at: r.recorded_at,
+      recorded_by: r.recorded_by,
+      recorded_by_profile: r.recorder
+        ? { alias: r.recorder.alias, first_name: r.recorder.first_name, last_name: r.recorder.last_name }
+        : null,
+      bank_reference: r.bank_reference,
+      notes: r.notes,
+    }))
+    return res.json(out)
+  }
+
+  if (req.method === 'PATCH') {
+    const id = req.query.id ?? req.body?.id
+    if (!id) return badRequest(res, 'id is required')
+
+    const body = req.body ?? {}
+
+    // Look up the parent so we can auth-gate AND know which registration to
+    // recompute after the update.
+    const { data: existing, error: exErr } = await supabaseAdmin
+      .from('payment_records')
+      .select('id, competition_registration_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (exErr) return res.status(500).json({ error: exErr.message })
+    if (!existing || !existing.competition_registration_id) {
+      return res.status(404).json({ error: 'Competition payment record not found' })
+    }
+
+    const gate = await gateCompetitionPaymentRecord(req, res, existing.competition_registration_id)
+    if (!gate) return
+
+    const updates = {}
+    if (Object.prototype.hasOwnProperty.call(body, 'amount_dollars')) {
+      if (typeof body.amount_dollars !== 'number' || !Number.isFinite(body.amount_dollars)) {
+        return badRequest(res, 'amount_dollars must be a finite number')
+      }
+      const amountCents = Math.round(body.amount_dollars * 100)
+      if (amountCents === 0) return badRequest(res, 'amount_dollars must be non-zero')
+      updates.amount = amountCents
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'bank_reference')) {
+      updates.bank_reference = body.bank_reference?.trim() || null
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'notes')) {
+      updates.notes = body.notes?.trim() || null
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'recorded_at')) {
+      updates.recorded_at = body.recorded_at || new Date().toISOString()
+    }
+    if (Object.keys(updates).length === 0) {
+      return badRequest(res, 'no editable fields supplied')
+    }
+
+    const { error: updErr } = await supabaseAdmin
+      .from('payment_records')
+      .update(updates)
+      .eq('id', id)
+    if (updErr) return res.status(500).json({ error: updErr.message })
+
+    const result = await buildCompetitionPaymentResponse(existing.competition_registration_id)
+    if (result.error) return res.status(500).json({ error: result.error })
+    return res.json(result)
+  }
+
+  if (req.method === 'DELETE') {
+    const id = req.query.id ?? req.body?.id
+    if (!id) return badRequest(res, 'id is required')
+
+    const { data: existing, error: exErr } = await supabaseAdmin
+      .from('payment_records')
+      .select('id, competition_registration_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (exErr) return res.status(500).json({ error: exErr.message })
+    if (!existing || !existing.competition_registration_id) {
+      return res.status(404).json({ error: 'Competition payment record not found' })
+    }
+
+    const gate = await gateCompetitionPaymentRecord(req, res, existing.competition_registration_id)
+    if (!gate) return
+
+    const { error: delErr } = await supabaseAdmin
+      .from('payment_records')
+      .delete()
+      .eq('id', id)
+    if (delErr) return res.status(500).json({ error: delErr.message })
+
+    const result = await buildCompetitionPaymentResponse(existing.competition_registration_id)
+    if (result.error) return res.status(500).json({ error: result.error })
+    return res.json(result)
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
 // ── competition-team ─────────────────────────────────────────────────────────
 // Player-self team management: create, view, edit, disband. Phase 3d will
 // add the invite flow on top of this.
@@ -1559,6 +1813,7 @@ export default async function handler(req, res) {
   if (resource === 'my-competitions')            return handleMyCompetitions(req, res)
   if (resource === 'competition-registration')   return handleCompetitionRegistration(req, res)
   if (resource === 'competition-registrations')  return handleCompetitionRegistrations(req, res)
+  if (resource === 'competition-payment-records') return handleCompetitionPaymentRecords(req, res)
   if (resource === 'competition-team')           return handleCompetitionTeam(req, res)
   if (resource === 'competition-team-member')    return handleCompetitionTeamMember(req, res)
   if (resource === 'competition-team-invite')    return handleCompetitionTeamInvite(req, res)

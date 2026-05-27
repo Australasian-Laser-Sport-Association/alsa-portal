@@ -11,7 +11,28 @@ function toCents(dollarStr) {
   return Math.round(n * 100)
 }
 
-export default function RecordPaymentModal({ registration, profile, records, profMap, onChange, onClose }) {
+// apiResource selects the backend wiring:
+//   'event'                       → ZLTAC: POST /api/admin/event?resource=payments
+//                                   (positive amountCents + type='payment'|'refund')
+//   'competition-payment-records' → pre-nats: POST /api/superadmin/competition-payment-records
+//                                   (signed amount_dollars; refund-reason folded into notes)
+// amountOwingCents lets pre-nats callers pass the integer-cents value derived
+// from their dollar-stored parent. ZLTAC callers omit it and the modal falls
+// back to registration.amount_owing (already cents on that path).
+export default function RecordPaymentModal({
+  registration,
+  profile,
+  records,
+  profMap,
+  onChange,
+  onClose,
+  apiResource = 'event',
+  amountOwingCents,
+}) {
+  const isCompetition = apiResource === 'competition-payment-records'
+  const apiUrl = isCompetition
+    ? '/api/superadmin/competition-payment-records'
+    : '/api/admin/event?resource=payments'
   const [newForm, setNewForm] = useState({ amount: '', datePaid: today(), bankRef: '', notes: '', reason: '' })
   // Refund flow state. refundMode flips on the first "Record Refund" click and
   // reveals the Reason field. confirmingRefund gates the actual submit behind
@@ -23,7 +44,9 @@ export default function RecordPaymentModal({ registration, profile, records, pro
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const amountOwing = registration.amount_owing ?? 0
+  // Pre-nats parents store dollars; the panel converts and passes
+  // amountOwingCents so this internal cents-based math stays unchanged.
+  const amountOwing = amountOwingCents ?? registration.amount_owing ?? 0
   const amountPaid = records.reduce((s, r) => s + r.amount, 0)
   const balance = amountOwing - amountPaid
   const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || 'Unknown'
@@ -46,9 +69,25 @@ export default function RecordPaymentModal({ registration, profile, records, pro
   async function postRecord(cents, type) {
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
-        method: 'POST',
-        body: JSON.stringify({
+      let body
+      if (isCompetition) {
+        // Pre-nats: signed dollars, no type field, refund reason folded
+        // into notes. Server stores amount as signed cents.
+        const trimmedNotes = newForm.notes?.trim() ?? ''
+        const trimmedReason = newForm.reason?.trim() ?? ''
+        const notes = type === 'refund' && trimmedReason
+          ? (trimmedNotes ? `Refund — ${trimmedReason} · ${trimmedNotes}` : `Refund — ${trimmedReason}`)
+          : (trimmedNotes || null)
+        const signedCents = type === 'refund' ? -cents : cents
+        body = {
+          competition_registration_id: registration.id,
+          amount_dollars: signedCents / 100,
+          recorded_at: newForm.datePaid || today(),
+          bank_reference: newForm.bankRef,
+          notes,
+        }
+      } else {
+        body = {
           registrationId: registration.id,
           amountCents: cents,
           datePaid: newForm.datePaid || today(),
@@ -56,7 +95,11 @@ export default function RecordPaymentModal({ registration, profile, records, pro
           notes: newForm.notes,
           type,
           reason: type === 'refund' ? newForm.reason : undefined,
-        }),
+        }
+      }
+      const { records: fresh, summary } = await apiFetch(apiUrl, {
+        method: 'POST',
+        body: JSON.stringify(body),
       })
       onChange(fresh, summary)
       setNewForm({ amount: '', datePaid: today(), bankRef: '', notes: '', reason: '' })
@@ -117,15 +160,32 @@ export default function RecordPaymentModal({ registration, profile, records, pro
     if (cents === null || cents === 0) { setError('Amount must be a non-zero dollar value.'); return }
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
-        method: 'PATCH',
-        body: JSON.stringify({
+      // The edit form holds a signed dollar string (refunds display as
+      // negative). cents is already signed. Pre-nats path expects id as a
+      // query param and signed dollars in the body; ZLTAC path uses
+      // amountCents inline.
+      let url, body
+      if (isCompetition) {
+        url = `${apiUrl}?id=${encodeURIComponent(editForm.id)}`
+        body = {
+          amount_dollars: cents / 100,
+          recorded_at: editForm.datePaid || today(),
+          bank_reference: editForm.bankRef,
+          notes: editForm.notes,
+        }
+      } else {
+        url = apiUrl
+        body = {
           id: editForm.id,
           amountCents: cents,
           datePaid: editForm.datePaid || today(),
           bankReference: editForm.bankRef,
           notes: editForm.notes,
-        }),
+        }
+      }
+      const { records: fresh, summary } = await apiFetch(url, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
       })
       onChange(fresh, summary)
       setEditForm(null)
@@ -139,10 +199,11 @@ export default function RecordPaymentModal({ registration, profile, records, pro
     setError('')
     setSaving(true)
     try {
-      const { records: fresh, summary } = await apiFetch('/api/admin/event?resource=payments', {
-        method: 'DELETE',
-        body: JSON.stringify({ id }),
-      })
+      const url = isCompetition ? `${apiUrl}?id=${encodeURIComponent(id)}` : apiUrl
+      const init = isCompetition
+        ? { method: 'DELETE' }
+        : { method: 'DELETE', body: JSON.stringify({ id }) }
+      const { records: fresh, summary } = await apiFetch(url, init)
       onChange(fresh, summary)
       setDeleteConfirmId(null)
     } catch (err) {

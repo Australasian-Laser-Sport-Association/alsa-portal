@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
+import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 
 // Per-competition detail page for managers. Auth: the page fetches
 // /api/superadmin/my-competitions and looks for a row matching :slug. If not
@@ -407,6 +408,225 @@ function RegistrationRow({ r, expanded, fullName, owing, paid, onToggle }) {
   )
 }
 
+// Payments tab body. Reuses competition-registrations for the row data
+// (it already carries amount_paid / amount_owing / payment_status /
+// payment_reference) and opens RecordPaymentModal per-row for write
+// operations. Modal posts via apiResource='competition-payment-records';
+// the API recomputes amount_paid + payment_status on every mutation.
+function PaymentsPanel({ comp }) {
+  const [rows, setRows] = useState(null) // null = loading; false = error
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [paymentModal, setPaymentModal] = useState(null) // { registration, profile, records }
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch(`/api/superadmin/competition-registrations?competition_id=${comp.id}`)
+      setRows(data)
+      setErrorMsg(null)
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not load payments.')
+      setRows(false)
+    }
+  }, [comp.id])
+
+  useEffect(() => { queueMicrotask(load) }, [load])
+
+  async function openPaymentModal(row) {
+    // Fetch the per-registration ledger so the modal can render history.
+    try {
+      const records = await apiFetch(
+        `/api/superadmin/competition-payment-records?competition_registration_id=${row.id}`
+      )
+      setPaymentModal({
+        registration: row,
+        profile: row.profile,
+        records: (records ?? []).map(r => ({
+          id: r.id,
+          amount: r.amount,
+          recorded_at: r.recorded_at,
+          recorded_by: r.recorded_by,
+          bank_reference: r.bank_reference,
+          notes: r.notes,
+        })),
+      })
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not load payment history.')
+    }
+  }
+
+  // Modal onChange fires after every POST/PATCH/DELETE. The server's
+  // recompute response carries the new amount_paid + payment_status which
+  // we merge into the row so the table updates without a full refetch.
+  function handlePaymentChange(records, summary) {
+    setPaymentModal(prev => prev ? { ...prev, records } : prev)
+    setRows(prev => Array.isArray(prev)
+      ? prev.map(r => (r.id === summary.registrationId
+          ? { ...r, amount_paid: summary.amount_paid, payment_status: summary.payment_status }
+          : r))
+      : prev)
+  }
+
+  if (rows === null) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+  if (rows === false) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-6">
+        <p className="text-white font-bold mb-2">Could not load payments</p>
+        <p className="text-white text-sm opacity-70">{errorMsg ?? 'Please try again.'}</p>
+      </div>
+    )
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl px-6 py-12 text-center">
+        <p className="text-white text-sm opacity-70">
+          No registrations yet. Payments will appear here once players register.
+        </p>
+      </div>
+    )
+  }
+
+  const totalOwed = rows.reduce((s, r) => s + Number(r.amount_owing ?? 0), 0)
+  const totalPaid = rows.reduce((s, r) => s + Number(r.amount_paid ?? 0), 0)
+  const outstanding = totalOwed - totalPaid
+
+  function downloadPaymentsCsv() {
+    const header = ['Alias', 'Name', 'Email', 'Team', 'Payment Status', 'Amount Paid', 'Amount Owing', 'Outstanding', 'Reference']
+    const lines = [header.map(csvCell).join(',')]
+    for (const r of rows) {
+      const paid = Number(r.amount_paid ?? 0)
+      const owing = Number(r.amount_owing ?? 0)
+      const out = owing - paid
+      const name = [r.profile?.first_name, r.profile?.last_name].filter(Boolean).join(' ')
+      lines.push([
+        csvCell(r.profile?.alias),
+        csvCell(name),
+        csvCell(r.profile?.email),
+        csvCell(r.team?.name),
+        csvCell(r.payment_status),
+        csvCell(paid.toFixed(2)),
+        csvCell(owing.toFixed(2)),
+        csvCell(out.toFixed(2)),
+        csvCell(r.payment_reference),
+      ].join(','))
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    downloadCsv(lines.join('\r\n'), `${comp.slug}-payments-${today}.csv`)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <SummaryCard label="Total Owed"    value={totalOwed} tone="white" />
+        <SummaryCard label="Total Received" value={totalPaid} tone="green" />
+        <SummaryCard label="Outstanding"   value={outstanding} tone={outstanding > 0 ? 'amber' : 'green'} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-white text-xs font-bold uppercase tracking-wider opacity-70">
+          {rows.length} registration{rows.length === 1 ? '' : 's'}
+        </span>
+        <button
+          type="button"
+          onClick={downloadPaymentsCsv}
+          className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-all"
+        >
+          Download CSV
+        </button>
+      </div>
+
+      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+        <table className="w-full text-sm" style={{ minWidth: '880px' }}>
+          <thead>
+            <tr className="border-b border-line">
+              {['Alias', 'Name', 'Team', 'Status', 'Paid', 'Owing', 'Reference', ''].map((h, i) => (
+                <th key={i} className="px-3 py-2.5 text-left text-[11px] text-white opacity-50 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const fullName = [r.profile?.first_name, r.profile?.last_name].filter(Boolean).join(' ')
+              const paid = Number(r.amount_paid ?? 0)
+              const owing = Number(r.amount_owing ?? 0)
+              const actionLabel = paid > 0 ? 'Adjust' : 'Record'
+              return (
+                <tr key={r.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {r.profile?.alias
+                      ? <span className="text-brand font-bold">"{r.profile.alias}"</span>
+                      : <span className="text-white opacity-40">(no alias)</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">
+                    {fullName || <span className="opacity-40">-</span>}
+                  </td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {r.team ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3 h-3 rounded border border-line flex-shrink-0" style={{ background: r.team.colour }} />
+                        <span className="text-white text-xs">{r.team.name}</span>
+                      </span>
+                    ) : (
+                      <span className="text-white text-xs opacity-40">No team</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5"><PayPill status={r.payment_status} /></td>
+                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">${paid.toFixed(2)}</td>
+                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">${owing.toFixed(2)}</td>
+                  <td className="px-3 py-2.5 font-mono text-brand text-[11px] whitespace-nowrap select-all">
+                    {r.payment_reference ?? <span className="text-white opacity-40 font-sans">-</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => openPaymentModal(r)}
+                      className="text-[11px] bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-semibold px-3 py-1 rounded-lg transition-colors"
+                    >
+                      {actionLabel}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {paymentModal && (
+        <RecordPaymentModal
+          apiResource="competition-payment-records"
+          registration={paymentModal.registration}
+          profile={paymentModal.profile}
+          records={paymentModal.records}
+          profMap={{}}
+          amountOwingCents={Math.round(Number(paymentModal.registration.amount_owing ?? 0) * 100)}
+          onChange={handlePaymentChange}
+          onClose={() => setPaymentModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function SummaryCard({ label, value, tone }) {
+  const TONE_CLASS = {
+    white: 'text-white',
+    green: 'text-green-400',
+    amber: 'text-yellow-400',
+  }
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-4">
+      <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">{label}</p>
+      <p className={`font-black text-xl ${TONE_CLASS[tone] ?? 'text-white'}`}>${value.toFixed(2)} AUD</p>
+    </div>
+  )
+}
+
 function PlaceholderCard({ title, body }) {
   return (
     <div className="bg-surface border border-line rounded-2xl p-6">
@@ -561,12 +781,7 @@ export default function ManagerCompetitionDetail() {
 
       {tab === 'registrations' && <RegistrationsPanel comp={comp} />}
 
-      {tab === 'payments' && (
-        <PlaceholderCard
-          title="Payments"
-          body="Payment recording and reconciliation ship in the next phase. You will be able to see which players have paid, record manual payments received via bank transfer, and toggle when your event's bank details become visible to registered players."
-        />
-      )}
+      {tab === 'payments' && <PaymentsPanel comp={comp} />}
     </div>
   )
 }
