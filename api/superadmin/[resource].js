@@ -12,7 +12,8 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 //   /api/superadmin/competition-managers       → POST, GET, DELETE   (superadmin)
 //   /api/superadmin/profile-search             → GET                 (any auth user)
 //   /api/superadmin/my-competitions            → GET                 (any auth user)
-//   /api/superadmin/competition-registration   → POST, GET, DELETE   (any auth user)
+//   /api/superadmin/competition-registration   → POST, GET, DELETE   (any auth user; per-self)
+//   /api/superadmin/competition-registrations  → GET                 (superadmin OR competition manager)
 //   /api/superadmin/competition-team           → POST, GET, PATCH, DELETE (any auth user)
 //   /api/superadmin/competition-team-member    → POST, GET, DELETE   (any auth user)
 //   /api/superadmin/competition-team-invite    → GET, PATCH          (any auth user)
@@ -840,6 +841,137 @@ async function handleCompetitionRegistration(req, res) {
 }
 
 
+// ── competition-registrations ────────────────────────────────────────────────
+// Manager-facing read of every registration for a competition. Used by the
+// Registrations tab on /manage/competitions/:slug. Auth mirrors handleCompetitions
+// PATCH (Phase 2a): superadmin OR a competition manager whose grant covers
+// the requested competition_id.
+//
+// Response per row exposes the public profile fields plus email (pulled from
+// auth.users — same pattern as handleCompetitionManagers). Payment and
+// audit fields are surfaced so managers can chase up unpaid players.
+// Pending/declined team_members are excluded from the team field; only
+// accepted memberships count.
+async function handleCompetitionRegistrations(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  const competitionId = req.query.competition_id
+  if (!competitionId) return badRequest(res, 'competition_id query param is required')
+
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .select('roles')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profileErr) return res.status(500).json({ error: profileErr.message })
+  const isSuperadmin = Array.isArray(profile?.roles) && profile.roles.includes('superadmin')
+
+  if (!isSuperadmin) {
+    const { count: mgrCount, error: mgrErr } = await supabaseAdmin
+      .from('competition_managers')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('competition_id', competitionId)
+      .eq('user_id', user.id)
+    if (mgrErr) return res.status(500).json({ error: mgrErr.message })
+    if ((mgrCount ?? 0) === 0) {
+      return res.status(403).json({ error: 'Not authorised to view this competition.' })
+    }
+  }
+
+  const { data: regs, error: regErr } = await supabaseAdmin
+    .from('competition_registrations')
+    .select(`
+      id, user_id, competition_id, payment_status, amount_paid, amount_owing,
+      payment_reference, registered_at, team_id,
+      profile:profiles!user_id(alias, first_name, last_name)
+    `)
+    .eq('competition_id', competitionId)
+  if (regErr) return res.status(500).json({ error: regErr.message })
+
+  const rows = regs ?? []
+  const teamIds = [...new Set(rows.map(r => r.team_id).filter(Boolean))]
+  const userIds = rows.map(r => r.user_id)
+
+  // Teams (name + colour) for the team_id column.
+  const teamMap = new Map()
+  if (teamIds.length > 0) {
+    const { data: teams, error: tErr } = await supabaseAdmin
+      .from('teams')
+      .select('id, name, colour')
+      .in('id', teamIds)
+    if (tErr) return res.status(500).json({ error: tErr.message })
+    for (const t of teams ?? []) teamMap.set(t.id, t)
+  }
+
+  // Accepted team_members roles, keyed by (team_id, user_id). The role
+  // surfaced to the client is captain > player.
+  const roleMap = new Map()
+  if (teamIds.length > 0 && userIds.length > 0) {
+    const { data: members, error: mErr } = await supabaseAdmin
+      .from('team_members')
+      .select('team_id, user_id, roles')
+      .in('team_id', teamIds)
+      .in('user_id', userIds)
+      .eq('invite_status', 'accepted')
+    if (mErr) return res.status(500).json({ error: mErr.message })
+    for (const m of members ?? []) {
+      roleMap.set(`${m.team_id}::${m.user_id}`, m.roles ?? [])
+    }
+  }
+
+  // Emails via auth.admin.getUserById in parallel. Placeholder profiles
+  // (no auth.users row) surface as null. Fan-out is bounded by the
+  // registration count, which is small for typical pre-nats.
+  const emailMap = new Map()
+  await Promise.all(userIds.map(async uid => {
+    try {
+      const { data } = await supabaseAdmin.auth.admin.getUserById(uid)
+      if (data?.user?.email) emailMap.set(uid, data.user.email)
+    } catch {
+      // No auth row — leave email null.
+    }
+  }))
+
+  const out = rows.map(r => {
+    const team = r.team_id ? (teamMap.get(r.team_id) ?? null) : null
+    const roles = roleMap.get(`${r.team_id}::${r.user_id}`) ?? []
+    return {
+      id: r.id,
+      user_id: r.user_id,
+      competition_id: r.competition_id,
+      payment_status: r.payment_status,
+      amount_paid: r.amount_paid,
+      amount_owing: r.amount_owing,
+      payment_reference: r.payment_reference,
+      registered_at: r.registered_at,
+      profile: {
+        alias: r.profile?.alias ?? null,
+        first_name: r.profile?.first_name ?? null,
+        last_name: r.profile?.last_name ?? null,
+        email: emailMap.get(r.user_id) ?? null,
+      },
+      team: team
+        ? {
+            id: team.id,
+            name: team.name,
+            colour: team.colour,
+            role: roles.includes('captain') ? 'captain' : 'player',
+          }
+        : null,
+    }
+  })
+
+  out.sort((a, b) =>
+    (a.profile.alias ?? '').toLowerCase().localeCompare((b.profile.alias ?? '').toLowerCase())
+  )
+
+  return res.json(out)
+}
+
+
 // ── competition-team ─────────────────────────────────────────────────────────
 // Player-self team management: create, view, edit, disband. Phase 3d will
 // add the invite flow on top of this.
@@ -1426,6 +1558,7 @@ export default async function handler(req, res) {
   if (resource === 'profile-search')             return handleProfileSearch(req, res)
   if (resource === 'my-competitions')            return handleMyCompetitions(req, res)
   if (resource === 'competition-registration')   return handleCompetitionRegistration(req, res)
+  if (resource === 'competition-registrations')  return handleCompetitionRegistrations(req, res)
   if (resource === 'competition-team')           return handleCompetitionTeam(req, res)
   if (resource === 'competition-team-member')    return handleCompetitionTeamMember(req, res)
   if (resource === 'competition-team-invite')    return handleCompetitionTeamInvite(req, res)

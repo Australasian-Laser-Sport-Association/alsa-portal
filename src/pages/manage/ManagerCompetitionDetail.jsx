@@ -99,6 +99,328 @@ function EditPanel({ comp, onSaved }) {
   )
 }
 
+// Payment-status pill colour map — mirrors the player hub (CompetitionHub.jsx)
+// so the visual language stays consistent across surfaces.
+const PAY_PILL = {
+  unpaid:   { label: 'Unpaid',   tone: 'red'   },
+  partial:  { label: 'Partial',  tone: 'amber' },
+  paid:     { label: 'Paid',     tone: 'green' },
+  overpaid: { label: 'Overpaid', tone: 'blue'  },
+  refunded: { label: 'Refunded', tone: 'grey'  },
+}
+
+const PAY_TONE = {
+  green: 'bg-green-500/15 text-green-400 border-green-500/30',
+  amber: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+  red:   'bg-red-500/15 text-red-400 border-red-500/30',
+  blue:  'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  grey:  'bg-[#374056] text-white border-line',
+}
+
+function PayPill({ status }) {
+  const pill = PAY_PILL[status] ?? PAY_PILL.unpaid
+  return (
+    <span className={`inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border whitespace-nowrap ${PAY_TONE[pill.tone]}`}>
+      {pill.label}
+    </span>
+  )
+}
+
+function relativeTime(iso) {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  const s = Math.round(ms / 1000)
+  if (s < 60) return 'just now'
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m} min ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h} hr ago`
+  const d = Math.round(h / 24)
+  if (d < 30) return `${d} day${d === 1 ? '' : 's'} ago`
+  const mo = Math.round(d / 30)
+  return `${mo} mo ago`
+}
+
+// RFC 4180-ish CSV escape: wrap any cell containing comma, quote, or newline
+// in double quotes and double up any internal quotes. Returns a string.
+function csvCell(value) {
+  const s = value == null ? '' : String(value)
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function buildRegistrationsCsv(rows) {
+  const header = [
+    'Alias', 'First Name', 'Last Name', 'Email',
+    'Team', 'Role',
+    'Payment Status', 'Amount Paid', 'Amount Owing', 'Payment Reference',
+    'Registered At',
+  ]
+  const lines = [header.join(',')]
+  for (const r of rows) {
+    lines.push([
+      csvCell(r.profile?.alias),
+      csvCell(r.profile?.first_name),
+      csvCell(r.profile?.last_name),
+      csvCell(r.profile?.email),
+      csvCell(r.team?.name),
+      csvCell(r.team?.role),
+      csvCell(r.payment_status),
+      csvCell(Number(r.amount_paid ?? 0).toFixed(2)),
+      csvCell(Number(r.amount_owing ?? 0).toFixed(2)),
+      csvCell(r.payment_reference),
+      csvCell(r.registered_at),
+    ].join(','))
+  }
+  return lines.join('\r\n')
+}
+
+function downloadCsv(content, filename) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const STATUS_FILTERS = [
+  { value: 'all',      label: 'All statuses' },
+  { value: 'unpaid',   label: 'Unpaid'       },
+  { value: 'partial',  label: 'Partial'      },
+  { value: 'paid',     label: 'Paid'         },
+  { value: 'overpaid', label: 'Overpaid'     },
+  { value: 'refunded', label: 'Refunded'     },
+]
+
+// Registrations tab body. Fetches every registration for the competition,
+// supports alias/name/payment-reference search + payment-status filter,
+// expands rows for full contact + payment detail, and exports the filtered
+// view as CSV.
+function RegistrationsPanel({ comp }) {
+  const [rows, setRows] = useState(null) // null = loading; false = error
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('all')
+  const [expandedId, setExpandedId] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch(`/api/superadmin/competition-registrations?competition_id=${comp.id}`)
+      .then(data => { if (!cancelled) setRows(data) })
+      .catch(err => {
+        if (cancelled) return
+        setErrorMsg(err.message || 'Could not load registrations.')
+        setRows(false)
+      })
+    return () => { cancelled = true }
+  }, [comp.id])
+
+  if (rows === null) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (rows === false) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-6">
+        <p className="text-white font-bold mb-2">Could not load registrations</p>
+        <p className="text-white text-sm opacity-70">{errorMsg ?? 'Please try again.'}</p>
+      </div>
+    )
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl px-6 py-12 text-center">
+        <p className="text-white text-sm opacity-70">No players have registered for this competition yet.</p>
+      </div>
+    )
+  }
+
+  const q = search.trim().toLowerCase()
+  const filtered = rows.filter(r => {
+    if (status !== 'all' && r.payment_status !== status) return false
+    if (!q) return true
+    const alias = (r.profile?.alias ?? '').toLowerCase()
+    const fname = (r.profile?.first_name ?? '').toLowerCase()
+    const lname = (r.profile?.last_name ?? '').toLowerCase()
+    const ref = (r.payment_reference ?? '').toLowerCase()
+    return alias.includes(q) || fname.includes(q) || lname.includes(q) || ref.includes(q)
+  })
+
+  function exportCsv() {
+    if (filtered.length === 0) return
+    const today = new Date().toISOString().slice(0, 10)
+    downloadCsv(buildRegistrationsCsv(filtered), `${comp.slug}-registrations-${today}.csv`)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-white text-xs font-bold uppercase tracking-wider opacity-70">
+          {rows.length} registered
+        </span>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by alias, name, or payment ref"
+          className="flex-1 min-w-[200px] bg-surface border border-line rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-brand"
+        />
+        <select
+          value={status}
+          onChange={e => setStatus(e.target.value)}
+          className="bg-surface border border-line rounded-xl px-3 py-1.5 text-sm text-white focus:outline-none focus:border-brand"
+        >
+          {STATUS_FILTERS.map(s => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          title={filtered.length === 0 ? 'Nothing to export.' : ''}
+          className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-3 py-1.5 rounded-lg transition-all"
+        >
+          Download CSV
+        </button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-surface border border-line rounded-2xl px-6 py-10 text-center">
+          <p className="text-white text-sm opacity-70">No registrations match these filters. Clear filters to see all.</p>
+        </div>
+      ) : (
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <table className="w-full text-sm" style={{ minWidth: '780px' }}>
+            <thead>
+              <tr className="border-b border-line">
+                {['Alias', 'Name', 'Team', 'Status', 'Amount Owing', 'Registered', ''].map((h, i) => (
+                  <th key={i} className="px-3 py-2.5 text-left text-[11px] text-white opacity-50 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(r => {
+                const expanded = expandedId === r.id
+                const fullName = [r.profile?.first_name, r.profile?.last_name].filter(Boolean).join(' ')
+                const owing = Number(r.amount_owing ?? 0)
+                const paid = Number(r.amount_paid ?? 0)
+                return (
+                  <RegistrationRow
+                    key={r.id}
+                    r={r}
+                    expanded={expanded}
+                    fullName={fullName}
+                    owing={owing}
+                    paid={paid}
+                    onToggle={() => setExpandedId(expanded ? null : r.id)}
+                  />
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RegistrationRow({ r, expanded, fullName, owing, paid, onToggle }) {
+  const team = r.team
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        className="border-b border-line last:border-0 hover:bg-line/30 transition-colors cursor-pointer"
+      >
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          {r.profile?.alias
+            ? <span className="text-brand font-bold">"{r.profile.alias}"</span>
+            : <span className="text-white opacity-40">(no alias)</span>}
+        </td>
+        <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">
+          {fullName || <span className="opacity-40">-</span>}
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          {team ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="w-3 h-3 rounded border border-line flex-shrink-0" style={{ background: team.colour }} />
+              <span className="text-white text-xs">{team.name}</span>
+              {team.role === 'captain' && (
+                <span className="text-[9px] font-bold uppercase text-green-400 border border-green-500/30 bg-green-500/15 rounded px-1 py-0.5">C</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-white text-xs opacity-40">No team</span>
+          )}
+        </td>
+        <td className="px-3 py-2.5">
+          <PayPill status={r.payment_status} />
+        </td>
+        <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">
+          {owing > 0
+            ? `$${owing.toFixed(2)} AUD`
+            : <span className="text-green-400 font-semibold">Paid</span>}
+        </td>
+        <td
+          className="px-3 py-2.5 text-white text-xs opacity-70 whitespace-nowrap"
+          title={new Date(r.registered_at).toLocaleString('en-AU')}
+        >
+          {relativeTime(r.registered_at)}
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          <svg
+            className={`w-4 h-4 text-white opacity-40 inline-block transition-transform align-middle ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={7} className="p-0">
+            <div className="bg-base border-t border-line px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+              <div>
+                <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Email</p>
+                <p className="text-white text-sm break-all">
+                  {r.profile?.email
+                    ? <a href={`mailto:${r.profile.email}`} className="text-brand hover:underline">{r.profile.email}</a>
+                    : <span className="opacity-40">Not available</span>}
+                </p>
+              </div>
+              <div>
+                <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Payment reference</p>
+                <p className="font-mono text-brand text-base font-bold select-all">
+                  {r.payment_reference ?? <span className="opacity-40 font-sans font-normal">-</span>}
+                </p>
+              </div>
+              <div>
+                <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Amount paid</p>
+                <p className="text-white text-sm">${paid.toFixed(2)} AUD</p>
+              </div>
+              <div>
+                <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Amount owing</p>
+                <p className="text-white text-sm">${owing.toFixed(2)} AUD</p>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 function PlaceholderCard({ title, body }) {
   return (
     <div className="bg-surface border border-line rounded-2xl p-6">
@@ -251,12 +573,7 @@ export default function ManagerCompetitionDetail() {
         />
       )}
 
-      {tab === 'registrations' && (
-        <PlaceholderCard
-          title="Registrations"
-          body="Player registrations will appear here once the public registration page goes live. Currently in development."
-        />
-      )}
+      {tab === 'registrations' && <RegistrationsPanel comp={comp} />}
 
       {tab === 'payments' && (
         <PlaceholderCard
