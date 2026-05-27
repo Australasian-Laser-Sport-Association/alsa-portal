@@ -12,7 +12,8 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 //                                              → DELETE              (always 405; archive via PATCH)
 //   /api/superadmin/competition-managers       → POST, GET, DELETE   (superadmin)
 //   /api/superadmin/profile-search             → GET                 (any auth user)
-//   /api/superadmin/my-competitions            → GET                 (any auth user)
+//   /api/superadmin/my-competitions            → GET                 (any auth user; manager scope)
+//   /api/superadmin/my-registrations           → GET                 (any auth user; player scope)
 //   /api/superadmin/competition-registration   → POST, GET, DELETE   (any auth user; per-self)
 //   /api/superadmin/competition-registrations  → GET                 (superadmin OR competition manager)
 //   /api/superadmin/competition-payment-records → POST, GET, PATCH, DELETE (superadmin OR competition manager)
@@ -650,6 +651,46 @@ async function handleMyCompetitions(req, res) {
   if (cErr) return res.status(500).json({ error: cErr.message })
 
   return res.json(await withRegistrationsCount(comps ?? []))
+}
+
+
+// ── my-registrations ─────────────────────────────────────────────────────────
+// Auth: any authenticated user. Returns the competitions the caller has
+// registered for, restricted to non-archived competitions whose registration
+// window is still open. Used by the global My Events nav pill so a player
+// who only registered for one or more pre-nats events sees a single
+// dropdown of their active memberships. Manager view (registrations they
+// manage) lives at /api/superadmin/my-competitions — different surface, same
+// authenticated-no-superadmin auth scope.
+async function handleMyRegistrations(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  // Two-step rather than a PostgREST embed-with-foreign-table filter, because
+  // the archived/close predicates apply to competitions but the row scope is
+  // by user_id on competition_registrations. Same pattern as my-competitions.
+  const { data: regs, error: rErr } = await supabaseAdmin
+    .from('competition_registrations')
+    .select('competition_id')
+    .eq('user_id', user.id)
+  if (rErr) return res.status(500).json({ error: rErr.message })
+
+  const compIds = (regs ?? []).map(r => r.competition_id)
+  if (compIds.length === 0) return res.json([])
+
+  const nowIso = new Date().toISOString()
+  const { data: comps, error: cErr } = await supabaseAdmin
+    .from('competitions')
+    .select('id, slug, name, start_date, end_date')
+    .in('id', compIds)
+    .is('archived_at', null)
+    .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
+    .order('start_date', { ascending: true })
+  if (cErr) return res.status(500).json({ error: cErr.message })
+
+  return res.json((comps ?? []).map(c => ({ competition: c })))
 }
 
 
@@ -1811,6 +1852,7 @@ export default async function handler(req, res) {
 
   if (resource === 'profile-search')             return handleProfileSearch(req, res)
   if (resource === 'my-competitions')            return handleMyCompetitions(req, res)
+  if (resource === 'my-registrations')           return handleMyRegistrations(req, res)
   if (resource === 'competition-registration')   return handleCompetitionRegistration(req, res)
   if (resource === 'competition-registrations')  return handleCompetitionRegistrations(req, res)
   if (resource === 'competition-payment-records') return handleCompetitionPaymentRecords(req, res)

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { isCommittee } from '../lib/roles'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
 import ActiveEventsPill from './ActiveEventsPill'
+import MyEventsPill from './MyEventsPill'
 
 const DEFAULT_NAV_LINKS = [
   { label: 'Home', href: '/', visible: true },
@@ -96,9 +97,12 @@ function MobileDropdown({ link, onNavigate }) {
   )
 }
 
+// Player Hub / Team Hub previously lived here as top-level pills. They moved
+// inside the My Events dropdown (src/components/MyEventsPill.jsx) so users
+// with mixed ZLTAC + pre-nats memberships see one entry-point instead of
+// several. Admin Hub stays as a top-level pill since it's a different
+// audience (committee, not players).
 const HUB_PILLS = [
-  { key: 'player', label: 'Player Hub', to: '/player-hub',   color: '#FF6B00' },
-  { key: 'team',   label: 'Team Hub',   to: '/captain-hub',  color: '#E24B4A' },
   { key: 'admin',  label: 'Admin Hub',  to: '/admin',        color: '#7C3AED' },
 ]
 
@@ -149,12 +153,9 @@ export default function NavBar() {
   }, [user])
 
   const visiblePills = user
-    ? {
-        player: hasPlayerReg,
-        team: !!myTeamStatus,
-        admin: isCommittee(profile),
-      }
-    : { player: false, team: false, admin: false }
+    ? { admin: isCommittee(profile) }
+    : { admin: false }
+  const hasZltacTeam = !!myTeamStatus
 
   async function handleSignOut() {
     await signOut()
@@ -204,6 +205,15 @@ export default function NavBar() {
 
         {/* Pills + auth controls */}
         <div className="ml-auto hidden md:flex items-center gap-2">
+          {user && (
+            <MyEventsPill
+              variant="desktop"
+              user={user}
+              hasZltacReg={hasPlayerReg}
+              hasZltacTeam={hasZltacTeam}
+              teamStatus={myTeamStatus}
+            />
+          )}
           {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
             <Link
               key={p.key}
@@ -213,9 +223,6 @@ export default function NavBar() {
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               {p.label}
-              {p.key === 'team' && myTeamStatus && myTeamStatus !== 'approved' && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" />
-              )}
             </Link>
           ))}
 
@@ -264,6 +271,16 @@ export default function NavBar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden bg-[#191919] border-t border-line px-6 py-4 flex flex-col gap-1">
+          {user && (
+            <MyEventsPill
+              variant="mobile"
+              user={user}
+              hasZltacReg={hasPlayerReg}
+              hasZltacTeam={hasZltacTeam}
+              teamStatus={myTeamStatus}
+              onNavigate={() => setMobileOpen(false)}
+            />
+          )}
           {HUB_PILLS.filter(p => visiblePills[p.key]).map(p => (
             <Link
               key={p.key}
@@ -273,9 +290,6 @@ export default function NavBar() {
               style={{ backgroundColor: p.color, color: '#fff' }}
             >
               {p.label}
-              {p.key === 'team' && myTeamStatus && myTeamStatus !== 'approved' && (
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1.5 align-middle" />
-              )}
             </Link>
           ))}
 
