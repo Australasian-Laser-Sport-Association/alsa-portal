@@ -24,6 +24,30 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 // { error: '<message>' }. Creation responses use 201; everything else 200.
 
 const SLUG_RE = /^[a-z0-9-]+$/
+const ABBREV_RE = /^[A-Z0-9]{2,8}$/
+
+// Auto-derives a payment-reference abbreviation from a competition name.
+// Algorithm (matches the helper text in the create modal):
+//   - Split on whitespace.
+//   - For each word: if it starts with an uppercase letter, take that letter.
+//     Words that are entirely digits (e.g. year suffixes like "2027") are
+//     skipped to avoid duplicating the YEAR the trigger already emits.
+//   - Uppercase + truncate to 8 chars.
+// Examples:
+//   "Victorian Pre Nationals 2027" -> "VPN"
+//   "Canberra Pre Nats 1"          -> "CPN"
+//   "NSW Pre Nats"                 -> "NPN"
+// Returns '' if no useable letters survive — caller decides how to handle.
+function deriveAbbreviation(name) {
+  const words = (name ?? '').trim().split(/\s+/)
+  const letters = []
+  for (const w of words) {
+    if (/^\d+$/.test(w)) continue
+    const first = w[0]
+    if (first && /[A-Z]/.test(first)) letters.push(first.toUpperCase())
+  }
+  return letters.join('').slice(0, 8)
+}
 
 // Derives a URL slug from a competition name. Lowercases, replaces any non-
 // alphanumeric run with a single hyphen, trims leading/trailing hyphens.
@@ -128,9 +152,28 @@ async function handleCompetitions(req, res, user) {
       return res.status(409).json({ error: 'Could not derive a unique slug for this name. Try a more specific name.' })
     }
 
+    // Abbreviation. Caller may pass body.abbreviation (uppercased + validated);
+    // otherwise we auto-derive from name. If the derived value is shorter than
+    // 2 chars, the caller has to provide an explicit one. Cross-event
+    // uniqueness is NOT enforced — the generator's per-table collision-suffix
+    // loop handles that case.
+    let abbreviation
+    if (typeof body.abbreviation === 'string' && body.abbreviation.trim() !== '') {
+      abbreviation = body.abbreviation.trim().toUpperCase()
+      if (!ABBREV_RE.test(abbreviation)) {
+        return badRequest(res, 'abbreviation must be 2 to 8 uppercase letters or digits')
+      }
+    } else {
+      abbreviation = deriveAbbreviation(name)
+      if (abbreviation.length < 2) {
+        return badRequest(res, 'could not auto-derive an abbreviation from the name; please provide one explicitly')
+      }
+    }
+
     const insertRow = {
       slug,
       name,
+      abbreviation,
       start_date,
       end_date,
       registration_open_at: body.registration_open_at ?? null,
@@ -167,6 +210,34 @@ async function handleCompetitions(req, res, user) {
     for (const k of COMPETITION_PATCH_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(body, k)) updates[k] = body[k]
     }
+
+    // Abbreviation gets its own handling: uppercase + validate, then refuse
+    // the change if any registrations already exist (their payment refs were
+    // generated against the old prefix and we don't rewrite history).
+    if (Object.prototype.hasOwnProperty.call(body, 'abbreviation')) {
+      const raw = body.abbreviation
+      if (raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+        updates.abbreviation = null
+      } else {
+        const next = String(raw).trim().toUpperCase()
+        if (!ABBREV_RE.test(next)) {
+          return badRequest(res, 'abbreviation must be 2 to 8 uppercase letters or digits')
+        }
+        updates.abbreviation = next
+      }
+
+      const { count, error: cntErr } = await supabaseAdmin
+        .from('competition_registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('competition_id', id)
+      if (cntErr) return res.status(500).json({ error: cntErr.message })
+      if ((count ?? 0) > 0) {
+        return res.status(409).json({
+          error: 'Cannot change abbreviation while registrations exist. Existing payment references would become inconsistent.',
+        })
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return badRequest(res, 'no editable fields supplied')
     }

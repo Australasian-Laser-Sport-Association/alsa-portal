@@ -26,6 +26,19 @@ function isoToLocalInput(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// Mirror of the server-side deriveAbbreviation in api/superadmin/[resource].js.
+// Kept in sync by hand for the live preview; the server is authoritative.
+function deriveAbbreviation(name) {
+  const words = (name ?? '').trim().split(/\s+/)
+  const letters = []
+  for (const w of words) {
+    if (/^\d+$/.test(w)) continue
+    const first = w[0]
+    if (first && /[A-Z]/.test(first)) letters.push(first.toUpperCase())
+  }
+  return letters.join('').slice(0, 8)
+}
+
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
   const opts = { day: '2-digit', month: 'short', year: 'numeric' }
@@ -91,6 +104,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
   const [bankBsb, setBankBsb] = useState(initial?.bank_bsb ?? '')
   const [bankAccount, setBankAccount] = useState(initial?.bank_account_number ?? '')
   const [paymentVisible, setPaymentVisible] = useState(initial?.payment_info_visible ?? false)
+  const [abbreviation, setAbbreviation] = useState(initial?.abbreviation ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -113,6 +127,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
     try {
       const payload = {
         name: name.trim(),
+        abbreviation: abbreviation.trim() || null,
         start_date: startDate,
         end_date: endDate,
         registration_open_at: regOpen ? new Date(regOpen).toISOString() : null,
@@ -185,6 +200,39 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
             />
             {!isEdit && (
               <p className="text-white text-[11px] mt-1 opacity-60">URL slug is generated from the name automatically.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Abbreviation</label>
+            <input
+              type="text"
+              value={abbreviation}
+              onChange={e => setAbbreviation(e.target.value.toUpperCase())}
+              placeholder="VPN"
+              maxLength={8}
+              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white font-mono uppercase tracking-wider focus:outline-none focus:border-brand"
+            />
+            <p className="text-white text-[11px] mt-1 opacity-60">
+              Used as payment reference prefix (e.g. VPN for Victorian Pre Nats). 2 to 8 letters and digits, uppercase only. Leave blank to auto-derive from name.
+            </p>
+            {(() => {
+              const effective = abbreviation.trim() || deriveAbbreviation(name)
+              const year = startDate ? new Date(startDate).getFullYear() : 'YYYY'
+              const sample = effective.length >= 2 ? `${effective}${year}CROUCHY` : null
+              return (
+                <p className="text-white text-[11px] mt-1 opacity-60">
+                  Payment references will look like:{' '}
+                  {sample
+                    ? <span className="font-mono text-brand">{sample}</span>
+                    : <span className="opacity-50">enter a name or abbreviation to preview</span>}
+                </p>
+              )
+            })()}
+            {isEdit && (
+              <p className="text-yellow-400 text-[11px] mt-2 opacity-80">
+                Changing this affects new registrations only. Existing payment references remain as they were.
+              </p>
             )}
           </div>
 
