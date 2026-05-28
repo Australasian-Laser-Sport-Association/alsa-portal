@@ -475,7 +475,7 @@ async function handleRegistration(req, res, user) {
     if (callerAlias) {
       const { data: phReg, error: phErr } = await supabaseAdmin
         .from('zltac_registrations')
-        .select('user_id, profiles!inner(id, alias, is_placeholder)')
+        .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
         .eq('year', year)
         .eq('profiles.is_placeholder', true)
       if (phErr) return res.status(500).json({ error: phErr.message })
