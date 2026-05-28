@@ -76,7 +76,7 @@ export default function AdminHub() {
             <Tile
               key={c.id}
               label={c.name}
-              to={`/manage/competitions/${c.slug}`}
+              to={`/admin/manage/competitions/${c.slug}`}
               description={c.start_date ? 'Manages registrations, payments, and content.' : 'Pre-nationals competition.'}
               Icon={Briefcase}
               tone="purple"

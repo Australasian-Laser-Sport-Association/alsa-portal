@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
@@ -431,27 +431,38 @@ function PaymentsPanel({ comp }) {
 
   useEffect(() => { queueMicrotask(load) }, [load])
 
-  async function openPaymentModal(row) {
-    // Fetch the per-registration ledger so the modal can render history.
-    try {
-      const records = await apiFetch(
-        `/api/superadmin/competition-payment-records?competition_registration_id=${row.id}`
-      )
-      setPaymentModal({
-        registration: row,
-        profile: row.profile,
-        records: (records ?? []).map(r => ({
-          id: r.id,
-          amount: r.amount,
-          recorded_at: r.recorded_at,
-          recorded_by: r.recorded_by,
-          bank_reference: r.bank_reference,
-          notes: r.notes,
-        })),
+  // Mount the modal immediately with empty history, then hydrate. Awaiting
+  // the GET before setPaymentModal meant any failure (or slow request) made
+  // the button feel like a no-op — errorMsg only renders when the whole
+  // rows fetch failed (rows === false), not after a successful table load.
+  // Optimistic open keeps the click responsive and still lets the manager
+  // record a new payment if history is slow or unavailable.
+  function openPaymentModal(row) {
+    setPaymentModal({
+      registration: row,
+      profile: row.profile,
+      records: [],
+    })
+    apiFetch(`/api/superadmin/competition-payment-records?competition_registration_id=${row.id}`)
+      .then(records => {
+        setPaymentModal(prev => {
+          if (!prev || prev.registration.id !== row.id) return prev
+          return {
+            ...prev,
+            records: (records ?? []).map(r => ({
+              id: r.id,
+              amount: r.amount,
+              recorded_at: r.recorded_at,
+              recorded_by: r.recorded_by,
+              bank_reference: r.bank_reference,
+              notes: r.notes,
+            })),
+          }
+        })
       })
-    } catch (err) {
-      setErrorMsg(err.message || 'Could not load payment history.')
-    }
+      .catch(err => {
+        setErrorMsg(err.message || 'Could not load payment history.')
+      })
   }
 
   // Modal onChange fires after every POST/PATCH/DELETE. The server's
@@ -684,6 +695,14 @@ function OverviewPanel({ comp }) {
 
 export default function ManagerCompetitionDetail() {
   const { slug } = useParams()
+  const { pathname } = useLocation()
+  // The page mounts under both /admin/manage/competitions/:slug (committee,
+  // inside AdminLayout) and /manage/competitions/:slug (non-committee
+  // managers, inside ManagerLayout). The back link should point at whichever
+  // hub the visitor came from.
+  const inAdminShell = pathname.startsWith('/admin/')
+  const backTo = inAdminShell ? '/admin' : '/manage'
+  const backLabel = inAdminShell ? '← Back to Admin Hub' : '← Back to Manager Hub'
   const [comp, setComp] = useState(null)        // null = loading; false = not found
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('overview')
@@ -713,8 +732,8 @@ export default function ManagerCompetitionDetail() {
   if (comp === false) {
     return (
       <div className="max-w-xl">
-        <Link to="/manage" className="text-white opacity-60 hover:opacity-100 text-xs transition-colors mb-5 inline-block">
-          ← Back to Manager Hub
+        <Link to={backTo} className="text-white opacity-60 hover:opacity-100 text-xs transition-colors mb-5 inline-block">
+          {backLabel}
         </Link>
         <div className="bg-surface border border-line rounded-2xl p-6">
           <p className="text-white font-bold mb-2">Not authorised or competition not found</p>
@@ -733,8 +752,8 @@ export default function ManagerCompetitionDetail() {
 
   return (
     <div>
-      <Link to="/manage" className="text-white opacity-60 hover:opacity-100 text-xs transition-colors mb-5 inline-block">
-        ← Back to Manager Hub
+      <Link to={backTo} className="text-white opacity-60 hover:opacity-100 text-xs transition-colors mb-5 inline-block">
+        {backLabel}
       </Link>
 
       <div className="mb-5">

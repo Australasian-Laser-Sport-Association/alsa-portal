@@ -133,6 +133,12 @@ function App() {
             <Route path="members" element={<AdminMembers />} />
             <Route path="competitions" element={<AdminCompetitions />} />
             <Route path="backups" element={<AdminBackups />} />
+            {/* Committee users reach managed-competition pages from the Admin
+                Hub tile + sidebar. Mounting the manager page inside
+                AdminLayout keeps them in the full admin shell instead of
+                dropping into the narrow ManagerLayout. Non-committee managers
+                still use /manage/competitions/:slug below. */}
+            <Route path="manage/competitions/:slug" element={<ManagerCompetitionDetail />} />
           </Route>
 
           {/* Manager (pre-nationals) panel */}

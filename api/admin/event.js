@@ -853,9 +853,9 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
       subject,
       text: bodyText,
       attachments: [
-        { filename: `alsa-registrations-${dateStr}.csv`, content: csvs.registrationsCsv },
-        { filename: `alsa-payments-${dateStr}.csv`,      content: csvs.paymentsCsv },
-        { filename: `alsa-events-${dateStr}.csv`,        content: csvs.eventsCsv },
+        { filename: `alsa-registrations-${dateStr}.csv`, content: Buffer.from(csvs.registrationsCsv, 'utf-8') },
+        { filename: `alsa-payments-${dateStr}.csv`,      content: Buffer.from(csvs.paymentsCsv, 'utf-8') },
+        { filename: `alsa-events-${dateStr}.csv`,        content: Buffer.from(csvs.eventsCsv, 'utf-8') },
       ],
     })
     if (error) sendError = error?.message || 'Resend returned an error'

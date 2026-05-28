@@ -174,7 +174,7 @@ function buildNavItems(managedCompetitions, isSuperAdmin) {
       if (isSuperAdmin) out.push(item)
       for (const c of managedCompetitions) {
         out.push({
-          to: `/manage/competitions/${c.slug}`,
+          to: `/admin/manage/competitions/${c.slug}`,
           icon: <Briefcase className="w-4 h-4" />,
           label: c.name,
         })
