@@ -682,6 +682,44 @@ async function handleClaim(req, res, user) {
   const { placeholder_id } = req.body ?? {}
   if (!placeholder_id) return res.status(400).json({ error: 'placeholder_id is required' })
 
+  // Verify the placeholder actually belongs to this caller before invoking the
+  // RPC — mirrors the in-function ownership check so the rejection surfaces as
+  // a clean 403 here rather than relying solely on the DB-layer guard.
+  // Committee may bypass (matches the function's is_committee() bypass for the
+  // admin manual-link flow).
+  const { data: prof, error: profErr } = await supabaseAdmin
+    .from('profiles')
+    .select('alias, roles')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profErr) return res.status(500).json({ error: profErr.message })
+
+  const callerIsCommittee = (prof?.roles ?? []).some(r => COMMITTEE_ROLES.includes(r))
+
+  if (!callerIsCommittee) {
+    const { data: placeholder, error: phErr } = await supabaseAdmin
+      .from('profiles')
+      .select('alias, placeholder_email, is_placeholder')
+      .eq('id', placeholder_id)
+      .maybeSingle()
+    if (phErr) return res.status(500).json({ error: phErr.message })
+    if (!placeholder) return res.status(404).json({ error: 'placeholder not found' })
+    if (!placeholder.is_placeholder) {
+      return res.status(400).json({ error: 'profile is not a placeholder' })
+    }
+
+    const callerAlias = (prof?.alias ?? '').trim().toLowerCase()
+    const callerEmail = (user.email ?? '').trim().toLowerCase()
+    const phAlias = (placeholder.alias ?? '').trim().toLowerCase()
+    const phEmail = (placeholder.placeholder_email ?? '').trim().toLowerCase()
+
+    const aliasMatch = callerAlias && phAlias && callerAlias === phAlias
+    const emailMatch = callerEmail && phEmail && callerEmail === phEmail
+    if (!aliasMatch && !emailMatch) {
+      return res.status(403).json({ error: 'placeholder does not belong to you' })
+    }
+  }
+
   const { data, error } = await supabaseAdmin.rpc('claim_placeholder_profile', {
     placeholder_id,
     real_id: user.id,

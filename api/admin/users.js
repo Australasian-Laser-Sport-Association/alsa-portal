@@ -24,15 +24,19 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'PATCH') {
-      const { error } = await verifyCommittee(req)
+      const { user: caller, error } = await verifyCommittee(req)
       if (error) return res.status(statusForAuthError(error)).json({ error })
       const body = req.body ?? {}
+
+      // Block self-action — caller must not edit their own roles or suspended
+      // state via this endpoint. Covers self-promotion, self-demotion lockout,
+      // self-suspend lockout, and self-reset (reset rewrites roles too).
+      if (caller.id === id) {
+        return res.status(403).json({ error: 'Cannot edit your own account via this endpoint' })
+      }
+
       let update
       if (body.action === 'reset') {
-        // Reset action requires superadmin (matches the gate the previous
-        // DELETE handler used). TODO: also block self-reset — a superadmin
-        // resetting their own row would null their own admin role and
-        // potentially lock the platform out of admin access.
         const { error: superErr } = await verifySuperAdmin(req)
         if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
         update = {
@@ -50,12 +54,30 @@ export default async function handler(req, res) {
           roles: ['player'],
         }
       } else if (Array.isArray(body.roles)) {
+        // Any change to roles requires superadmin (committee alone cannot
+        // promote/demote other users, nor grant 'superadmin' to anyone).
+        // This subsumes the explicit "reject roles containing 'superadmin'
+        // unless caller is superadmin" rule.
+        const { error: superErr } = await verifySuperAdmin(req)
+        if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
         update = { roles: body.roles }
         if (Object.prototype.hasOwnProperty.call(body, 'alsa_position')) {
           const pos = typeof body.alsa_position === 'string' ? body.alsa_position.trim() : ''
           update.alsa_position = pos || null
         }
       } else if (typeof body.suspended === 'boolean') {
+        // Suspending a profile whose current roles include 'superadmin'
+        // requires superadmin — prevents committee locking out a superadmin.
+        const { data: target, error: targetErr } = await supabaseAdmin
+          .from('profiles')
+          .select('roles')
+          .eq('id', id)
+          .maybeSingle()
+        if (targetErr) return res.status(500).json({ error: targetErr.message })
+        if ((target?.roles ?? []).includes('superadmin')) {
+          const { error: superErr } = await verifySuperAdmin(req)
+          if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+        }
         update = { suspended: body.suspended }
       } else {
         return res.status(400).json({ error: 'roles, suspended, or action is required' })
