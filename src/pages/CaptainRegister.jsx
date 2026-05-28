@@ -94,9 +94,21 @@ export default function CaptainRegister() {
       logo_url = urlData.publicUrl
     }
 
+    // Hard-required for the teams xor CHECK ((event_id IS NULL) != (competition_id IS NULL)).
+    // The form should never render without an active event for this year, but
+    // guard anyway so we fail loudly instead of crashing on event.id below.
+    if (!event?.id) {
+      setError('Could not find the ZLTAC event for this year.')
+      setSaving(false)
+      return
+    }
+
     const { data: newTeam, error: insertError } = await supabase.from('teams').insert({
       name: teamName.trim(),
       captain_id: user.id,
+      manager_id: user.id,
+      event_id: event.id,
+      format: 'team',
       status: 'pending',
       state: teamState,
       home_venue: homeVenue.trim() || null,
@@ -104,7 +116,22 @@ export default function CaptainRegister() {
       logo_url,
     }).select().single()
 
-    if (insertError) { setError(insertError.message); setSaving(false); return }
+    if (insertError) {
+      // Surface a friendly message for the two ways the new uniqueness
+      // guard rejects a second insert: the partial unique index
+      // (Postgres 23505) and the teams_captain_insert RLS WITH CHECK.
+      // Other errors fall through to the raw message.
+      const code = insertError.code
+      const msg = insertError.message ?? ''
+      const isDuplicate = code === '23505'
+        || /row-level security/i.test(msg)
+        || /teams_one_per_captain/i.test(msg)
+      setError(isDuplicate
+        ? 'You already have a team for this event.'
+        : msg)
+      setSaving(false)
+      return
+    }
 
     // Register the captain as a player on their own team
     const { data: capReg } = await supabase.from('zltac_registrations').upsert({
@@ -116,16 +143,10 @@ export default function CaptainRegister() {
     }, { onConflict: 'user_id,year' }).select('id').single()
     if (capReg?.id) await recomputeOwing(capReg.id)
 
-    // Phase B.3a dual-write: populate unified teams schema alongside legacy.
+    // Mirror the captain into team_members (unified teams schema). The team
+    // row itself is already complete from the single INSERT above; only the
+    // membership row remains.
     try {
-      if (event?.id) {
-        const { error: teamUpdateErr } = await supabase.from('teams').update({
-          manager_id: user.id,
-          format: 'team',
-          event_id: event.id,
-        }).eq('id', newTeam.id)
-        if (teamUpdateErr) console.error('[CaptainRegister] dual-write teams update failed:', teamUpdateErr.message)
-      }
       const { error: memberErr } = await supabase.from('team_members').insert({
         team_id: newTeam.id,
         user_id: user.id,
@@ -133,9 +154,9 @@ export default function CaptainRegister() {
         invite_status: 'accepted',
         responded_at: new Date().toISOString(),
       })
-      if (memberErr) console.error('[CaptainRegister] dual-write team_members insert failed:', memberErr.message)
+      if (memberErr) console.error('[CaptainRegister] team_members insert failed:', memberErr.message)
     } catch (err) {
-      console.error('[CaptainRegister] dual-write threw:', err)
+      console.error('[CaptainRegister] team_members insert threw:', err)
     }
 
     setSaving(false)
