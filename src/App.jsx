@@ -44,6 +44,7 @@ import AdminUnder18Approvals from './pages/admin/AdminUnder18Approvals'
 import AdminZLTACHallOfFame from './pages/admin/AdminZLTACHallOfFame'
 import AdminZLTACResults from './pages/admin/AdminZLTACResults'
 import AdminCompetitions from './pages/admin/AdminCompetitions'
+import AdminBackups from './pages/admin/AdminBackups'
 // Manager (pre-nationals)
 import ManagerLayout from './components/ManagerLayout'
 import ManagerHub from './pages/manage/ManagerHub'
@@ -131,6 +132,7 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="members" element={<AdminMembers />} />
             <Route path="competitions" element={<AdminCompetitions />} />
+            <Route path="backups" element={<AdminBackups />} />
           </Route>
 
           {/* Manager (pre-nationals) panel */}

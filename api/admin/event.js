@@ -1,17 +1,50 @@
 import { randomUUID } from 'crypto'
+import { Resend } from 'resend'
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
+import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 
 // Committee-gated event operations. Dispatches by ?resource=:
-//   ?resource=event         → archive / delete the event (POST + body.action)
-//   ?resource=registrations → registrations admin (GET&year / PATCH / DELETE)
-//   ?resource=payments      → payment records (POST / PATCH / DELETE)
+//   ?resource=event            → archive / delete the event (POST + body.action)
+//   ?resource=registrations    → registrations admin (GET&year / PATCH / DELETE)
+//   ?resource=payments         → payment records (POST / PATCH / DELETE)
+//   ?resource=backup-settings  → GET / PATCH the single backup_settings row
+//   ?resource=backup-run       → POST runs a backup. Dual auth: cron secret
+//                                bearer OR committee session. Cron path
+//                                honours frequency/weekly_day; committee
+//                                path always sends (manual ad-hoc).
 //
 // Consolidated from api/admin/event.js + registrations.js + payments.js to stay
 // under the Vercel Hobby function cap. All three share verifyCommittee +
 // service-role (ADR-0002). Note the registrations DELETE uses a body field
 // `kind` ('doubles'/'triples') — distinct from the top-level ?resource query.
+
+// Vercel's recommended cron-protection pattern: set CRON_SECRET in the env,
+// Vercel auto-injects `Authorization: Bearer ${CRON_SECRET}` on cron-fire.
+// Returns true only for the cron path; the admin session takes a different
+// branch in the dispatcher.
+function isCronRequest(req) {
+  const expected = process.env.CRON_SECRET
+  if (!expected) return false
+  return req.headers.authorization === `Bearer ${expected}`
+}
+
+// "Day of week" + "today's date" both resolved in Australia/Sydney — the
+// project pattern (see src/lib/eventTimezone.js) uses Intl.DateTimeFormat
+// with timeZone:, mirrored here so we don't introduce a second TZ approach.
+// Returns 0=Sun .. 6=Sat plus YYYY-MM-DD in Sydney local time.
+function sydneyDateInfo(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(date)
+  const m = {}
+  for (const p of parts) if (p.type !== 'literal') m[p.type] = p.value
+  const dateStr = `${m.year}-${m.month}-${m.day}`
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  return { dateStr, dayOfWeek: weekdayMap[m.weekday] ?? 0 }
+}
 
 // ── event ─────────────────────────────────────────────────────────────────────
 async function handleEvent(req, res) {
@@ -642,14 +675,232 @@ async function handlePayments(req, res, user) {
   return res.status(405).json({ error: 'Method not allowed' })
 }
 
+// ── backup-settings ───────────────────────────────────────────────────────────
+// Committee may read; superadmin may update (enforced by RLS on the table).
+// Service-role here bypasses RLS, so the API gates writes explicitly: only
+// the caller's profile.roles ∋ 'superadmin' may PATCH. Reads admit any
+// committee role (the dispatcher already verifyCommittee'd the request).
+async function handleBackupSettings(req, res, user) {
+  if (req.method === 'GET') {
+    const { data, error } = await supabaseAdmin
+      .from('backup_settings')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle()
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json(data)
+  }
+
+  if (req.method === 'PATCH') {
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('roles')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profileErr) return res.status(500).json({ error: profileErr.message })
+    const isSuperadmin = Array.isArray(profile?.roles) && profile.roles.includes('superadmin')
+    if (!isSuperadmin) {
+      return res.status(403).json({ error: 'Only superadmins can change the backup schedule.' })
+    }
+
+    const body = req.body ?? {}
+    const updates = {}
+    if ('frequency' in body) {
+      if (!['daily', 'weekly', 'off'].includes(body.frequency)) {
+        return res.status(400).json({ error: "frequency must be 'daily', 'weekly', or 'off'" })
+      }
+      updates.frequency = body.frequency
+    }
+    if ('weekly_day' in body) {
+      const n = Number(body.weekly_day)
+      if (!Number.isInteger(n) || n < 0 || n > 6) {
+        return res.status(400).json({ error: 'weekly_day must be an integer 0-6' })
+      }
+      updates.weekly_day = n
+    }
+    if ('recipient_emails' in body) {
+      if (!Array.isArray(body.recipient_emails)) {
+        return res.status(400).json({ error: 'recipient_emails must be an array' })
+      }
+      const cleaned = []
+      for (const e of body.recipient_emails) {
+        if (typeof e !== 'string') return res.status(400).json({ error: 'each recipient email must be a string' })
+        const trimmed = e.trim()
+        if (!trimmed) continue
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+          return res.status(400).json({ error: `invalid email address: ${trimmed}` })
+        }
+        cleaned.push(trimmed)
+      }
+      updates.recipient_emails = cleaned
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'no editable fields supplied' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('backup_settings')
+      .update(updates)
+      .eq('id', 1)
+      .select()
+      .single()
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json(data)
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
+
+// ── backup-run ────────────────────────────────────────────────────────────────
+// Generates the three backup CSVs, emails them via Resend, and updates
+// last_backup_at + last_backup_status on the settings row.
+//
+// Two auth contexts converge here:
+//   - Cron: enforces frequency + weekly_day in Australia/Sydney
+//   - Admin manual: always sends, bypasses frequency/weekly_day
+//
+// IMPORTANT: never returns 500 on email failure. Update last_backup_status
+// with the error message and return 200 so Vercel does not retry the cron
+// indefinitely and the admin UI can surface the failure on next reload.
+async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Helper to write the outcome back to backup_settings. Best-effort; an
+  // error here is logged but never bubbles up.
+  async function recordOutcome(status, sentAt) {
+    const { error } = await supabaseAdmin
+      .from('backup_settings')
+      .update({ last_backup_at: sentAt ?? new Date().toISOString(), last_backup_status: status })
+      .eq('id', 1)
+    if (error) console.error('[backup-run] failed to record outcome:', error.message)
+  }
+
+  const { data: settings, error: settingsErr } = await supabaseAdmin
+    .from('backup_settings')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle()
+  if (settingsErr) return res.status(500).json({ error: settingsErr.message })
+  if (!settings) return res.status(500).json({ error: 'backup_settings row missing' })
+
+  const { dateStr, dayOfWeek } = sydneyDateInfo()
+
+  // Schedule gate — cron only. Manual admin runs always proceed.
+  if (enforceSchedule) {
+    if (settings.frequency === 'off') {
+      await recordOutcome(`Skipped on ${dateStr}: frequency is off`)
+      return res.json({ ok: true, skipped: 'disabled' })
+    }
+    if (settings.frequency === 'weekly' && dayOfWeek !== settings.weekly_day) {
+      // Don't update last_backup_status for "wrong day" — that would
+      // overwrite the real last-run status every day in between. Only the
+      // active-day runs touch the row.
+      return res.json({ ok: true, skipped: 'not_weekly_day' })
+    }
+  }
+
+  // Recipient guard. Cron path returns 200 (don't fail the cron); admin
+  // path returns 400 so the UI can prompt them to add recipients.
+  if (!Array.isArray(settings.recipient_emails) || settings.recipient_emails.length === 0) {
+    await recordOutcome('No recipients configured')
+    if (enforceSchedule) return res.json({ ok: true, sent: false, error: 'no_recipients' })
+    return res.status(400).json({ error: 'No recipient emails configured. Add at least one on the Backups page.' })
+  }
+
+  // Generate the three CSVs.
+  let csvs
+  try {
+    csvs = await generateBackupCsvs(supabaseAdmin)
+  } catch (err) {
+    const msg = err?.message || 'CSV generation failed'
+    await recordOutcome(`Generation failed: ${msg}`)
+    // Cron: 200 so Vercel doesn't retry. Admin: still 200 so the UI parses
+    // the response uniformly and reads { sent: false }.
+    return res.json({ ok: true, sent: false, error: msg })
+  }
+
+  // Email body. Plain text with a per-event registration breakdown.
+  const breakdownLines = csvs.eventBreakdown.map(
+    e => `  - ${e.name || 'Unnamed event'} ${e.year}: ${e.registrationCount} registration${e.registrationCount === 1 ? '' : 's'}`,
+  )
+  const triggerNote = triggeredBy ? `Triggered manually by ${triggeredBy}.` : 'Triggered by the scheduled backup.'
+  const bodyText = [
+    `ALSA Portal backup attached for ${dateStr} (Australia/Sydney).`,
+    '',
+    `Registrations: ${csvs.registrationsCount}`,
+    `Payment records: ${csvs.paymentsCount}`,
+    `Events: ${csvs.eventsCount}`,
+    '',
+    csvs.eventBreakdown.length > 0 ? 'Per event:' : 'No event registrations yet.',
+    ...breakdownLines,
+    '',
+    triggerNote,
+  ].join('\n')
+
+  const subject = `ALSA Portal backup for ${dateStr} (${csvs.registrationsCount} registrations, ${csvs.eventsCount} events)`
+
+  // Mirror the api/contact.js Resend pattern — same client setup, same
+  // noreply@lasersport.org.au from-address (different display name so the
+  // backup mails are visually distinct in the recipient's inbox).
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  let sendError = null
+  try {
+    const { error } = await resend.emails.send({
+      from: 'ALSA Portal Backup <noreply@lasersport.org.au>',
+      to: settings.recipient_emails,
+      subject,
+      text: bodyText,
+      attachments: [
+        { filename: `alsa-registrations-${dateStr}.csv`, content: csvs.registrationsCsv },
+        { filename: `alsa-payments-${dateStr}.csv`,      content: csvs.paymentsCsv },
+        { filename: `alsa-events-${dateStr}.csv`,        content: csvs.eventsCsv },
+      ],
+    })
+    if (error) sendError = error?.message || 'Resend returned an error'
+  } catch (err) {
+    sendError = err?.message || 'Resend threw'
+  }
+
+  if (sendError) {
+    await recordOutcome(`Email failed: ${sendError}`)
+    console.error('[backup-run] email send failed:', sendError)
+    // Never 500 — Vercel would retry the cron; admin UI parses { sent: false }.
+    return res.json({ ok: true, sent: false, error: sendError })
+  }
+
+  const recipientCount = settings.recipient_emails.length
+  await recordOutcome(`Sent to ${recipientCount} recipient${recipientCount === 1 ? '' : 's'}`)
+  return res.json({
+    ok: true,
+    sent: true,
+    date: dateStr,
+    registrations: csvs.registrationsCount,
+    payments: csvs.paymentsCount,
+    events: csvs.eventsCount,
+    recipients: recipientCount,
+  })
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
+  const resource = req.query.resource
+
+  // Cron path runs without a user session. Handle it before the
+  // verifyCommittee gate so the cron secret can authenticate.
+  if (resource === 'backup-run' && isCronRequest(req)) {
+    return handleBackupRun(req, res, { enforceSchedule: true, triggeredBy: null })
+  }
+
   const { user, error: authErr } = await verifyCommittee(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
-  const resource = req.query.resource
-  if (resource === 'event')         return handleEvent(req, res)
-  if (resource === 'registrations') return handleRegistrations(req, res, user)
-  if (resource === 'payments')      return handlePayments(req, res, user)
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", or "payments"' })
+  if (resource === 'event')            return handleEvent(req, res)
+  if (resource === 'registrations')    return handleRegistrations(req, res, user)
+  if (resource === 'payments')         return handlePayments(req, res, user)
+  if (resource === 'backup-settings')  return handleBackupSettings(req, res, user)
+  if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.email ?? user.id })
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", or "backup-run"' })
 }

@@ -3,5 +3,11 @@
   "regions": ["syd1"],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/admin/event?resource=backup-run",
+      "schedule": "0 17 * * *"
+    }
   ]
 }
