@@ -647,12 +647,21 @@ async function handlePayments(req, res, user) {
     if (exErr) return res.status(500).json({ error: exErr.message })
     if (!existing) return res.status(404).json({ error: 'Payment record not found' })
 
-    const { error: updErr } = await supabaseAdmin.from('payment_records').update({
+    // recorded_at is only sent when datePaid was provided — the key-present RPC
+    // semantics preserve the stored date when it's omitted, so editing an
+    // unrelated field (e.g. a note) no longer silently resets the payment date.
+    const p_changes = {
       amount: amountCents,
-      recorded_at: datePaid || new Date().toISOString(),
       bank_reference: bankReference?.trim() || null,
       notes: notes?.trim() || null,
-    }).eq('id', id)
+    }
+    if (datePaid) p_changes.recorded_at = datePaid
+
+    const { error: updErr } = await supabaseAdmin.rpc('edit_payment_record', {
+      p_id: id,
+      p_changes,
+      p_changed_by: user.id,
+    })
     if (updErr) return res.status(500).json({ error: updErr.message })
 
     const result = await buildPaymentResponse(existing.registration_id)
@@ -669,7 +678,10 @@ async function handlePayments(req, res, user) {
     if (exErr) return res.status(500).json({ error: exErr.message })
     if (!existing) return res.status(404).json({ error: 'Payment record not found' })
 
-    const { error: delErr } = await supabaseAdmin.from('payment_records').delete().eq('id', id)
+    const { error: delErr } = await supabaseAdmin.rpc('delete_payment_record', {
+      p_id: id,
+      p_changed_by: user.id,
+    })
     if (delErr) return res.status(500).json({ error: delErr.message })
 
     const result = await buildPaymentResponse(existing.registration_id)

@@ -1245,10 +1245,11 @@ async function handleCompetitionPaymentRecords(req, res) {
       return badRequest(res, 'no editable fields supplied')
     }
 
-    const { error: updErr } = await supabaseAdmin
-      .from('payment_records')
-      .update(updates)
-      .eq('id', id)
+    const { error: updErr } = await supabaseAdmin.rpc('edit_payment_record', {
+      p_id: id,
+      p_changes: updates,   // already in cents; built via hasOwnProperty, so partial keys are correct
+      p_changed_by: gate.user.id,
+    })
     if (updErr) return res.status(500).json({ error: updErr.message })
 
     const result = await buildCompetitionPaymentResponse(existing.competition_registration_id)
@@ -1273,10 +1274,10 @@ async function handleCompetitionPaymentRecords(req, res) {
     const gate = await gateCompetitionPaymentRecord(req, res, existing.competition_registration_id)
     if (!gate) return
 
-    const { error: delErr } = await supabaseAdmin
-      .from('payment_records')
-      .delete()
-      .eq('id', id)
+    const { error: delErr } = await supabaseAdmin.rpc('delete_payment_record', {
+      p_id: id,
+      p_changed_by: gate.user.id,
+    })
     if (delErr) return res.status(500).json({ error: delErr.message })
 
     const result = await buildCompetitionPaymentResponse(existing.competition_registration_id)
