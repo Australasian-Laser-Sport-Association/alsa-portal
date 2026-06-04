@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { Resend } from 'resend'
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
+import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 
@@ -107,6 +107,11 @@ async function handleEvent(req, res) {
   }
 
   if (action === 'delete') {
+    // Destructive cascade — superadmin only. The dispatcher already
+    // verifyCommittee'd the request; deletes raise the bar to superadmin.
+    const { error: err } = await verifySuperAdmin(req)
+    if (err) return res.status(statusForAuthError(err)).json({ error: err })
+
     const yearScopedTables = [
       'legal_acceptances',
       'under_18_approvals',

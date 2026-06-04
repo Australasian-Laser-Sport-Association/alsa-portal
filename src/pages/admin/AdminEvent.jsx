@@ -460,7 +460,7 @@ export default function AdminEvent() {
   }
 
   async function handleDelete() {
-    if (!event || deleteConfirmInput !== 'DELETE') return
+    if (!event || deleteConfirmInput !== String(event.year)) return
     setDeleting(true)
     setDeleteError('')
     try {
@@ -566,13 +566,13 @@ export default function AdminEvent() {
               <span className="text-white font-semibold">
                 {deleteCounts.teams ?? '…'} team{deleteCounts.teams === 1 ? '' : 's'}
               </span>, plus all payments, forms, and checklist items for this year.
-              This cannot be undone. Type <span className="text-white font-mono font-bold">DELETE</span> to confirm.
+              This cannot be undone. Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
             </p>
             <input
               type="text"
               value={deleteConfirmInput}
               onChange={e => setDeleteConfirmInput(e.target.value)}
-              placeholder="Type DELETE"
+              placeholder={`Type ${event?.year ?? ''}`}
               autoFocus
               className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-red-400 transition-colors mb-4"
             />
@@ -584,7 +584,7 @@ export default function AdminEvent() {
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
-                disabled={deleting || deleteConfirmInput !== 'DELETE'}
+                disabled={deleting || deleteConfirmInput !== String(event?.year)}
                 className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
               >
                 {deleting ? 'Deleting…' : 'Delete event permanently'}
