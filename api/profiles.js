@@ -1,6 +1,21 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getTeammateIds } from './_lib/auth.js'
-import { COMMITTEE_ROLES } from '../src/lib/roles.js'
+import { COMMITTEE_ROLES, PUBLIC_ROLE_BADGE_ROLES } from '../src/lib/roles.js'
+
+// Sanity cap on the ID-lookup batch. The largest legitimate caller is
+// EventPage, which requests every registration + captain for one event year
+// (realistically low hundreds); 1000 sits well above that while blocking bulk
+// enumeration of arbitrary user ids.
+const MAX_PROFILE_IDS = 1000
+
+// Strip privileged roles (superadmin/advisor) from other users' rows. Committee
+// callers and the caller's own row keep full visibility; everyone else sees
+// only the publicly-badged committee roles (CommitteeBadge's input).
+function maskRoles(row, callerId, callerIsCommittee) {
+  if (callerIsCommittee) return row          // committee keeps full visibility
+  if (row.id === callerId) return row        // caller's own row: full roles
+  return { ...row, roles: (row.roles ?? []).filter(r => PUBLIC_ROLE_BADGE_ROLES.includes(r)) }
+}
 
 // Fetch ALSA membership status for one profile. Returns
 // { current, most_recent } in the same shape the dashboard previously
@@ -60,11 +75,12 @@ export default async function handler(req, res) {
       .in('id', rosterIds)
 
     if (profsErr) return res.status(500).json({ error: profsErr.message })
-    return res.json({ profiles: profiles ?? [] })
+    return res.json({ profiles: (profiles ?? []).map(row => maskRoles(row, user.id, isCommittee)) })
   }
 
   // ID lookup mode
   if (!Array.isArray(ids) || ids.length === 0) return res.json({ profiles: [] })
+  if (ids.length > MAX_PROFILE_IDS) return res.status(400).json({ error: `Too many ids (max ${MAX_PROFILE_IDS})` })
 
   const { data: callerProfile } = await supabaseAdmin
     .from('profiles').select('roles').eq('id', user.id).maybeSingle()
@@ -88,8 +104,9 @@ export default async function handler(req, res) {
   const alsa_membership = selfRequested ? await fetchAlsaMembership(user.id) : null
 
   const filtered = (data ?? []).map(row => {
-    const base = dobAllowed.has(row.id) ? row : { ...row, dob: null }
-    return row.id === user.id && alsa_membership
+    const masked = maskRoles(row, user.id, isCommittee)
+    const base = dobAllowed.has(masked.id) ? masked : { ...masked, dob: null }
+    return masked.id === user.id && alsa_membership
       ? { ...base, alsa_membership }
       : base
   })
