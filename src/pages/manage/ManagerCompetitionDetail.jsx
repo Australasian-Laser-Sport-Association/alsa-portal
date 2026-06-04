@@ -4,6 +4,7 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
+import { dollars } from '../../lib/pricing.js'
 
 // Per-competition detail page for managers. Auth: the page fetches
 // /api/superadmin/my-competitions and looks for a row matching :slug. If not
@@ -152,8 +153,8 @@ function buildRegistrationsCsv(rows) {
       csvCell(r.team?.name),
       csvCell(r.team?.role),
       csvCell(r.payment_status),
-      csvCell(Number(r.amount_paid ?? 0).toFixed(2)),
-      csvCell(Number(r.amount_owing ?? 0).toFixed(2)),
+      csvCell((Number(r.amount_paid ?? 0) / 100).toFixed(2)),
+      csvCell((Number(r.amount_owing ?? 0) / 100).toFixed(2)),
       csvCell(r.payment_reference),
       csvCell(r.registered_at),
     ].join(','))
@@ -354,7 +355,7 @@ function RegistrationRow({ r, expanded, fullName, owing, paid, onToggle }) {
         </td>
         <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">
           {owing > 0
-            ? `$${owing.toFixed(2)} AUD`
+            ? `${dollars(owing)} AUD`
             : <span className="text-green-400 font-semibold">Paid</span>}
         </td>
         <td
@@ -394,11 +395,11 @@ function RegistrationRow({ r, expanded, fullName, owing, paid, onToggle }) {
               </div>
               <div>
                 <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Amount paid</p>
-                <p className="text-white text-sm">${paid.toFixed(2)} AUD</p>
+                <p className="text-white text-sm">{dollars(paid)} AUD</p>
               </div>
               <div>
                 <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Amount owing</p>
-                <p className="text-white text-sm">${owing.toFixed(2)} AUD</p>
+                <p className="text-white text-sm">{dollars(owing)} AUD</p>
               </div>
             </div>
           </td>
@@ -520,9 +521,9 @@ function PaymentsPanel({ comp }) {
         csvCell(r.profile?.email),
         csvCell(r.team?.name),
         csvCell(r.payment_status),
-        csvCell(paid.toFixed(2)),
-        csvCell(owing.toFixed(2)),
-        csvCell(out.toFixed(2)),
+        csvCell((paid / 100).toFixed(2)),
+        csvCell((owing / 100).toFixed(2)),
+        csvCell((out / 100).toFixed(2)),
         csvCell(r.payment_reference),
       ].join(','))
     }
@@ -587,8 +588,8 @@ function PaymentsPanel({ comp }) {
                     )}
                   </td>
                   <td className="px-3 py-2.5"><PayPill status={r.payment_status} /></td>
-                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">${paid.toFixed(2)}</td>
-                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">${owing.toFixed(2)}</td>
+                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">{dollars(paid)}</td>
+                  <td className="px-3 py-2.5 text-white text-xs whitespace-nowrap">{dollars(owing)}</td>
                   <td className="px-3 py-2.5 font-mono text-brand text-[11px] whitespace-nowrap select-all">
                     {r.payment_reference ?? <span className="text-white opacity-40 font-sans">-</span>}
                   </td>
@@ -615,7 +616,7 @@ function PaymentsPanel({ comp }) {
           profile={paymentModal.profile}
           records={paymentModal.records}
           profMap={{}}
-          amountOwingCents={Math.round(Number(paymentModal.registration.amount_owing ?? 0) * 100)}
+          amountOwingCents={Number(paymentModal.registration.amount_owing ?? 0)}
           onChange={handlePaymentChange}
           onClose={() => setPaymentModal(null)}
         />
@@ -633,7 +634,7 @@ function SummaryCard({ label, value, tone }) {
   return (
     <div className="bg-surface border border-line rounded-2xl p-4">
       <p className="text-white text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">{label}</p>
-      <p className={`font-black text-xl ${TONE_CLASS[tone] ?? 'text-white'}`}>${value.toFixed(2)} AUD</p>
+      <p className={`font-black text-xl ${TONE_CLASS[tone] ?? 'text-white'}`}>{dollars(value)} AUD</p>
     </div>
   )
 }

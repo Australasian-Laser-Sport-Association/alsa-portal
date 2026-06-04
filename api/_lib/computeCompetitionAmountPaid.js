@@ -4,11 +4,11 @@ import supabaseAdmin from './supabase.js'
 // payment_status. Sibling to computeAmountOwing.js (ZLTAC's amount_owing
 // recompute helper).
 //
-// UNIT NOTE: payment_records.amount is integer cents. The parent's
-// amount_paid / amount_owing are numeric(8,2) dollars. This helper does
-// the cents -> dollars conversion at the boundary.
+// UNIT NOTE: as of the Batch-3 cents migration, payment_records.amount AND the
+// parent's amount_paid / amount_owing are ALL integer cents. This helper is now
+// cents end-to-end — no dollars boundary remains here.
 //
-// Status thresholds:
+// Status thresholds (exact integer-cents comparison):
 //   amount_paid <= 0                       -> 'unpaid'
 //   0 < amount_paid < amount_owing         -> 'partial'
 //   amount_paid == amount_owing            -> 'paid'
@@ -21,16 +21,17 @@ export async function computeCompetitionAmountPaid(competitionRegistrationId) {
   if (!competitionRegistrationId) return { error: 'competitionRegistrationId is required' }
 
   // Load current parent state. Needed for amount_owing comparison + the
-  // 'refunded' short-circuit.
+  // 'refunded' short-circuit. amount_owing is integer cents.
   const { data: reg, error: regErr } = await supabaseAdmin
     .from('competition_registrations')
-    .select('id, amount_owing, payment_status')
+    .select('id, amount_owing, amount_paid, payment_status')
     .eq('id', competitionRegistrationId)
     .maybeSingle()
   if (regErr) return { error: regErr.message }
   if (!reg) return { error: 'Competition registration not found' }
 
   // Refunded short-circuit. Preserve the manual state; do not recompute.
+  // amount_paid is already cents, returned verbatim.
   if (reg.payment_status === 'refunded') {
     return { amount_paid: reg.amount_paid ?? 0, payment_status: 'refunded', skipped: true }
   }
@@ -41,12 +42,10 @@ export async function computeCompetitionAmountPaid(competitionRegistrationId) {
     .select('amount')
     .eq('competition_registration_id', competitionRegistrationId)
   if (sumErr) return { error: sumErr.message }
-  const sumCents = (rows ?? []).reduce((acc, r) => acc + (r.amount ?? 0), 0)
+  const amountPaid = (rows ?? []).reduce((acc, r) => acc + (r.amount ?? 0), 0)
 
-  // Convert to dollars. numeric(8,2) is stored as a string by Postgres but
-  // can accept a number; we send a number rounded to 2 decimal places.
-  const amountPaid = Math.round(sumCents) / 100
-  const amountOwing = Number(reg.amount_owing ?? 0)
+  // Both operands are integer cents, so === is an exact comparison.
+  const amountOwing = reg.amount_owing ?? 0
 
   let status
   if (amountPaid <= 0) status = 'unpaid'

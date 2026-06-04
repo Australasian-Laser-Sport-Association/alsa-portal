@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import { TEAM_COLOURS } from '../../lib/teamColours'
+import { dollars } from '../../lib/pricing.js'
 
 // Unified competition hub (Phase 3c). One page combines:
 //   - Your Registration (profile snapshot + cancel)
@@ -1104,8 +1105,8 @@ export default function CompetitionHub() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 border-t border-line pt-4">
-              <Field label="Amount owing" value={`$${amountOwing.toFixed(2)} AUD`} />
-              {amountPaid > 0 && <Field label="Amount paid" value={`$${amountPaid.toFixed(2)} AUD`} />}
+              <Field label="Amount owing" value={`${dollars(amountOwing)} AUD`} />
+              {amountPaid > 0 && <Field label="Amount paid" value={`${dollars(amountPaid)} AUD`} />}
               <Field label="Status" value={<Pill tone={payPill.tone}>{payPill.label}</Pill>} />
             </div>
 
