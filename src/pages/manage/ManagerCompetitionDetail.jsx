@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { useAuth } from '../../lib/useAuth.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
@@ -16,6 +17,7 @@ import { toLocalDate } from '../../lib/dateFormat'
 const TABS = [
   { key: 'overview',      label: 'Overview' },
   { key: 'edit',          label: 'Edit Details' },
+  { key: 'teams',         label: 'Teams' },
   { key: 'registrations', label: 'Registrations' },
   { key: 'payments',      label: 'Payments' },
 ]
@@ -697,6 +699,273 @@ function OverviewPanel({ comp }) {
   )
 }
 
+// Team-status pill. approved/pending/rejected/draft map onto the shared tone
+// palette; unknown statuses fall back to grey.
+const TEAM_STATUS_TONE = {
+  approved: 'green',
+  pending:  'amber',
+  rejected: 'red',
+  draft:    'grey',
+}
+
+function TeamStatusPill({ status }) {
+  const tone = TEAM_STATUS_TONE[status] ?? 'grey'
+  return (
+    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border whitespace-nowrap ${PAY_TONE[tone]}`}>
+      {status ?? 'unknown'}
+    </span>
+  )
+}
+
+// Teams tab body. Lists every team in the competition with its accepted
+// members. Committee or the competition's manager can approve/unapprove a
+// team and rename it inline. Editing a player's alias is committee-only and
+// changes the player's GLOBAL alias (flagged in the UI).
+function TeamsPanel({ comp }) {
+  const { isAdmin } = useAuth()
+  const [teams, setTeams] = useState(null) // null = loading; false = error
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const [busyTeamId, setBusyTeamId] = useState(null)
+  const [editingNameId, setEditingNameId] = useState(null)
+  const [nameDraft, setNameDraft] = useState('')
+  const [editingAliasKey, setEditingAliasKey] = useState(null)
+  const [aliasDraft, setAliasDraft] = useState('')
+  const [aliasBusy, setAliasBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiFetch(`/api/superadmin/competition-teams?competition_id=${comp.id}`)
+      setTeams(data)
+      setErrorMsg(null)
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not load teams.')
+      setTeams(false)
+    }
+  }, [comp.id])
+
+  useEffect(() => { queueMicrotask(load) }, [load])
+
+  async function setStatus(teamId, approve) {
+    setBusyTeamId(teamId)
+    setActionError(null)
+    try {
+      const resource = approve ? 'competition-team-approve' : 'competition-team-unapprove'
+      await apiFetch(`/api/superadmin/${resource}`, {
+        method: 'POST',
+        body: JSON.stringify({ team_id: teamId }),
+      })
+      await load()
+    } catch (err) {
+      setActionError(err.message || 'Could not update the team status.')
+    } finally {
+      setBusyTeamId(null)
+    }
+  }
+
+  async function saveName(teamId) {
+    const name = nameDraft.trim()
+    if (!name) return
+    setBusyTeamId(teamId)
+    setActionError(null)
+    try {
+      await apiFetch('/api/superadmin/competition-team-rename', {
+        method: 'POST',
+        body: JSON.stringify({ team_id: teamId, name }),
+      })
+      setEditingNameId(null)
+      setNameDraft('')
+      await load()
+    } catch (err) {
+      setActionError(err.message || 'Could not rename the team.')
+    } finally {
+      setBusyTeamId(null)
+    }
+  }
+
+  async function saveAlias(userId) {
+    const alias = aliasDraft.trim()
+    if (!alias) return
+    setAliasBusy(true)
+    setActionError(null)
+    try {
+      await apiFetch('/api/superadmin/competition-player-alias', {
+        method: 'PATCH',
+        body: JSON.stringify({ competition_id: comp.id, user_id: userId, alias }),
+      })
+      setEditingAliasKey(null)
+      setAliasDraft('')
+      await load()
+    } catch (err) {
+      setActionError(err.message || 'Could not update the alias.')
+    } finally {
+      setAliasBusy(false)
+    }
+  }
+
+  if (teams === null) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+  if (teams === false) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-6">
+        <p className="text-white font-bold mb-2">Could not load teams</p>
+        <p className="text-white text-sm opacity-70">{errorMsg ?? 'Please try again.'}</p>
+      </div>
+    )
+  }
+  if (teams.length === 0) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl px-6 py-12 text-center">
+        <p className="text-white text-sm opacity-70">No teams have been created for this competition yet.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {actionError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2">
+          <p className="text-red-400 text-xs font-semibold">{actionError}</p>
+        </div>
+      )}
+
+      {teams.map(team => {
+        const isBusy = busyTeamId === team.id
+        const isApproved = team.status === 'approved'
+        return (
+          <div key={team.id} className="bg-surface border border-line rounded-2xl p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-4 h-4 rounded border border-line flex-shrink-0" style={{ background: team.colour }} />
+                {editingNameId === team.id ? (
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={nameDraft}
+                      maxLength={50}
+                      onChange={e => setNameDraft(e.target.value)}
+                      className="bg-base border border-line rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-brand"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => saveName(team.id)}
+                      disabled={isBusy || !nameDraft.trim()}
+                      className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      {isBusy ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingNameId(null); setNameDraft('') }}
+                      className="text-xs border border-line text-white opacity-60 hover:opacity-100 font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-white font-bold truncate">{team.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingNameId(team.id); setNameDraft(team.name); setActionError(null) }}
+                      className="text-[11px] text-white opacity-50 hover:opacity-100 underline transition-opacity"
+                    >
+                      Rename
+                    </button>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <TeamStatusPill status={team.status} />
+                <button
+                  type="button"
+                  onClick={() => setStatus(team.id, !isApproved)}
+                  disabled={isBusy}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                    isApproved
+                      ? 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400'
+                      : 'bg-green-500/10 hover:bg-green-500/20 text-green-400'
+                  }`}
+                >
+                  {isBusy ? 'Working…' : isApproved ? 'Unapprove' : 'Approve'}
+                </button>
+              </div>
+            </div>
+
+            {team.members.length === 0 ? (
+              <p className="text-white text-xs opacity-40 pt-2 border-t border-line">No players on this team yet.</p>
+            ) : (
+              <div className="space-y-1.5 pt-2 border-t border-line">
+                {team.members.map(m => {
+                  const fullName = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown'
+                  const isCap = Array.isArray(m.roles) && m.roles.includes('captain')
+                  const aliasKey = `${team.id}::${m.user_id}`
+                  const editing = editingAliasKey === aliasKey
+                  return (
+                    <div key={m.user_id} className="flex items-center gap-2 flex-wrap">
+                      <span className="text-white text-xs font-medium">{fullName}</span>
+                      {m.alias && !editing && <span className="text-brand text-xs">"{m.alias}"</span>}
+                      {isCap && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">
+                          Captain
+                        </span>
+                      )}
+                      {isAdmin && !editing && (
+                        <button
+                          type="button"
+                          onClick={() => { setEditingAliasKey(aliasKey); setAliasDraft(m.alias ?? ''); setActionError(null) }}
+                          className="text-[11px] text-white opacity-50 hover:opacity-100 underline transition-opacity"
+                        >
+                          Edit alias
+                        </button>
+                      )}
+                      {isAdmin && editing && (
+                        <span className="flex items-center gap-2 flex-wrap">
+                          <input
+                            type="text"
+                            value={aliasDraft}
+                            maxLength={50}
+                            onChange={e => setAliasDraft(e.target.value)}
+                            placeholder="Alias"
+                            className="bg-base border border-line rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveAlias(m.user_id)}
+                            disabled={aliasBusy || !aliasDraft.trim()}
+                            className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-2.5 py-1 rounded-lg transition-colors"
+                          >
+                            {aliasBusy ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setEditingAliasKey(null); setAliasDraft('') }}
+                            className="text-xs border border-line text-white opacity-60 hover:opacity-100 font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <span className="text-[10px] text-yellow-400 opacity-90 w-full">
+                            Heads up: this changes the player's global alias everywhere on the portal, not just this competition.
+                          </span>
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function ManagerCompetitionDetail() {
   const { slug } = useParams()
   const { pathname } = useLocation()
@@ -801,6 +1070,8 @@ export default function ManagerCompetitionDetail() {
           onSaved={saved => setComp({ ...saved, registrations_count: comp.registrations_count })}
         />
       )}
+
+      {tab === 'teams' && <TeamsPanel comp={comp} />}
 
       {tab === 'registrations' && <RegistrationsPanel comp={comp} />}
 

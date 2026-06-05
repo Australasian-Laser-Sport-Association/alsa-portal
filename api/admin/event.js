@@ -150,6 +150,23 @@ async function handleRegistrations(req, res, user) {
     const year = parseInt(req.query.year)
     if (!year) return res.status(400).json({ error: 'year is required' })
 
+    // Resolve the ZLTAC event id for this year so the teams query can be
+    // scoped to it. teams.event_id is NULL for competition (pre-nats) teams,
+    // so filtering on a concrete event id drops both competition teams and
+    // teams from other years. If no event exists for the year, there are no
+    // ZLTAC teams to show — return an empty teams set rather than an
+    // unfiltered (.eq event_id NULL would otherwise match competition teams).
+    const { data: ev, error: evLookupErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('id')
+      .eq('year', year)
+      .maybeSingle()
+    if (evLookupErr) return res.status(500).json({ error: evLookupErr.message })
+    const eventId = ev?.id ?? null
+    const teamsQuery = eventId
+      ? supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at, event_id').eq('event_id', eventId)
+      : Promise.resolve({ data: [], error: null })
+
     const [
       { data: registrations, error: e1 },
       { data: profiles, error: e2 },
@@ -162,7 +179,7 @@ async function handleRegistrations(req, res, user) {
     ] = await Promise.all([
       supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_coc_set_by, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_by, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_by, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_by, admin_override_u18_set_at, admin_override_u18_reason').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),
-      supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at, event_id'),
+      teamsQuery,
       supabaseAdmin
         .from('legal_acceptances')
         .select('user_id, accepted_at, document:legal_documents!document_id(document_type)')

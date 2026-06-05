@@ -1058,7 +1058,7 @@ export default function AdminRegistrations() {
                               </div>
                             ) : (
                               <p className="text-[#e5e5e5]/30 text-xs pt-2 border-t border-line">
-                                {!t.event_id ? 'Competition team — reviewed elsewhere.' : 'Draft team — not yet submitted for approval.'}
+                                Draft team, not yet submitted for approval.
                               </p>
                             )}
                           </td>

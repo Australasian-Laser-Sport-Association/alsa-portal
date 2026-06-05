@@ -1,7 +1,8 @@
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifyUser, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { verifyUser, verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeCompetitionAmountPaid } from '../_lib/computeCompetitionAmountPaid.js'
 import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
+import { COMMITTEE_ROLES } from '../../src/lib/roles.js'
 
 // Catch-all dispatcher for superadmin-mostly endpoints, consolidated into one
 // Vercel function to stay under the Hobby plan's 12-function ceiling.
@@ -20,6 +21,11 @@ import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 //   /api/superadmin/competition-team           → POST, GET, PATCH, DELETE (any auth user)
 //   /api/superadmin/competition-team-member    → POST, GET, DELETE   (any auth user)
 //   /api/superadmin/competition-team-invite    → GET, PATCH          (any auth user)
+//   /api/superadmin/competition-teams          → GET                 (committee OR competition manager)
+//   /api/superadmin/competition-team-approve   → POST                (committee OR competition manager)
+//   /api/superadmin/competition-team-unapprove → POST                (committee OR competition manager)
+//   /api/superadmin/competition-team-rename    → POST                (committee OR competition manager)
+//   /api/superadmin/competition-player-alias   → PATCH               (committee only)
 //
 // Vercel maps [resource].js to req.query.resource. Auth is per-branch because
 // most resources here serve any authenticated user — only competition-managers
@@ -1368,8 +1374,11 @@ async function handleCompetitionTeam(req, res) {
 
     // Three-step write (service role bypasses RLS so no rollback needed at the
     // policy layer; we do best-effort cleanup on partial failure). teams.event_id
-    // stays NULL to satisfy the xor check from Phase 1a. status='approved' —
-    // pre-nats has no committee approval gate.
+    // stays NULL to satisfy the xor check from Phase 1a. status='pending' — new
+    // competition teams await moderation (committee or the competition's
+    // manager approves them) before they surface on the public roster. The
+    // captain still sees their own team via competition-team GET regardless of
+    // status; only the public roster view filters on status='approved'.
     const { data: team, error: teamErr } = await supabaseAdmin
       .from('teams')
       .insert({
@@ -1378,7 +1387,7 @@ async function handleCompetitionTeam(req, res) {
         colour,
         captain_id: user.id,
         manager_id: user.id,
-        status: 'approved',
+        status: 'pending',
         format: 'team',
       })
       .select('id, competition_id, name, colour, captain_id, manager_id, status, created_at')
@@ -1864,6 +1873,191 @@ async function handleCompetitionTeamInvite(req, res) {
 }
 
 
+// ── competition team moderation + per-player alias ────────────────────────────
+// Backs the manager Teams tab. Auth differs per resource:
+//   competition-teams (GET)            -> committee OR this competition's manager
+//   competition-team-approve (POST)    -> committee OR this competition's manager
+//   competition-team-unapprove (POST)  -> committee OR this competition's manager
+//   competition-team-rename (POST)     -> committee OR this competition's manager
+//   competition-player-alias (PATCH)   -> committee only (edits the GLOBAL alias)
+// Competition teams bypass the ZLTAC team-lock trigger (it early-returns when
+// event_id IS NULL), so status writes here are safe via the service role.
+
+// Resolves whether `user` may manage teams in `competitionId`: true for any
+// committee member, otherwise checks for a competition_managers grant. Returns
+// { ok: true } or { ok: false, status, error } so callers can short-circuit.
+async function authoriseCompetitionManage(user, competitionId) {
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .select('roles')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profileErr) return { ok: false, status: 500, error: profileErr.message }
+  const roles = Array.isArray(profile?.roles) ? profile.roles : []
+  if (roles.some(r => COMMITTEE_ROLES.includes(r))) return { ok: true }
+
+  const { count, error: mgrErr } = await supabaseAdmin
+    .from('competition_managers')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('competition_id', competitionId)
+    .eq('user_id', user.id)
+  if (mgrErr) return { ok: false, status: 500, error: mgrErr.message }
+  if ((count ?? 0) === 0) {
+    return { ok: false, status: 403, error: 'Not authorised to manage this competition.' }
+  }
+  return { ok: true }
+}
+
+// Auth gate for a single team moderation action. Verifies the caller, loads
+// the team, confirms it is a competition team (not a ZLTAC event team), and
+// checks committee-or-manager authorisation. Returns { team } or null (a
+// response has already been sent).
+async function gateCompetitionTeam(req, res, teamId) {
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) { res.status(statusForAuthError(authErr)).json({ error: authErr }); return null }
+  if (!teamId) { badRequest(res, 'team_id is required'); return null }
+
+  const { data: team, error: teamErr } = await supabaseAdmin
+    .from('teams')
+    .select('id, competition_id, name, status')
+    .eq('id', teamId)
+    .maybeSingle()
+  if (teamErr) { res.status(500).json({ error: teamErr.message }); return null }
+  if (!team) { res.status(404).json({ error: 'team not found' }); return null }
+  if (!team.competition_id) { res.status(400).json({ error: 'not a competition team' }); return null }
+
+  const auth = await authoriseCompetitionManage(user, team.competition_id)
+  if (!auth.ok) { res.status(auth.status).json({ error: auth.error }); return null }
+  return { team }
+}
+
+async function handleCompetitionTeamsList(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const { user, error: authErr } = await verifyUser(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  const competitionId = req.query.competition_id
+  if (!competitionId) return badRequest(res, 'competition_id query param is required')
+
+  const auth = await authoriseCompetitionManage(user, competitionId)
+  if (!auth.ok) return res.status(auth.status).json({ error: auth.error })
+
+  const { data: teams, error: teamsErr } = await supabaseAdmin
+    .from('teams')
+    .select('id, name, colour, status, captain_id, created_at')
+    .eq('competition_id', competitionId)
+    .order('created_at', { ascending: true })
+  if (teamsErr) return res.status(500).json({ error: teamsErr.message })
+
+  const teamIds = (teams ?? []).map(t => t.id)
+  const membersByTeam = new Map()
+  if (teamIds.length > 0) {
+    const { data: members, error: mErr } = await supabaseAdmin
+      .from('team_members')
+      .select('team_id, user_id, roles, profile:profiles!user_id(id, alias, first_name, last_name)')
+      .in('team_id', teamIds)
+      .eq('invite_status', 'accepted')
+    if (mErr) return res.status(500).json({ error: mErr.message })
+    for (const m of members ?? []) {
+      if (!membersByTeam.has(m.team_id)) membersByTeam.set(m.team_id, [])
+      membersByTeam.get(m.team_id).push({
+        user_id: m.user_id,
+        roles: Array.isArray(m.roles) ? m.roles : [],
+        alias: m.profile?.alias ?? null,
+        first_name: m.profile?.first_name ?? null,
+        last_name: m.profile?.last_name ?? null,
+      })
+    }
+  }
+
+  const out = (teams ?? []).map(t => ({
+    id: t.id,
+    name: t.name,
+    colour: t.colour,
+    status: t.status,
+    captain_id: t.captain_id,
+    members: membersByTeam.get(t.id) ?? [],
+  }))
+  return res.json(out)
+}
+
+async function handleCompetitionTeamStatus(req, res, nextStatus) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  const teamId = req.body?.team_id ?? req.query.team_id
+  const gate = await gateCompetitionTeam(req, res, teamId)
+  if (!gate) return
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('teams')
+    .update({ status: nextStatus })
+    .eq('id', gate.team.id)
+    .select('id, competition_id, name, status')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(updated)
+}
+
+async function handleCompetitionTeamRename(req, res) {
+  if (req.method !== 'POST' && req.method !== 'PATCH') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+  const teamId = req.body?.team_id ?? req.query.team_id
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  const gate = await gateCompetitionTeam(req, res, teamId)
+  if (!gate) return
+  if (!name) return badRequest(res, 'name is required')
+  if (name.length > TEAM_NAME_MAX) return badRequest(res, `name must be ${TEAM_NAME_MAX} characters or fewer`)
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('teams')
+    .update({ name })
+    .eq('id', gate.team.id)
+    .select('id, competition_id, name, status')
+    .single()
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(updated)
+}
+
+// Committee-only edit of a player's GLOBAL profiles.alias, scoped by a
+// registration check so committee can only do it for players actually in the
+// competition they are managing. The write itself is global (one alias per
+// user) — the UI carries that warning.
+async function handleCompetitionPlayerAlias(req, res) {
+  if (req.method !== 'PATCH' && req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+  const { error: authErr } = await verifyCommittee(req)
+  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  const body = req.body ?? {}
+  const competitionId = body.competition_id
+  const userId = body.user_id
+  const alias = typeof body.alias === 'string' ? body.alias.trim() : ''
+  if (!competitionId) return badRequest(res, 'competition_id is required')
+  if (!userId) return badRequest(res, 'user_id is required')
+  if (!alias) return badRequest(res, 'alias is required')
+
+  const { data: reg, error: regErr } = await supabaseAdmin
+    .from('competition_registrations')
+    .select('id')
+    .eq('competition_id', competitionId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (regErr) return res.status(500).json({ error: regErr.message })
+  if (!reg) return res.status(404).json({ error: 'player is not registered in this competition' })
+
+  const { data: updated, error: updErr } = await supabaseAdmin
+    .from('profiles')
+    .update({ alias })
+    .eq('id', userId)
+    .select('id, alias')
+    .single()
+  if (updErr) return res.status(500).json({ error: updErr.message })
+  return res.json(updated)
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 // competition-managers stays purely superadmin-gated. Every other resource
 // verifies auth internally because the audience differs per method (e.g.
@@ -1881,6 +2075,11 @@ export default async function handler(req, res) {
   if (resource === 'competition-team')           return handleCompetitionTeam(req, res)
   if (resource === 'competition-team-member')    return handleCompetitionTeamMember(req, res)
   if (resource === 'competition-team-invite')    return handleCompetitionTeamInvite(req, res)
+  if (resource === 'competition-teams')          return handleCompetitionTeamsList(req, res)
+  if (resource === 'competition-team-approve')   return handleCompetitionTeamStatus(req, res, 'approved')
+  if (resource === 'competition-team-unapprove') return handleCompetitionTeamStatus(req, res, 'pending')
+  if (resource === 'competition-team-rename')    return handleCompetitionTeamRename(req, res)
+  if (resource === 'competition-player-alias')   return handleCompetitionPlayerAlias(req, res)
   if (resource === 'competitions')               return handleCompetitions(req, res)
 
   // competition-managers is the one remaining purely-superadmin resource.
