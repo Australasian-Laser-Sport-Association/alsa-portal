@@ -8,9 +8,20 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState(null)
 
   async function fetchProfile(userId) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    if (error) {
+      // A transient load failure must not collapse to a null profile — that
+      // would flicker a committee member down to a plain player. Keep the
+      // last-known profile and surface the failure via profileError instead.
+      console.error('[AuthContext fetchProfile]', error)
+      setProfileError(error)
+      setProfileLoading(false)
+      return
+    }
+    setProfileError(null)
     setProfile(data ?? null)
     setProfileLoading(false)
   }
@@ -52,7 +63,7 @@ export function AuthProvider({ children }) {
   function refreshProfile() { if (user) fetchProfile(user.id) }
 
   return (
-    <AuthContext.Provider value={{ user, loading, profileLoading, signOut, profile, userRoles, isAdmin, isCaptain, hasRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, isCaptain, hasRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

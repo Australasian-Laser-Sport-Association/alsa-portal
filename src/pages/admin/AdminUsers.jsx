@@ -78,32 +78,39 @@ export default function AdminUsers() {
   const [savingRoles, setSavingRoles] = useState(false)
   const [msg, setMsg] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [error, setError] = useState(null)
 
   useEffect(() => { loadUsers() }, [])
 
   async function loadUsers() {
     setLoading(true)
-    const { profiles, registrations, teams } = await apiFetch('/api/admin/users')
+    setError(null)
+    try {
+      const { profiles, registrations, teams } = await apiFetch('/api/admin/users')
 
-    const regMap = {}
-    for (const r of (registrations ?? [])) {
-      if (!regMap[r.user_id]) regMap[r.user_id] = []
-      regMap[r.user_id].push(r)
+      const regMap = {}
+      for (const r of (registrations ?? [])) {
+        if (!regMap[r.user_id]) regMap[r.user_id] = []
+        regMap[r.user_id].push(r)
+      }
+      const captainTeamMap = {}
+      for (const t of (teams ?? [])) {
+        if (t.captain_id) captainTeamMap[t.captain_id] = t.name
+      }
+
+      const merged = (profiles ?? []).map(p => ({
+        ...p,
+        _roles: getRoles(p),
+        events_entered: regMap[p.id]?.length ?? 0,
+        team_name: captainTeamMap[p.id] ?? null,
+      }))
+
+      setUsers(merged)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
     }
-    const captainTeamMap = {}
-    for (const t of (teams ?? [])) {
-      if (t.captain_id) captainTeamMap[t.captain_id] = t.name
-    }
-
-    const merged = (profiles ?? []).map(p => ({
-      ...p,
-      _roles: getRoles(p),
-      events_entered: regMap[p.id]?.length ?? 0,
-      team_name: captainTeamMap[p.id] ?? null,
-    }))
-
-    setUsers(merged)
-    setLoading(false)
   }
 
   async function openUser(u) {
@@ -211,6 +218,12 @@ export default function AdminUsers() {
         </select>
         <span className="ml-auto text-xs text-[#e5e5e5]/40 self-center">{filtered.length} member{filtered.length !== 1 ? 's' : ''}</span>
       </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">

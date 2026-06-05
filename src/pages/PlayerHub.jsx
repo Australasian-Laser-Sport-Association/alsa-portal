@@ -747,6 +747,8 @@ export default function PlayerHub() {
   const [dinnerGuestsDraft, setDinnerGuestsDraft] = useState(0)
   const [savingConfirm, setSavingConfirm] = useState(false)
   const [savingExtrasConfirm, setSavingExtrasConfirm] = useState(false)
+  const [sideEventsError, setSideEventsError] = useState(null)
+  const [extrasError, setExtrasError] = useState(null)
 
   // Cancel registration modal
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -938,22 +940,27 @@ export default function PlayerHub() {
   }
 
   function toggleSideEvent(slug) {
+    const prevSlugs = selectedSlugs
     const newSlugs = new Set(selectedSlugs)
     const removing = newSlugs.has(slug)
     removing ? newSlugs.delete(slug) : newSlugs.add(slug)
     setSelectedSlugs(newSlugs)
+    setSideEventsError(null)
+    // If the server delete/disband fails, revert the optimistic selection so
+    // the checkbox can't silently diverge from the persisted record.
+    const revert = () => setSelectedSlugs(new Set(prevSlugs))
     if (removing) {
       if (slug === 'doubles' && doublesRecord) {
         apiFetch('/api/player?resource=doubles', {
           method: 'POST',
           body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
-        }).then(() => setDoublesRecord(null))
+        }).then(() => setDoublesRecord(null)).catch(err => { setSideEventsError(err.message); revert() })
       }
       if (slug === 'triples' && triplesRecord) {
         apiFetch('/api/player?resource=triples', {
           method: 'POST',
           body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
-        }).then(() => setTriplesRecord(null))
+        }).then(() => setTriplesRecord(null)).catch(err => { setSideEventsError(err.message); revert() })
       }
     }
   }
@@ -961,33 +968,43 @@ export default function PlayerHub() {
   async function confirmSideEvents() {
     if (!event || !registration) return
     setSavingConfirm(true)
-    const { data: updated } = await supabase.from('zltac_registrations')
+    setSideEventsError(null)
+    const { data: updated, error: updateError } = await supabase.from('zltac_registrations')
       .update({ side_events: [...selectedSlugs], has_confirmed_side_events: true })
       .eq('user_id', user.id).eq('year', event.year).select().single()
-    if (updated) {
-      await recomputeOwing(updated.id)
-      const { data: reread } = await supabase.from('zltac_registrations')
-        .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
-        .eq('id', updated.id).maybeSingle()
-      setRegistration(reread ?? updated)
+    if (updateError || !updated) {
+      // Hard stop on a failed write — do not refetch or advance the UI as if saved.
+      setSideEventsError(updateError?.message ?? 'Could not save your side event selections. Please try again.')
+      setSavingConfirm(false)
+      return
     }
+    await recomputeOwing(updated.id)
+    const { data: reread } = await supabase.from('zltac_registrations')
+      .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+      .eq('id', updated.id).maybeSingle()
+    setRegistration(reread ?? updated)
     setSavingConfirm(false)
   }
 
   async function confirmExtras() {
     if (!event || !registration) return
     setSavingExtrasConfirm(true)
-    const { data: updated } = await supabase.from('zltac_registrations')
+    setExtrasError(null)
+    const { data: updated, error: updateError } = await supabase.from('zltac_registrations')
       .update({ dinner_guests: dinnerGuestsDraft, has_confirmed_extras: true })
       .eq('user_id', user.id).eq('year', event.year).select().single()
-    if (updated) {
-      await recomputeOwing(updated.id)
-      const { data: reread } = await supabase.from('zltac_registrations')
-        .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
-        .eq('id', updated.id).maybeSingle()
-      setRegistration(reread ?? updated)
-      setDinnerGuests(dinnerGuestsDraft)
+    if (updateError || !updated) {
+      // Hard stop on a failed write — do not refetch or advance the UI as if saved.
+      setExtrasError(updateError?.message ?? 'Could not save your extras. Please try again.')
+      setSavingExtrasConfirm(false)
+      return
     }
+    await recomputeOwing(updated.id)
+    const { data: reread } = await supabase.from('zltac_registrations')
+      .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+      .eq('id', updated.id).maybeSingle()
+    setRegistration(reread ?? updated)
+    setDinnerGuests(dinnerGuestsDraft)
     setSavingExtrasConfirm(false)
   }
 
@@ -1795,6 +1812,7 @@ export default function PlayerHub() {
                     {savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
                   </button>
                 )}
+                {sideEventsError && <p className="text-red-400 text-xs mt-3">{sideEventsError}</p>}
               </div>
             </CollapsibleSection>
           )}
@@ -1837,6 +1855,7 @@ export default function PlayerHub() {
                   {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
                 </button>
               )}
+              {extrasError && <p className="text-red-400 text-xs mt-3">{extrasError}</p>}
             </CollapsibleSection>
           )}
 

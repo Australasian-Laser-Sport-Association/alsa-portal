@@ -134,14 +134,21 @@ export default function CaptainRegister() {
     }
 
     // Register the captain as a player on their own team
-    const { data: capReg } = await supabase.from('zltac_registrations').upsert({
+    const { data: capReg, error: capRegError } = await supabase.from('zltac_registrations').upsert({
       user_id: user.id,
       year: parseInt(year),
       team_id: newTeam.id,
       side_events: null,
       status: 'pending',
     }, { onConflict: 'user_id,year' }).select('id').single()
-    if (capReg?.id) await recomputeOwing(capReg.id)
+    if (capRegError || !capReg?.id) {
+      // The team row was created, but the captain's own registration failed.
+      // Halt rather than advancing to step 2 as if they were registered.
+      setError(capRegError?.message ?? 'Your team was created, but we could not register you onto it. Please contact the committee.')
+      setSaving(false)
+      return
+    }
+    await recomputeOwing(capReg.id)
 
     // Mirror the captain into team_members (unified teams schema). The team
     // row itself is already complete from the single INSERT above; only the
