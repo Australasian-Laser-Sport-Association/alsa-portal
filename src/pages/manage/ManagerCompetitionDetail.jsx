@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
-import { useAuth } from '../../lib/useAuth.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
@@ -719,19 +718,14 @@ function TeamStatusPill({ status }) {
 
 // Teams tab body. Lists every team in the competition with its accepted
 // members. Committee or the competition's manager can approve/unapprove a
-// team and rename it inline. Editing a player's alias is committee-only and
-// changes the player's GLOBAL alias (flagged in the UI).
+// team and rename it inline. Player aliases are shown read-only.
 function TeamsPanel({ comp }) {
-  const { isAdmin } = useAuth()
   const [teams, setTeams] = useState(null) // null = loading; false = error
   const [errorMsg, setErrorMsg] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [busyTeamId, setBusyTeamId] = useState(null)
   const [editingNameId, setEditingNameId] = useState(null)
   const [nameDraft, setNameDraft] = useState('')
-  const [editingAliasKey, setEditingAliasKey] = useState(null)
-  const [aliasDraft, setAliasDraft] = useState('')
-  const [aliasBusy, setAliasBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -780,26 +774,6 @@ function TeamsPanel({ comp }) {
       setActionError(err.message || 'Could not rename the team.')
     } finally {
       setBusyTeamId(null)
-    }
-  }
-
-  async function saveAlias(userId) {
-    const alias = aliasDraft.trim()
-    if (!alias) return
-    setAliasBusy(true)
-    setActionError(null)
-    try {
-      await apiFetch('/api/superadmin/competition-player-alias', {
-        method: 'PATCH',
-        body: JSON.stringify({ competition_id: comp.id, user_id: userId, alias }),
-      })
-      setEditingAliasKey(null)
-      setAliasDraft('')
-      await load()
-    } catch (err) {
-      setActionError(err.message || 'Could not update the alias.')
-    } finally {
-      setAliasBusy(false)
     }
   }
 
@@ -904,54 +878,13 @@ function TeamsPanel({ comp }) {
                 {team.members.map(m => {
                   const fullName = [m.first_name, m.last_name].filter(Boolean).join(' ') || 'Unknown'
                   const isCap = Array.isArray(m.roles) && m.roles.includes('captain')
-                  const aliasKey = `${team.id}::${m.user_id}`
-                  const editing = editingAliasKey === aliasKey
                   return (
                     <div key={m.user_id} className="flex items-center gap-2 flex-wrap">
                       <span className="text-white text-xs font-medium">{fullName}</span>
-                      {m.alias && !editing && <span className="text-brand text-xs">"{m.alias}"</span>}
+                      {m.alias && <span className="text-brand text-xs">"{m.alias}"</span>}
                       {isCap && (
                         <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">
                           Captain
-                        </span>
-                      )}
-                      {isAdmin && !editing && (
-                        <button
-                          type="button"
-                          onClick={() => { setEditingAliasKey(aliasKey); setAliasDraft(m.alias ?? ''); setActionError(null) }}
-                          className="text-[11px] text-white opacity-50 hover:opacity-100 underline transition-opacity"
-                        >
-                          Edit alias
-                        </button>
-                      )}
-                      {isAdmin && editing && (
-                        <span className="flex items-center gap-2 flex-wrap">
-                          <input
-                            type="text"
-                            value={aliasDraft}
-                            maxLength={50}
-                            onChange={e => setAliasDraft(e.target.value)}
-                            placeholder="Alias"
-                            className="bg-base border border-line rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => saveAlias(m.user_id)}
-                            disabled={aliasBusy || !aliasDraft.trim()}
-                            className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-2.5 py-1 rounded-lg transition-colors"
-                          >
-                            {aliasBusy ? 'Saving…' : 'Save'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setEditingAliasKey(null); setAliasDraft('') }}
-                            className="text-xs border border-line text-white opacity-60 hover:opacity-100 font-semibold px-2.5 py-1 rounded-lg transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <span className="text-[10px] text-yellow-400 opacity-90 w-full">
-                            Heads up: this changes the player's global alias everywhere on the portal, not just this competition.
-                          </span>
                         </span>
                       )}
                     </div>

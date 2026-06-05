@@ -1,5 +1,5 @@
 import supabaseAdmin from '../_lib/supabase.js'
-import { verifyUser, verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { verifyUser, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeCompetitionAmountPaid } from '../_lib/computeCompetitionAmountPaid.js'
 import { TEAM_COLOURS } from '../../src/lib/teamColours.js'
 import { COMMITTEE_ROLES } from '../../src/lib/roles.js'
@@ -25,7 +25,6 @@ import { COMMITTEE_ROLES } from '../../src/lib/roles.js'
 //   /api/superadmin/competition-team-approve   → POST                (committee OR competition manager)
 //   /api/superadmin/competition-team-unapprove → POST                (committee OR competition manager)
 //   /api/superadmin/competition-team-rename    → POST                (committee OR competition manager)
-//   /api/superadmin/competition-player-alias   → PATCH               (committee only)
 //
 // Vercel maps [resource].js to req.query.resource. Auth is per-branch because
 // most resources here serve any authenticated user — only competition-managers
@@ -1873,13 +1872,12 @@ async function handleCompetitionTeamInvite(req, res) {
 }
 
 
-// ── competition team moderation + per-player alias ────────────────────────────
+// ── competition team moderation ───────────────────────────────────────────────
 // Backs the manager Teams tab. Auth differs per resource:
 //   competition-teams (GET)            -> committee OR this competition's manager
 //   competition-team-approve (POST)    -> committee OR this competition's manager
 //   competition-team-unapprove (POST)  -> committee OR this competition's manager
 //   competition-team-rename (POST)     -> committee OR this competition's manager
-//   competition-player-alias (PATCH)   -> committee only (edits the GLOBAL alias)
 // Competition teams bypass the ZLTAC team-lock trigger (it early-returns when
 // event_id IS NULL), so status writes here are safe via the service role.
 
@@ -2019,45 +2017,6 @@ async function handleCompetitionTeamRename(req, res) {
   return res.json(updated)
 }
 
-// Committee-only edit of a player's GLOBAL profiles.alias, scoped by a
-// registration check so committee can only do it for players actually in the
-// competition they are managing. The write itself is global (one alias per
-// user) — the UI carries that warning.
-async function handleCompetitionPlayerAlias(req, res) {
-  if (req.method !== 'PATCH' && req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-  const { error: authErr } = await verifyCommittee(req)
-  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
-
-  const body = req.body ?? {}
-  const competitionId = body.competition_id
-  const userId = body.user_id
-  const alias = typeof body.alias === 'string' ? body.alias.trim() : ''
-  if (!competitionId) return badRequest(res, 'competition_id is required')
-  if (!userId) return badRequest(res, 'user_id is required')
-  if (!alias) return badRequest(res, 'alias is required')
-
-  const { data: reg, error: regErr } = await supabaseAdmin
-    .from('competition_registrations')
-    .select('id')
-    .eq('competition_id', competitionId)
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (regErr) return res.status(500).json({ error: regErr.message })
-  if (!reg) return res.status(404).json({ error: 'player is not registered in this competition' })
-
-  const { data: updated, error: updErr } = await supabaseAdmin
-    .from('profiles')
-    .update({ alias })
-    .eq('id', userId)
-    .select('id, alias')
-    .single()
-  if (updErr) return res.status(500).json({ error: updErr.message })
-  return res.json(updated)
-}
-
-
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 // competition-managers stays purely superadmin-gated. Every other resource
 // verifies auth internally because the audience differs per method (e.g.
@@ -2079,7 +2038,6 @@ export default async function handler(req, res) {
   if (resource === 'competition-team-approve')   return handleCompetitionTeamStatus(req, res, 'approved')
   if (resource === 'competition-team-unapprove') return handleCompetitionTeamStatus(req, res, 'pending')
   if (resource === 'competition-team-rename')    return handleCompetitionTeamRename(req, res)
-  if (resource === 'competition-player-alias')   return handleCompetitionPlayerAlias(req, res)
   if (resource === 'competitions')               return handleCompetitions(req, res)
 
   // competition-managers is the one remaining purely-superadmin resource.
