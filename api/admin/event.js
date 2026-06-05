@@ -1124,9 +1124,11 @@ async function handleTeamReview(req, res) {
   if (!team.event_id) {
     return res.status(400).json({ error: 'Only ZLTAC teams can be reviewed here' })
   }
-  // Review applies only to a team awaiting approval.
-  if (team.status !== 'pending') {
-    return res.status(409).json({ error: `Team is ${team.status}, not pending — nothing to review.` })
+  // Review applies to any submitted team (pending/approved/rejected) so the
+  // committee can revoke an approval or re-approve a rejected team. Only a
+  // draft (not yet submitted) is off-limits.
+  if (team.status === 'draft') {
+    return res.status(409).json({ error: 'Team has not been submitted for approval yet.' })
   }
 
   let update

@@ -944,9 +944,10 @@ export default function AdminRegistrations() {
                   const orderedRoster = captainRow
                     ? [captainRow, ...roster.filter(p => p.user_id !== t.captain_id)]
                     : roster
-                  const incompleteCount = roster.filter(p => !p.complete).length
                   const isExpanded = expandedTeam === t.id
-                  const canReview = !!t.event_id && t.status === 'pending'
+                  // Any submitted ZLTAC team can be re-reviewed (revoke an
+                  // approval, re-approve a rejection); only a draft is off-limits.
+                  const canReview = !!t.event_id && t.status !== 'draft'
                   return (
                     <Fragment key={t.id}>
                       <tr
@@ -984,7 +985,6 @@ export default function AdminRegistrations() {
                           <td colSpan={7} className="px-4 py-4">
                             <p className="text-xs text-[#e5e5e5]/60 font-semibold mb-3">
                               Roster: <span className="text-white">{roster.length}</span> / {MIN_ROSTER} players
-                              {incompleteCount > 0 && <span className="text-yellow-400 ml-2">· {incompleteCount} incomplete</span>}
                             </p>
 
                             {orderedRoster.length === 0 ? (
@@ -993,13 +993,12 @@ export default function AdminRegistrations() {
                               <div className="space-y-1.5 mb-3">
                                 {orderedRoster.map(p => {
                                   const isCap = p.user_id === t.captain_id
-                                  const pname = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ')
-                                    || p.profile?.alias || 'Unknown'
+                                  const pname = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ') || 'Unknown'
                                   return (
                                     <div key={p.id} className="flex items-center gap-2 flex-wrap">
                                       <span className="text-white text-xs font-medium">{pname}</span>
+                                      {p.profile?.alias && <span className="text-brand text-xs">"{p.profile.alias}"</span>}
                                       {isCap && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">Captain</span>}
-                                      {p.profile?.alias && !isCap && <span className="text-brand text-xs">"{p.profile.alias}"</span>}
                                       <EligibilityChips p={p} cocRequired={cocRequired} refRequired={refRequired} paymentRequired={paymentRequired} />
                                     </div>
                                   )
@@ -1009,9 +1008,6 @@ export default function AdminRegistrations() {
 
                             {canReview ? (
                               <div className="pt-2 border-t border-line">
-                                {incompleteCount > 0 && (
-                                  <p className="text-yellow-400 text-xs mb-2">⚠ {incompleteCount} player{incompleteCount !== 1 ? 's' : ''} have incomplete requirements — you can still approve.</p>
-                                )}
                                 {rejectingTeam === t.id ? (
                                   <div className="space-y-2 max-w-lg">
                                     <textarea
@@ -1039,26 +1035,30 @@ export default function AdminRegistrations() {
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => reviewTeam(t.id, 'approve')}
-                                      disabled={reviewBusy}
-                                      className="text-xs bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                                    >
-                                      {reviewBusy ? 'Working…' : 'Approve'}
-                                    </button>
-                                    <button
-                                      onClick={() => { setRejectingTeam(t.id); setRejectReason(''); setReviewError('') }}
-                                      className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                                    >
-                                      Reject
-                                    </button>
+                                    {t.status !== 'approved' && (
+                                      <button
+                                        onClick={() => reviewTeam(t.id, 'approve')}
+                                        disabled={reviewBusy}
+                                        className="text-xs bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        {reviewBusy ? 'Working…' : 'Approve'}
+                                      </button>
+                                    )}
+                                    {t.status !== 'rejected' && (
+                                      <button
+                                        onClick={() => { setRejectingTeam(t.id); setRejectReason(''); setReviewError('') }}
+                                        className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        {t.status === 'approved' ? 'Revoke approval' : 'Reject'}
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                                 {reviewError && <p className="text-red-400 text-xs mt-2">{reviewError}</p>}
                               </div>
                             ) : (
                               <p className="text-[#e5e5e5]/30 text-xs pt-2 border-t border-line">
-                                {!t.event_id ? 'Competition team — reviewed elsewhere.' : `Team is ${t.status} — no review action.`}
+                                {!t.event_id ? 'Competition team — reviewed elsewhere.' : 'Draft team — not yet submitted for approval.'}
                               </p>
                             )}
                           </td>
