@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
@@ -216,6 +216,119 @@ function StatusBadge({ status }) {
   )
 }
 
+// Memoised player row. The Players tab has a per-keystroke search box, so the
+// parent re-renders on every character; without this every 13-cell row would
+// re-render too. Handlers come in as stable useCallback refs from the parent
+// and take the row as an argument, so the inline arrows here stay inside the
+// memo boundary instead of defeating it at the call site.
+const PlayerRow = memo(function PlayerRow({ p, onEdit, onLink, onPayment, onRemove }) {
+  const name = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ') || '—'
+  return (
+    <tr className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
+      {/* Name */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        <span className="inline-flex items-center gap-2">
+          {(p.profile?.first_name || p.profile?.last_name)
+            ? <span className="font-semibold text-white">{name}</span>
+            : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
+          {p.profile?.is_placeholder && (
+            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line">Manual</span>
+          )}
+        </span>
+      </td>
+      {/* Alias */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        {p.profile?.alias
+          ? <span className="text-brand text-xs font-medium">{p.profile.alias}</span>
+          : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+      </td>
+      {/* State */}
+      <td className="px-4 py-3">
+        {p.profile?.state
+          ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded font-bold">{p.profile.state}</span>
+          : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+      </td>
+      {/* Team */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        {p.team?.name
+          ? <span className="text-[#e5e5e5]/60 text-xs">{p.team.name}</span>
+          : <span className="text-[#e5e5e5]/25 text-xs">No team</span>}
+      </td>
+      {/* CoC */}
+      <td className="px-4 py-3" title={p.cocTitle}>
+        {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
+        {p.cocOverride && <OvrBadge />}
+      </td>
+      {/* Rules Test */}
+      <td className="px-4 py-3" title={p.refTitle}>
+        {p.refPassed
+          ? <Pill color="green">Passed{p.ref?.score != null ? ` (${p.ref.score}%)` : ''}</Pill>
+          : p.ref
+            ? <Pill color="amber">Failed ({p.ref.score}%)</Pill>
+            : <Pill color="grey">Not taken</Pill>}
+        {p.refOverride && <OvrBadge />}
+      </td>
+      {/* Media */}
+      <td className="px-4 py-3" title={p.mediaTitle}>
+        {p.media ? <Pill color="green">Submitted</Pill> : <Pill color="grey">Pending</Pill>}
+        {p.mediaOverride && <OvrBadge />}
+      </td>
+      {/* Owing */}
+      <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountOwing)}</td>
+      {/* Paid */}
+      <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountPaid)}</td>
+      {/* Balance */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        <span className={`text-xs font-semibold ${p.balance > 0 ? 'text-red-400' : p.balance < 0 ? 'text-blue-400' : 'text-green-400'}`}>
+          {dollars(p.balance)}
+        </span>
+      </td>
+      {/* Payment */}
+      <td className="px-4 py-3">
+        <Pill color={PAY_PILL[p.payStatus].color}>{PAY_PILL[p.payStatus].label}</Pill>
+      </td>
+      {/* Status */}
+      <td className="px-4 py-3 whitespace-nowrap">
+        {p.complete
+          ? <Pill color="green">Complete</Pill>
+          : <Pill color="red">{p.doneCount}/{p.totalChecks}</Pill>}
+      </td>
+      {/* Actions — sticky to the right so the buttons stay
+          reachable while the wide table scrolls horizontally. */}
+      <td className="px-4 py-3 whitespace-nowrap sticky right-0 bg-surface border-l border-line">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onEdit(p)}
+            className="text-xs font-semibold px-3 py-1 rounded-full border bg-blue-500/15 border-blue-500/30 text-blue-300 hover:bg-blue-500/25 transition-colors"
+          >
+            Edit
+          </button>
+          {p.profile?.is_placeholder && (
+            <button
+              onClick={() => onLink(p.profile)}
+              className="text-xs font-semibold px-3 py-1 rounded-full border bg-brand/15 border-brand/30 text-brand hover:bg-brand/25 transition-colors"
+            >
+              Link to user
+            </button>
+          )}
+          <button
+            onClick={() => onPayment(p)}
+            className="text-xs font-semibold px-3 py-1 rounded-full border bg-green-500/15 border-green-500/30 text-green-300 hover:bg-green-500/25 transition-colors"
+          >
+            Record Payment / Refund
+          </button>
+          <button
+            onClick={() => onRemove(p, name)}
+            className="text-xs font-semibold px-3 py-1 rounded-full border bg-red-500/15 border-red-500/30 text-red-300 hover:bg-red-500/25 transition-colors"
+          >
+            Remove
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+})
+
 export default function AdminRegistrations() {
   const [eventYear, setEventYear] = useState(undefined) // undefined = loading, null = no open event
   const [tab, setTab] = useState('players')
@@ -297,16 +410,17 @@ export default function AdminRegistrations() {
     setLoading(false)
   }
 
-  // Build lookup maps
-  const profMap    = Object.fromEntries(profiles.map(p => [p.id, p]))
-  const teamMap    = Object.fromEntries(teams.map(t => [t.id, t]))
-  const cocSet     = new Set(cocSigs.map(c => c.user_id))
-  const refMap     = Object.fromEntries(refResults.map(r => [r.user_id, r]))
-  const mediaSet   = new Set(mediaReleases.map(m => m.user_id))
-  const recordsByReg = paymentRecords.reduce((acc, r) => {
+  // Build lookup maps. Memoised so the per-keystroke search re-render doesn't
+  // rebuild them (and, downstream, the heavy `players` array) every character.
+  const profMap    = useMemo(() => Object.fromEntries(profiles.map(p => [p.id, p])), [profiles])
+  const teamMap    = useMemo(() => Object.fromEntries(teams.map(t => [t.id, t])), [teams])
+  const cocSet     = useMemo(() => new Set(cocSigs.map(c => c.user_id)), [cocSigs])
+  const refMap     = useMemo(() => Object.fromEntries(refResults.map(r => [r.user_id, r])), [refResults])
+  const mediaSet   = useMemo(() => new Set(mediaReleases.map(m => m.user_id)), [mediaReleases])
+  const recordsByReg = useMemo(() => paymentRecords.reduce((acc, r) => {
     (acc[r.registration_id] ??= []).push(r)
     return acc
-  }, {})
+  }, {}), [paymentRecords])
 
   // Enrich registrations
   // Per-event requirement toggles. When off, that requirement is skipped
@@ -315,6 +429,10 @@ export default function AdminRegistrations() {
   const cocRequired     = isCocRequired(event)
   const paymentRequired = isPaymentRequired(event)
 
+  // Memoised so it isn't rebuilt on unrelated re-renders (notably each search
+  // keystroke, which `players` doesn't even depend on). overrideAudit lives
+  // inside so profMap is its only external dep, keeping the dep array exact.
+  const players = useMemo(() => {
   // Builds a tooltip string for an override audit triplet. setBy is looked
   // up in profMap so the admin's alias surfaces; falls back to "Committee
   // override" if the setter has no profile (extremely old data with set_by
@@ -332,7 +450,7 @@ export default function AdminRegistrations() {
     return parts.join('. ')
   }
 
-  const players = regs.map(reg => {
+  return regs.map(reg => {
     const profile = profMap[reg.user_id] ?? null
     const team    = teamMap[reg.team_id] ?? null
     // Committee manual overrides count as satisfied: normalCheck || override.
@@ -379,6 +497,7 @@ export default function AdminRegistrations() {
       : (media ? 'Media release submitted' : 'Not submitted')
     return { ...reg, profile, team, coc, cocOverride, cocTitle, ref, refPassed, refOverride, refTitle, media, mediaOverride, mediaTitle, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
+  }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, recordsByReg, refRequired, cocRequired, paymentRequired])
 
   // Phase + needs-follow-up derivation.
   // "Needs follow-up" = registration where the event is past the open
@@ -391,8 +510,11 @@ export default function AdminRegistrations() {
     : 0
 
   // Filters
-  const states = [...new Set(players.map(p => p.profile?.state).filter(Boolean))].sort()
-  const filtered = players.filter(p => {
+  const states = useMemo(
+    () => [...new Set(players.map(p => p.profile?.state).filter(Boolean))].sort(),
+    [players]
+  )
+  const filtered = useMemo(() => players.filter(p => {
     if (stateFilter !== 'all' && p.profile?.state !== stateFilter) return false
     if (needsFollowUp && !(paymentRequired && phase === 'locked' && p.balance > 0)) return false
     if (search.trim()) {
@@ -402,7 +524,7 @@ export default function AdminRegistrations() {
       if (!name.includes(q) && !alias.includes(q)) return false
     }
     return true
-  })
+  }), [players, stateFilter, needsFollowUp, paymentRequired, phase, search])
 
   const completeCount   = players.filter(p => p.complete).length
   const incompleteCount = players.length - completeCount
@@ -472,6 +594,13 @@ export default function AdminRegistrations() {
     }
     setRemoveConfirm(null)
   }
+
+  // Stable row handlers so PlayerRow's React.memo holds while the search box
+  // re-renders the parent per keystroke. Each takes the row as an argument.
+  const handleEditRow    = useCallback(p => setEditModal({ registration: p, profile: p.profile }), [])
+  const handleLinkRow    = useCallback(profile => setLinkModal({ placeholder: profile }), [])
+  const handlePaymentRow = useCallback(p => setPaymentModal({ registration: p, profile: p.profile }), [])
+  const handleRemoveRow  = useCallback((p, name) => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias }), [])
 
   return (
     <div>
@@ -703,113 +832,16 @@ export default function AdminRegistrations() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(p => {
-                      const name = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ') || '—'
-                      return (
-                        <tr key={p.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
-                          {/* Name */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-2">
-                              {(p.profile?.first_name || p.profile?.last_name)
-                                ? <span className="font-semibold text-white">{name}</span>
-                                : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
-                              {p.profile?.is_placeholder && (
-                                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line">Manual</span>
-                              )}
-                            </span>
-                          </td>
-                          {/* Alias */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {p.profile?.alias
-                              ? <span className="text-brand text-xs font-medium">{p.profile.alias}</span>
-                              : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
-                          </td>
-                          {/* State */}
-                          <td className="px-4 py-3">
-                            {p.profile?.state
-                              ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded font-bold">{p.profile.state}</span>
-                              : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
-                          </td>
-                          {/* Team */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {p.team?.name
-                              ? <span className="text-[#e5e5e5]/60 text-xs">{p.team.name}</span>
-                              : <span className="text-[#e5e5e5]/25 text-xs">No team</span>}
-                          </td>
-                          {/* CoC */}
-                          <td className="px-4 py-3" title={p.cocTitle}>
-                            {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
-                            {p.cocOverride && <OvrBadge />}
-                          </td>
-                          {/* Rules Test */}
-                          <td className="px-4 py-3" title={p.refTitle}>
-                            {p.refPassed
-                              ? <Pill color="green">Passed{p.ref?.score != null ? ` (${p.ref.score}%)` : ''}</Pill>
-                              : p.ref
-                                ? <Pill color="amber">Failed ({p.ref.score}%)</Pill>
-                                : <Pill color="grey">Not taken</Pill>}
-                            {p.refOverride && <OvrBadge />}
-                          </td>
-                          {/* Media */}
-                          <td className="px-4 py-3" title={p.mediaTitle}>
-                            {p.media ? <Pill color="green">Submitted</Pill> : <Pill color="grey">Pending</Pill>}
-                            {p.mediaOverride && <OvrBadge />}
-                          </td>
-                          {/* Owing */}
-                          <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountOwing)}</td>
-                          {/* Paid */}
-                          <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{dollars(p.amountPaid)}</td>
-                          {/* Balance */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`text-xs font-semibold ${p.balance > 0 ? 'text-red-400' : p.balance < 0 ? 'text-blue-400' : 'text-green-400'}`}>
-                              {dollars(p.balance)}
-                            </span>
-                          </td>
-                          {/* Payment */}
-                          <td className="px-4 py-3">
-                            <Pill color={PAY_PILL[p.payStatus].color}>{PAY_PILL[p.payStatus].label}</Pill>
-                          </td>
-                          {/* Status */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {p.complete
-                              ? <Pill color="green">Complete</Pill>
-                              : <Pill color="red">{p.doneCount}/{p.totalChecks}</Pill>}
-                          </td>
-                          {/* Actions — sticky to the right so the buttons stay
-                              reachable while the wide table scrolls horizontally. */}
-                          <td className="px-4 py-3 whitespace-nowrap sticky right-0 bg-surface border-l border-line">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setEditModal({ registration: p, profile: p.profile })}
-                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-blue-500/15 border-blue-500/30 text-blue-300 hover:bg-blue-500/25 transition-colors"
-                              >
-                                Edit
-                              </button>
-                              {p.profile?.is_placeholder && (
-                                <button
-                                  onClick={() => setLinkModal({ placeholder: p.profile })}
-                                  className="text-xs font-semibold px-3 py-1 rounded-full border bg-brand/15 border-brand/30 text-brand hover:bg-brand/25 transition-colors"
-                                >
-                                  Link to user
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setPaymentModal({ registration: p, profile: p.profile })}
-                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-green-500/15 border-green-500/30 text-green-300 hover:bg-green-500/25 transition-colors"
-                              >
-                                Record Payment / Refund
-                              </button>
-                              <button
-                                onClick={() => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias })}
-                                className="text-xs font-semibold px-3 py-1 rounded-full border bg-red-500/15 border-red-500/30 text-red-300 hover:bg-red-500/25 transition-colors"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    {filtered.map(p => (
+                      <PlayerRow
+                        key={p.id}
+                        p={p}
+                        onEdit={handleEditRow}
+                        onLink={handleLinkRow}
+                        onPayment={handlePaymentRow}
+                        onRemove={handleRemoveRow}
+                      />
+                    ))}
                   </tbody>
                 </table>
               )}

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
@@ -59,6 +59,39 @@ function Avatar({ profile }) {
   )
 }
 
+// Memoised so a search keystroke (which re-renders the parent) doesn't
+// re-render every row — only rows whose `u` reference changed. `onView` is a
+// stable useCallback in the parent, so the inline arrow here lives inside the
+// memo boundary rather than defeating it from the call site.
+const UserRow = memo(function UserRow({ u, onView }) {
+  return (
+    <tr className={`border-b border-line last:border-0 hover:bg-line/20 transition-colors ${u.suspended ? 'opacity-40' : ''}`}>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <Avatar profile={u} />
+          <div>
+            <p className="font-semibold text-white text-sm leading-tight">
+              {u.first_name || u.last_name ? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() : 'Unknown'}
+              {u.suspended && <span className="ml-1.5 text-[10px] text-red-400">(suspended)</span>}
+            </p>
+            {u.alias && <p className="text-brand text-xs">"{u.alias}"</p>}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.state ?? '—'}</td>
+      <td className="px-4 py-3"><RolePills roles={u._roles} /></td>
+      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.team_name ?? '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
+      <td className="px-4 py-3">
+        <button onClick={() => onView(u)} className="text-xs text-brand/70 hover:text-brand transition-colors font-semibold">
+          View →
+        </button>
+      </td>
+    </tr>
+  )
+})
+
 export default function AdminUsers() {
   const { userRoles: adminRoles = [] } = useOutletContext()
   const isSuperAdmin = adminRoles.includes('superadmin')
@@ -113,7 +146,7 @@ export default function AdminUsers() {
     }
   }
 
-  async function openUser(u) {
+  const openUser = useCallback(async (u) => {
     setSelected(u)
     setDraftRoles(u._roles)
     setDraftAlsaPosition(u.alsa_position ?? '')
@@ -125,7 +158,7 @@ export default function AdminUsers() {
     setSelectedRegs(regs ?? [])
     setSelectedPayments(pays ?? [])
     setLoadingDetail(false)
-  }
+  }, [])
 
   async function saveRoles(userId) {
     const finalRoles = [...new Set(['player', ...draftRoles])]
@@ -170,9 +203,15 @@ export default function AdminUsers() {
     return !COMMITTEE_ROLES.includes(targetRole)
   }
 
-  const allStates = [...new Set(users.map(u => u.state).filter(Boolean))].sort()
+  const allStates = useMemo(
+    () => [...new Set(users.map(u => u.state).filter(Boolean))].sort(),
+    [users]
+  )
 
-  const filtered = users.filter(u => {
+  // Memoised so it isn't recomputed when an unrelated state change re-renders
+  // the page (opening the detail panel, editing role drafts, etc.) — only when
+  // the list or a filter actually changes.
+  const filtered = useMemo(() => users.filter(u => {
     const name = `${u.first_name ?? ''} ${u.last_name ?? ''} ${u.alias ?? ''}`.toLowerCase()
     if (search && !name.includes(search.toLowerCase())) return false
     if (filterRole !== 'all' && filterRole !== 'player') {
@@ -185,7 +224,7 @@ export default function AdminUsers() {
     }
     if (filterState !== 'all' && u.state !== filterState) return false
     return true
-  })
+  }), [users, search, filterRole, filterState])
 
   return (
     <div>
@@ -243,30 +282,7 @@ export default function AdminUsers() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-12 text-[#e5e5e5]/30 text-sm">No users found</td></tr>
               ) : filtered.map(u => (
-                <tr key={u.id} className={`border-b border-line last:border-0 hover:bg-line/20 transition-colors ${u.suspended ? 'opacity-40' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar profile={u} />
-                      <div>
-                        <p className="font-semibold text-white text-sm leading-tight">
-                          {u.first_name || u.last_name ? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() : 'Unknown'}
-                          {u.suspended && <span className="ml-1.5 text-[10px] text-red-400">(suspended)</span>}
-                        </p>
-                        {u.alias && <p className="text-brand text-xs">"{u.alias}"</p>}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.state ?? '—'}</td>
-                  <td className="px-4 py-3"><RolePills roles={u._roles} /></td>
-                  <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
-                  <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.team_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => openUser(u)} className="text-xs text-brand/70 hover:text-brand transition-colors font-semibold">
-                      View →
-                    </button>
-                  </td>
-                </tr>
+                <UserRow key={u.id} u={u} onView={openUser} />
               ))}
             </tbody>
           </table>
