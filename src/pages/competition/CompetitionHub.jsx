@@ -161,6 +161,15 @@ function CaptainTeamCard({ team, onChanged }) {
   const [disbandError, setDisbandError] = useState(null)
   const [disbanding, setDisbanding] = useState(false)
 
+  // Resync local edits when the underlying team row changes. After a save the
+  // parent refetches the same row (id stable) with updated name/colour, so a
+  // bare key={team.id} would not remount and the inputs would show stale local
+  // state. Keying the effect on the mutable fields catches that.
+  useEffect(() => {
+    setName(team.name)
+    setColour(team.colour ?? TEAM_COLOURS[0])
+  }, [team.id, team.name, team.colour])
+
   const dirty = name.trim() !== team.name || colour !== team.colour
 
   async function save() {

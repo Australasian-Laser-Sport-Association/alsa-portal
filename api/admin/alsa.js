@@ -111,7 +111,7 @@ async function handleMembers(req, res, user) {
 
 // ── Periods handler ─────────────────────────────────────────────────────────
 
-async function handlePeriods(req, res, _user) {
+async function handlePeriods(req, res) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('alsa_membership_periods')

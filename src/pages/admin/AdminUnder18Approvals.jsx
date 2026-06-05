@@ -239,7 +239,6 @@ export default function AdminUnder18Approvals() {
           defaultYear={yearFilter === 'all' ? DEFAULT_YEAR : yearFilter}
           onClose={() => setAddOpen(false)}
           onCreated={(id) => { setAddOpen(false); load(); showToast('Approval added.'); setSelectedId(id) }}
-          showToast={showToast}
         />
       )}
     </div>
@@ -372,7 +371,7 @@ function ApprovalEditor({ row, onSaved, onClose, showToast }) {
 // Add modal
 // ---------------------------------------------------------------------------
 
-function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCreated, showToast }) {
+function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCreated }) {
   const [search, setSearch] = useState('')
   const [selectedProfileId, setSelectedProfileId] = useState(null)
   const [eventYear, setEventYear] = useState(defaultYear)

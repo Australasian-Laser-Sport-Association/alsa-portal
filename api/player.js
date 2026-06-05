@@ -57,28 +57,6 @@ async function denyIfWouldAddSideEventAfterLock(res, year, targetUserId, slug) {
 // use an `action` field on the JSON body to choose the operation —
 // matching the pre-consolidation API surface exactly.
 
-// ── helpers ─────────────────────────────────────────────────────────────────
-
-async function addPartnerSideEventForTriples(partnerId, eventYear) {
-  const { data: reg, error: regErr } = await supabaseAdmin
-    .from('zltac_registrations')
-    .select('id, side_events')
-    .eq('user_id', partnerId)
-    .eq('year', eventYear)
-    .maybeSingle()
-  if (regErr) return { error: regErr }
-  if (reg) {
-    const newSlugs = [...new Set([...(reg.side_events ?? []), 'triples'])]
-    const { error: updErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .update({ side_events: newSlugs })
-      .eq('id', reg.id)
-    if (updErr) return { error: updErr }
-    await computeAndWriteAmountOwing(reg.id)
-  }
-  return { error: null }
-}
-
 // ── doubles ─────────────────────────────────────────────────────────────────
 
 async function handleDoubles(req, res, user) {

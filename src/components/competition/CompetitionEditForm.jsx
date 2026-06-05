@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase.js'
 
 // Shared competition create/edit form. Used by:
@@ -82,7 +82,7 @@ export default function CompetitionEditForm({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
-  function reset() {
+  const reset = useCallback(() => {
     setName(initial?.name ?? '')
     setAbbreviation(initial?.abbreviation ?? '')
     setStartDate(initial?.start_date ?? '')
@@ -101,7 +101,15 @@ export default function CompetitionEditForm({
     setBannerUrl(initial?.banner_url ?? null)
     setBannerError(null)
     setError(null)
-  }
+  }, [initial])
+
+  // Resync all fields when the parent swaps `initial` — both a different
+  // competition (id change) and the same row refetched with updated values
+  // after a save (ManagerCompetitionDetail keeps this form mounted across that
+  // refetch, so a remount key would not fire). `initial`'s reference only
+  // changes on those events, never on an unrelated parent re-render, so this
+  // does not clobber in-progress edits.
+  useEffect(() => { reset() }, [reset])
 
   function addLink() {
     if (links.length >= MAX_LINKS) return

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
@@ -891,7 +891,7 @@ function SignupsTab() {
 
 // ── Manual signup modal ──────────────────────────────────────────────────────
 function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }) {
-  const activeRoles = roles.filter(r => r.is_active)
+  const activeRoles = useMemo(() => roles.filter(r => r.is_active), [roles])
   const [eventId, setEventId] = useState(events[0]?.id ?? '')
   const [candidates, setCandidates] = useState([])
   const [loadingPlayers, setLoadingPlayers] = useState(false)
@@ -904,10 +904,18 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
   const [conflict, setConflict] = useState(null) // { signup }
 
   // AEC (default role) pre-checked, matching the player-facing default.
+  // Reacts to activeRoles so the default still applies when roles finish
+  // loading after mount; the ref guard applies it exactly once so it never
+  // clobbers the admin's subsequent selection.
+  const defaultAppliedRef = useRef(false)
   useEffect(() => {
+    if (defaultAppliedRef.current) return
     const def = activeRoles.find(r => r.is_default)
-    if (def) setSelectedRoleIds([def.id])
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (def) {
+      setSelectedRoleIds([def.id])
+      defaultAppliedRef.current = true
+    }
+  }, [activeRoles])
 
   useEffect(() => { if (eventId) loadPlayers(eventId) }, [eventId])
 

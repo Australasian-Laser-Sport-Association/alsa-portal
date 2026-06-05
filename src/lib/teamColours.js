@@ -15,7 +15,3 @@ export const TEAM_COLOURS = [
   '#30D158',
   '#64D2FF',
 ]
-
-export function isValidTeamColour(hex) {
-  return typeof hex === 'string' && TEAM_COLOURS.includes(hex)
-}

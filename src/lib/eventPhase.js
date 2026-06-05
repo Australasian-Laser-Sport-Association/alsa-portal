@@ -23,12 +23,6 @@ export function eventPhase(event, now = new Date()) {
   return 'open'
 }
 
-export const PHASE_LABEL = {
-  open:   'Registration open',
-  locked: 'Registration locked',
-  closed: 'Registration closed',
-}
-
 export const LOCKED_MESSAGE =
   'Registration is locked. Contact the committee for changes.'
 

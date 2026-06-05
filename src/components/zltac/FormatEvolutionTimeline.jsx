@@ -3,6 +3,25 @@ import { zltacHistory } from '../../data/zltacHistory'  // formatEvolution only
 
 // ── Sparkline ────────────────────────────────────────────────────────────────
 function TournamentGrowthSparkline({ events }) {
+  // Hooks run unconditionally, before the `data.length === 0` early return
+  // below — React requires the same hook order on every render. (When data is
+  // empty nothing renders, so wrapperRef.current stays null and the document
+  // listener below is an inert no-op until events load.)
+  const [hover, setHover] = useState(null)
+  const svgRef = useRef(null)
+  const wrapperRef = useRef(null)
+
+  // Tap outside the chart hides the tooltip on touch devices.
+  useEffect(() => {
+    function onDocTouch(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setHover(null)
+      }
+    }
+    document.addEventListener('touchstart', onDocTouch, { passive: true })
+    return () => document.removeEventListener('touchstart', onDocTouch)
+  }, [])
+
   const data = events
     .filter(e => e.year >= 1999 && e.year <= 2026)
     .map(e => ({
@@ -66,11 +85,6 @@ function TournamentGrowthSparkline({ events }) {
   ]
   const calloutYears = new Set(callouts.map(c => c.year))
 
-  // Hover state — cursor coords (in SVG units) + nearest-year data
-  const [hover, setHover] = useState(null)
-  const svgRef = useRef(null)
-  const wrapperRef = useRef(null)
-
   function nearestYear(svgX) {
     let nearest = null
     let bestDist = Infinity
@@ -123,17 +137,6 @@ function TournamentGrowthSparkline({ events }) {
   function handleMouseLeave() {
     setHover(null)
   }
-
-  // Tap outside the chart hides the tooltip on touch devices.
-  useEffect(() => {
-    function onDocTouch(e) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
-        setHover(null)
-      }
-    }
-    document.addEventListener('touchstart', onDocTouch, { passive: true })
-    return () => document.removeEventListener('touchstart', onDocTouch)
-  }, [])
 
   // Active-dot lookup: highlight the dot for the hovered year (if it has data).
   const activeYear = hover?.year ?? null
