@@ -418,9 +418,11 @@ const ROLE_PILL_META = {
 }
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function PlayerDashboard() {
-  const { user, userRoles } = useAuth()
+  // Profile is read from AuthContext (already holds the full select('*') row)
+  // rather than re-queried on mount. refreshProfile() re-reads it after a
+  // profile edit (see ProfileCard onUpdated) so post-write freshness is kept.
+  const { user, userRoles, profile, refreshProfile, profileLoading } = useAuth()
   const [loading, setLoading] = useState(true)
-  const [profile, setProfile] = useState(null)
   const [openEvent, setOpenEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [membership, setMembership] = useState(undefined)
@@ -431,11 +433,8 @@ export default function PlayerDashboard() {
   }, [user]) // eslint-disable-line
 
   async function load() {
-    const [{ data: prof }, { data: ev }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('zltac_events').select('name, year').eq('status', 'open').maybeSingle(),
-    ])
-    setProfile(prof)
+    const { data: ev } = await supabase
+      .from('zltac_events').select('name, year').eq('status', 'open').maybeSingle()
     setOpenEvent(ev)
 
     if (ev?.year) {
@@ -461,7 +460,7 @@ export default function PlayerDashboard() {
     setLoading(false)
   }
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
@@ -507,7 +506,7 @@ export default function PlayerDashboard() {
           userId={user.id}
           userEmail={user.email}
           membership={membership}
-          onUpdated={load}
+          onUpdated={refreshProfile}
         />
 
         {/* Password card */}

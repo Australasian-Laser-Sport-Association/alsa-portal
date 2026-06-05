@@ -13,7 +13,10 @@ const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
 export default function PlayerRegister() {
   const { year } = useParams()
-  const { user, loading: authLoading } = useAuth()
+  // Form prefill reads the profile from AuthContext (already holds the full
+  // row) instead of re-querying it; the effect waits for profileLoading so the
+  // prefill runs once the context profile is resolved.
+  const { user, loading: authLoading, profile, profileLoading } = useAuth()
   const navigate = useNavigate()
 
   const [initialLoading, setInitialLoading] = useState(true)
@@ -42,27 +45,26 @@ export default function PlayerRegister() {
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
-    if (!user) return
+    if (!user || profileLoading) return
 
     async function load() {
-      const [{ data: ev }, { data: prof }, { data: reg }] = await Promise.all([
+      const [{ data: ev }, { data: reg }] = await Promise.all([
         supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
-        supabase.from('profiles').select('first_name, last_name, alias, dob, state').eq('id', user.id).single(),
         supabase.from('zltac_registrations').select('id, team_id').eq('user_id', user.id).eq('year', parseInt(year)).maybeSingle(),
       ])
       setEvent(ev)
       setExistingReg(reg)
-      if (prof) {
-        setFirstName(prof.first_name ?? '')
-        setLastName(prof.last_name ?? '')
-        setAlias(prof.alias ?? '')
-        setDob(prof.dob ?? '')
-        setState(prof.state ?? '')
+      if (profile) {
+        setFirstName(profile.first_name ?? '')
+        setLastName(profile.last_name ?? '')
+        setAlias(profile.alias ?? '')
+        setDob(profile.dob ?? '')
+        setState(profile.state ?? '')
       }
       setInitialLoading(false)
     }
     load()
-  }, [authLoading, user, year, navigate])
+  }, [authLoading, user, year, navigate, profile, profileLoading])
 
   async function handleSubmit(e) {
     e.preventDefault()

@@ -486,9 +486,9 @@ async function handleCompetitionManagers(req, res, user) {
 
     // SECURITY NOTE: response includes email per manager. Caller (superadmin grant UI) needs it to disambiguate users. Do not surface this endpoint to non-superadmin contexts.
     // Pull emails for the granted users from auth.users via the admin API.
-    // Cheap because manager grants per competition are a tiny set.
-    const out = []
-    for (const r of (rows ?? [])) {
+    // Cheap because manager grants per competition are a tiny set. Fetched in
+    // parallel (matches handleCompetitionRegistrations); map preserves order.
+    const out = await Promise.all((rows ?? []).map(async r => {
       let email = null
       try {
         const { data: au } = await supabaseAdmin.auth.admin.getUserById(r.user_id)
@@ -496,7 +496,7 @@ async function handleCompetitionManagers(req, res, user) {
       } catch {
         // Placeholder profiles have no auth.users row — leave email null.
       }
-      out.push({
+      return {
         user_id: r.user_id,
         granted_at: r.granted_at,
         granted_by: r.granted_by,
@@ -506,8 +506,8 @@ async function handleCompetitionManagers(req, res, user) {
           last_name: r.profiles?.last_name ?? null,
           email,
         },
-      })
-    }
+      }
+    }))
     return res.json(out)
   }
 

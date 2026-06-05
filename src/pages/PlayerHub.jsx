@@ -714,12 +714,15 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function PlayerHub() {
-  const { user, loading: authLoading } = useAuth()
+  // Profile comes from AuthContext (already holds the full select('*') row)
+  // instead of being re-queried in load(). refreshProfile() is called on the
+  // focus/visibility refetch and after a placeholder claim to preserve the
+  // old "load() re-reads the profile" freshness on those paths.
+  const { user, loading: authLoading, profile, profileLoading, refreshProfile } = useAuth()
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
   const [event, setEvent] = useState(null)
-  const [profile, setProfile] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [team, setTeam] = useState(null)
   // Legal documents (PDF model). One active document per type; one acceptance
@@ -777,7 +780,9 @@ export default function PlayerHub() {
   // (status, admin overrides, etc.) appear without a manual reload. Preserves
   // in-progress edit drafts (side-event selections, dinner guests).
   useEffect(() => {
-    function refetch() { if (user && !document.hidden) load({ preserveDrafts: true }) }
+    function refetch() {
+      if (user && !document.hidden) { refreshProfile(); load({ preserveDrafts: true }) }
+    }
     window.addEventListener('focus', refetch)
     document.addEventListener('visibilitychange', refetch)
     return () => {
@@ -816,7 +821,6 @@ export default function PlayerHub() {
     if (!eventYear) { setLoading(false); return }
 
     const [
-      { data: prof },
       { data: reg },
       { data: docs, error: docsErr },
       { data: accs, error: accsErr },
@@ -824,7 +828,6 @@ export default function PlayerHub() {
       { data: u18ApprovalData },
       { data: settingsData },
     ] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('zltac_registrations')
         .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
         .eq('user_id', user.id).eq('year', eventYear).maybeSingle(),
@@ -849,7 +852,6 @@ export default function PlayerHub() {
     if (docsErr) console.error('PlayerHub: legal_documents query failed:', docsErr)
     if (accsErr) console.error('PlayerHub: legal_acceptances query failed:', accsErr)
 
-    setProfile(prof)
     setRegistration(reg)
     if (reg?.teams) setTeam(reg.teams)
 
@@ -1042,7 +1044,7 @@ export default function PlayerHub() {
     }
   }
 
-  if (authLoading || loading) {
+  if (authLoading || loading || profileLoading) {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
@@ -1293,7 +1295,7 @@ export default function PlayerHub() {
         {/* ── Placeholder claim prompt (Chunk 2) ── */}
         <PlaceholderClaimPrompt
           userId={user.id}
-          onClaimed={() => load({ preserveDrafts: true })}
+          onClaimed={() => { refreshProfile(); load({ preserveDrafts: true }) }}
         />
 
         {/* ── Doubles partner invitation alert ── */}
