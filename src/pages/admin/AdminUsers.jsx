@@ -26,6 +26,18 @@ const AVATAR_COLORS = {
 
 function getRoles(u) { return u.roles?.length > 0 ? u.roles : ['player'] }
 
+// Display-only roles: persisted roles plus a derived 'captain' when the user
+// captains at least one team (u._isCaptain, from teams.captain_id — the source
+// of truth). Captain is NOT persisted into profiles.roles, so this stays
+// separate from `_roles`, which remains the role editor's source of truth.
+// Recomputed from `_roles` each render, so a role save (which updates `_roles`)
+// stays consistent without writing the derived value anywhere.
+function displayRoles(u) {
+  return u._isCaptain && !u._roles.includes('captain')
+    ? [...u._roles, 'captain']
+    : u._roles
+}
+
 function avatarColor(roles) {
   for (const r of ROLE_ORDER) {
     if (roles.includes(r) && r !== 'player') return AVATAR_COLORS[r]
@@ -79,7 +91,7 @@ const UserRow = memo(function UserRow({ u, onView }) {
         </div>
       </td>
       <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.state ?? '—'}</td>
-      <td className="px-4 py-3"><RolePills roles={u._roles} /></td>
+      <td className="px-4 py-3"><RolePills roles={displayRoles(u)} /></td>
       <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
       <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.team_name ?? '—'}</td>
       <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
@@ -126,14 +138,23 @@ export default function AdminUsers() {
         if (!regMap[r.user_id]) regMap[r.user_id] = []
         regMap[r.user_id].push(r)
       }
+      // captainTeamMap → the single team name shown in the Team column (an
+      // existing limitation when a user captains several). captainIds → derived
+      // captaincy across ALL teams/events for the CAPTAIN pill + filter, so a
+      // user who captains any team in any competition is caught.
       const captainTeamMap = {}
+      const captainIds = new Set()
       for (const t of (teams ?? [])) {
-        if (t.captain_id) captainTeamMap[t.captain_id] = t.name
+        if (t.captain_id) {
+          captainTeamMap[t.captain_id] = t.name
+          captainIds.add(t.captain_id)
+        }
       }
 
       const merged = (profiles ?? []).map(p => ({
         ...p,
         _roles: getRoles(p),
+        _isCaptain: captainIds.has(p.id),
         events_entered: regMap[p.id]?.length ?? 0,
         team_name: captainTeamMap[p.id] ?? null,
       }))
@@ -218,7 +239,9 @@ export default function AdminUsers() {
       // 'player' is implicit for every user — no role filter needed; fall through to state filter
       if (filterRole === 'committee') {
         if (!isCommittee(u)) return false
-      } else if (!u._roles.includes(filterRole)) {
+      } else if (!displayRoles(u).includes(filterRole)) {
+        // displayRoles so the Captain filter catches derived captains; identical
+        // to _roles for every other role.
         return false
       }
     }
@@ -394,7 +417,7 @@ export default function AdminUsers() {
                   </div>
                 </div>
               ) : (
-                <RolePills roles={selected._roles} />
+                <RolePills roles={displayRoles(selected)} />
               )}
 
               {msg && <p className={`text-xs mt-3 ${msg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{msg.text}</p>}
