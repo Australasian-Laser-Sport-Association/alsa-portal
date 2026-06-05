@@ -4,6 +4,8 @@ import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
+import { dollars } from '../../src/lib/pricing.js'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
 
 // Committee-gated event operations. Dispatches by ?resource=:
 //   ?resource=event            → archive / delete the event (POST + body.action)
@@ -901,6 +903,165 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
 }
 
 
+// ── zltac-dashboard ───────────────────────────────────────────────────────────
+// Aggregate for AdminZltacDashboard. Collapses the client's resolve-event-then-
+// fan-out waterfall (one serial edge + eight queries) into a single committee-
+// gated call: it resolves the open event, runs the year/event-scoped counts and
+// recent-activity reads in parallel, computes the stat tiles, and returns the
+// ready-to-render payload. Only rendered values are returned (counts, ratio
+// strings, dollar strings, labels) plus raw activity timestamps the client
+// formats viewer-local — no raw registration / payment / override rows ship.
+// Committee auth is enforced by the verifyCommittee gate in the dispatcher.
+async function handleZltacDashboard(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  // "X / N (Y%)" — guards divide-by-zero. Mirrors the old client helper.
+  const ratioLabel = (x, n) => {
+    const num = x ?? 0
+    const denom = n ?? 0
+    if (denom <= 0) return `${num} / 0`
+    return `${num} / ${denom} (${Math.round((num / denom) * 100)}%)`
+  }
+
+  // 1. Resolve the active (open) event — the one genuine serial dependency.
+  const { data: activeEvent, error: evErr } = await supabaseAdmin
+    .from('zltac_events')
+    .select('id, name, year, require_ref_test, require_coc, require_payment')
+    .eq('status', 'open')
+    .limit(1).maybeSingle()
+  if (evErr) return res.status(500).json({ error: evErr.message })
+
+  const activeYear = activeEvent?.year ?? null
+  const activeEventId = activeEvent?.id ?? null
+  const eventLabel = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : '—'
+  const eventScope = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'No active event'
+
+  // 2. Year/event-scoped counts + recent-activity rows, all in parallel.
+  const [
+    teamsRes,
+    { data: regsForYear, error: e2 },
+    { data: payRecsForYear, error: e3 },
+    { data: refResults, error: e4 },
+    { data: cocMediaAccs, error: e5 },
+    { data: recentRegs, error: e6 },
+    { data: recentPayRecs, error: e7 },
+    { data: recentCoc, error: e8 },
+  ] = await Promise.all([
+    activeEventId
+      ? supabaseAdmin.from('teams').select('*', { count: 'exact', head: true }).eq('event_id', activeEventId)
+      : Promise.resolve({ count: 0 }),
+    activeYear
+      ? supabaseAdmin.from('zltac_registrations').select('id, user_id, amount_owing, admin_override_coc, admin_override_media, admin_override_ref_test').eq('year', activeYear)
+      : Promise.resolve({ data: [] }),
+    activeYear
+      ? supabaseAdmin.from('payment_records')
+          .select('registration_id, amount, zltac_registrations!inner(year)')
+          .eq('zltac_registrations.year', activeYear)
+      : Promise.resolve({ data: [] }),
+    supabaseAdmin.from('referee_test_results').select('user_id, passed'),
+    activeYear
+      ? supabaseAdmin.from('legal_acceptances')
+          .select('user_id, document:legal_documents!document_id(document_type)')
+          .eq('event_year', activeYear)
+      : Promise.resolve({ data: [] }),
+    supabaseAdmin.from('zltac_registrations')
+      .select('id, created_at, year, profiles!zltac_registrations_user_id_fkey(first_name, alias)')
+      .order('created_at', { ascending: false }).limit(5),
+    supabaseAdmin.from('payment_records')
+      .select('amount, recorded_at, registration:zltac_registrations!inner(profiles!zltac_registrations_user_id_fkey(first_name, alias))')
+      .order('recorded_at', { ascending: false }).limit(5),
+    supabaseAdmin.from('legal_acceptances')
+      .select('accepted_at, profiles!user_id(first_name, alias), document:legal_documents!document_id(document_type)')
+      .order('accepted_at', { ascending: false }).limit(20),
+  ])
+
+  const errs = [teamsRes?.error, e2, e3, e4, e5, e6, e7, e8].filter(Boolean)
+  if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
+
+  const teamsForEvent = teamsRes?.count ?? 0
+  const playersForEvent = (regsForYear ?? []).length
+
+  // Payment totals: sum payment_records by registration, then per-reg balance.
+  const paidByReg = {}
+  let paymentsReceivedCents = 0
+  for (const rec of (payRecsForYear ?? [])) {
+    paidByReg[rec.registration_id] = (paidByReg[rec.registration_id] ?? 0) + (rec.amount ?? 0)
+    paymentsReceivedCents += rec.amount ?? 0
+  }
+  let amountOwingCents = 0
+  for (const reg of (regsForYear ?? [])) {
+    const balance = (reg.amount_owing ?? 0) - (paidByReg[reg.id] ?? 0)
+    if (balance > 0) amountOwingCents += balance
+  }
+
+  // Ratios — committee overrides count toward a satisfied concern (normal || override).
+  const registeredUserIds  = new Set((regsForYear ?? []).map(r => r.user_id))
+  const overrideCocUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_coc).map(r => r.user_id))
+  const overrideMediaUsers = new Set((regsForYear ?? []).filter(r => r.admin_override_media).map(r => r.user_id))
+  const overrideRefUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_ref_test).map(r => r.user_id))
+
+  const refPassedUserIds = new Set((refResults ?? []).filter(r => r.passed).map(r => r.user_id))
+  const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid) || overrideRefUsers.has(uid)).length
+
+  const cocSignedUserIds = new Set((cocMediaAccs ?? []).filter(a => a.document?.document_type === 'code_of_conduct').map(a => a.user_id))
+  const mediaSignedUserIds = new Set((cocMediaAccs ?? []).filter(a => a.document?.document_type === 'media_release').map(a => a.user_id))
+  const cocSignedRegistered   = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid)   || overrideCocUsers.has(uid)).length
+  const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid) || overrideMediaUsers.has(uid)).length
+
+  const refRequired = isRefTestRequired(activeEvent)
+  const cocRequired = isCocRequired(activeEvent)
+  const paymentRequired = isPaymentRequired(activeEvent)
+
+  const stats = {
+    teamsForEvent,
+    playersForEvent,
+    paymentRequired,
+    paymentsReceivedDisplay: paymentRequired ? dollars(paymentsReceivedCents ?? 0) : 'N/A',
+    amountOwingDisplay:      paymentRequired ? dollars(amountOwingCents ?? 0)     : 'N/A',
+    amountOwingCents,
+    refRequired,
+    refRatio:   refRequired ? ratioLabel(refPassedRegistered, playersForEvent) : 'N/A',
+    cocRequired,
+    cocRatio:   cocRequired ? ratioLabel(cocSignedRegistered, playersForEvent) : 'N/A',
+    mediaRatio: ratioLabel(mediaSignedRegistered, playersForEvent),
+    eventLabel,
+    eventScope,
+    eventName: activeEvent?.name ?? null,
+    eventYear: activeYear,
+    eventOpen: !!activeEvent,
+  }
+
+  // Activity feed. Timestamps stay raw (ts); the client formats them
+  // viewer-local via its existing fmt(), preserving the prior render exactly.
+  const displayName = profiles => {
+    if (!profiles) return 'A player'
+    return profiles.alias || profiles.first_name || 'A player'
+  }
+  const feed = []
+  for (const r of recentRegs ?? []) {
+    feed.push({ icon: '📋', text: `${displayName(r.profiles)} registered for ZLTAC ${r.year ?? activeYear ?? ''}`, ts: r.created_at })
+  }
+  for (const p of recentPayRecs ?? []) {
+    const prof = p.registration?.profiles
+    const isRefund = (p.amount ?? 0) < 0
+    feed.push({
+      icon: isRefund ? '↩️' : '💳',
+      text: isRefund
+        ? `${displayName(prof)} refunded ${dollars(Math.abs(p.amount))}`
+        : `${displayName(prof)} paid ${dollars(p.amount)}`,
+      ts: p.recorded_at,
+    })
+  }
+  const cocAcceptances = (recentCoc ?? []).filter(a => a.document?.document_type === 'code_of_conduct').slice(0, 5)
+  for (const c of cocAcceptances) {
+    feed.push({ icon: '✍️', text: `${displayName(c.profiles)} signed the Code of Conduct`, ts: c.accepted_at })
+  }
+  feed.sort((a, b) => new Date(b.ts) - new Date(a.ts))
+
+  return res.json({ stats, activity: feed.slice(0, 12) })
+}
+
+
 // ── profile-search ────────────────────────────────────────────────────────────
 // Committee-gated typeahead backing the LinkPlaceholderModal merge picker
 // (AdminRegistrations). Replaces a whole-profiles client fetch + client filter.
@@ -953,5 +1114,6 @@ export default async function handler(req, res) {
   if (resource === 'backup-settings')  return handleBackupSettings(req, res, user)
   if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.email ?? user.id })
   if (resource === 'profile-search')   return handleProfileSearch(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", or "profile-search"' })
+  if (resource === 'zltac-dashboard')  return handleZltacDashboard(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", or "zltac-dashboard"' })
 }

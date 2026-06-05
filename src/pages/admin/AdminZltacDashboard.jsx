@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import { dollars } from '../../lib/pricing'
+import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
-import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -34,16 +32,10 @@ function fmt(d) {
 // Tile-grid navigation moved to AdminHub at /admin (feature/admin-hub-
 // separation). This page is now stats-only — eight stat cards + Recent
 // Activity feed, scoped to the active ZLTAC event. Committee-only; non-
-// committee managers reach the hub but not this sub-page.
-
-// "X / N (Y%)" — guards against divide-by-zero. Returns "X / 0" when N is 0.
-function ratioLabel(x, n) {
-  const num = x ?? 0
-  const denom = n ?? 0
-  if (denom <= 0) return `${num} / 0`
-  const pct = Math.round((num / denom) * 100)
-  return `${num} / ${denom} (${pct}%)`
-}
+// committee managers reach the hub but not this sub-page. The stats + activity
+// payload is computed server-side by a single committee-gated aggregate
+// (api/admin/event?resource=zltac-dashboard), collapsing the former
+// resolve-event-then-fan-out client waterfall into one request.
 
 export default function AdminZltacDashboard() {
   const { userRoles = [] } = useOutletContext() ?? {}
@@ -52,174 +44,33 @@ export default function AdminZltacDashboard() {
   const [stats, setStats] = useState({})
   const [activity, setActivity] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     // Stats + activity feed are ZLTAC-event scoped and committee-relevant
     // only. Non-committee managers skip the fetch entirely; the render
     // path below gates on isCommittee before reading `loading`, so the
-    // initial loading=true value is harmless for them.
+    // initial loading=true value is harmless for them. The whole payload
+    // (event resolution + all counts + activity) is computed server-side in
+    // one call, so this is a single request rather than a fetch waterfall.
     if (!isCommittee) return
+    let cancelled = false
     async function load() {
-      // 1. Identify the active event first — most stats are scoped to it.
-      const { data: activeEvent } = await supabase
-        .from('zltac_events')
-        .select('id, name, year, require_ref_test, require_coc, require_payment')
-        .eq('status', 'open')
-        .limit(1).maybeSingle()
-      const activeYear = activeEvent?.year ?? null
-      const activeEventId = activeEvent?.id ?? null
-      const eventLabel = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : '—'
-      const eventScope = activeEvent ? `${activeEvent.name} ${activeEvent.year}` : 'No active event'
-
-      // 2. Top-line counts + raw rows we'll aggregate locally.
-      //    Year-scoped tiles require an active event; we still run the
-      //    queries even when there's none — they return 0 rows gracefully.
-      const [
-        teamsRes,
-        { data: regsForYear },
-        { data: payRecsForYear },
-        { data: refResults },
-        { data: cocMediaAccs },
-        { data: recentRegs },
-        { data: recentPayRecs },
-        { data: recentCoc },
-      ] = await Promise.all([
-        activeEventId
-          ? supabase.from('teams').select('*', { count: 'exact', head: true }).eq('event_id', activeEventId)
-          : Promise.resolve({ count: 0 }),
-        activeYear
-          ? supabase.from('zltac_registrations').select('id, user_id, amount_owing, admin_override_coc, admin_override_media, admin_override_ref_test').eq('year', activeYear)
-          : Promise.resolve({ data: [] }),
-        activeYear
-          ? supabase.from('payment_records')
-              .select('registration_id, amount, zltac_registrations!inner(year)')
-              .eq('zltac_registrations.year', activeYear)
-          : Promise.resolve({ data: [] }),
-        supabase.from('referee_test_results').select('user_id, passed'),
-        activeYear
-          ? supabase.from('legal_acceptances')
-              .select('user_id, document:legal_documents!document_id(document_type)')
-              .eq('event_year', activeYear)
-          : Promise.resolve({ data: [] }),
-        supabase.from('zltac_registrations')
-          .select('id, created_at, year, profiles!zltac_registrations_user_id_fkey(first_name, alias)')
-          .order('created_at', { ascending: false }).limit(5),
-        // Recent payments (latest 5) — same shape as before, sourced from
-        // payment_records joined to profiles via the registration.
-        supabase.from('payment_records')
-          .select('amount, recorded_at, registration:zltac_registrations!inner(profiles!zltac_registrations_user_id_fkey(first_name, alias))')
-          .order('recorded_at', { ascending: false }).limit(5),
-        supabase.from('legal_acceptances')
-          .select('accepted_at, profiles!user_id(first_name, alias), document:legal_documents!document_id(document_type)')
-          .order('accepted_at', { ascending: false }).limit(20),
-      ])
-
-      const teamsForEvent = teamsRes.count ?? 0
-      const playersForEvent = (regsForYear ?? []).length
-
-      // 3. Payment totals: sum payment_records by registration, then per-reg
-      //    balance = amount_owing - amount_paid. Total amount-owing = sum of
-      //    positive balances only. "Payments Received" = sum of all amounts
-      //    (refund records are negative, so the total nets out correctly).
-      const paidByReg = {}
-      let paymentsReceivedCents = 0
-      for (const rec of (payRecsForYear ?? [])) {
-        paidByReg[rec.registration_id] = (paidByReg[rec.registration_id] ?? 0) + (rec.amount ?? 0)
-        paymentsReceivedCents += rec.amount ?? 0
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await apiFetch('/api/admin/event?resource=zltac-dashboard')
+        if (cancelled) return
+        setStats(data.stats ?? {})
+        setActivity(data.activity ?? [])
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load dashboard.')
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-      let amountOwingCents = 0
-      for (const reg of (regsForYear ?? [])) {
-        const owing = reg.amount_owing ?? 0
-        const paid = paidByReg[reg.id] ?? 0
-        const balance = owing - paid
-        if (balance > 0) amountOwingCents += balance
-      }
-
-      // 4. Ratios — X / N (Y%) where N = playersForEvent. Each X is the
-      //    count of currently-registered players for the active year who
-      //    have completed the requirement.
-      const registeredUserIds = new Set((regsForYear ?? []).map(r => r.user_id))
-
-      // Committee manual overrides count toward a satisfied concern, matching
-      // the rule used in CaptainHub / AdminRegistrations: normalCheck || override.
-      const overrideCocUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_coc).map(r => r.user_id))
-      const overrideMediaUsers = new Set((regsForYear ?? []).filter(r => r.admin_override_media).map(r => r.user_id))
-      const overrideRefUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_ref_test).map(r => r.user_id))
-
-      const refPassedUserIds = new Set((refResults ?? []).filter(r => r.passed).map(r => r.user_id))
-      const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid) || overrideRefUsers.has(uid)).length
-
-      const cocSignedUserIds = new Set(
-        (cocMediaAccs ?? [])
-          .filter(a => a.document?.document_type === 'code_of_conduct')
-          .map(a => a.user_id)
-      )
-      const mediaSignedUserIds = new Set(
-        (cocMediaAccs ?? [])
-          .filter(a => a.document?.document_type === 'media_release')
-          .map(a => a.user_id)
-      )
-      const cocSignedRegistered = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid) || overrideCocUsers.has(uid)).length
-      const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid) || overrideMediaUsers.has(uid)).length
-
-      // Per-event toggles. When a requirement is disabled the corresponding
-      // tile renders "N/A" instead of a value — surfacing that the dashboard
-      // isn't ignoring the check by accident.
-      const refRequired = isRefTestRequired(activeEvent)
-      const cocRequired = isCocRequired(activeEvent)
-      const paymentRequired = isPaymentRequired(activeEvent)
-
-      setStats({
-        teamsForEvent,
-        playersForEvent,
-        paymentRequired,
-        paymentsReceivedDisplay: paymentRequired ? dollars(paymentsReceivedCents ?? 0) : 'N/A',
-        amountOwingDisplay:      paymentRequired ? dollars(amountOwingCents ?? 0)     : 'N/A',
-        amountOwingCents,
-        refRequired,
-        refRatio:   refRequired ? ratioLabel(refPassedRegistered, playersForEvent) : 'N/A',
-        cocRequired,
-        cocRatio:   cocRequired ? ratioLabel(cocSignedRegistered,   playersForEvent) : 'N/A',
-        mediaRatio: ratioLabel(mediaSignedRegistered, playersForEvent),
-        eventLabel,
-        eventScope,
-        eventName: activeEvent?.name ?? null,
-        eventYear: activeYear,
-        eventOpen: !!activeEvent,
-      })
-
-      // 5. Activity feed.
-      const feed = []
-      function displayName(profiles) {
-        if (!profiles) return 'A player'
-        return profiles.alias || profiles.first_name || 'A player'
-      }
-      for (const r of recentRegs ?? []) {
-        feed.push({ icon: '📋', text: `${displayName(r.profiles)} registered for ZLTAC ${r.year ?? activeYear ?? ''}`, time: fmt(r.created_at), ts: r.created_at })
-      }
-      for (const p of recentPayRecs ?? []) {
-        const prof = p.registration?.profiles
-        const isRefund = (p.amount ?? 0) < 0
-        feed.push({
-          icon: isRefund ? '↩️' : '💳',
-          text: isRefund
-            ? `${displayName(prof)} refunded ${dollars(Math.abs(p.amount))}`
-            : `${displayName(prof)} paid ${dollars(p.amount)}`,
-          time: fmt(p.recorded_at),
-          ts: p.recorded_at,
-        })
-      }
-      const cocAcceptances = (recentCoc ?? [])
-        .filter(a => a.document?.document_type === 'code_of_conduct')
-        .slice(0, 5)
-      for (const c of cocAcceptances) {
-        feed.push({ icon: '✍️', text: `${displayName(c.profiles)} signed the Code of Conduct`, time: fmt(c.accepted_at), ts: c.accepted_at })
-      }
-      feed.sort((a, b) => new Date(b.ts) - new Date(a.ts))
-      setActivity(feed.slice(0, 12))
-      setLoading(false)
     }
     load()
+    return () => { cancelled = true }
   }, [isCommittee])
 
   // Event-name-suffixed labels. When there's no active event, the scope
@@ -239,6 +90,10 @@ export default function AdminZltacDashboard() {
       {!isCommittee ? null : loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
+          <strong>Error:</strong> {error}
         </div>
       ) : (
         <>
@@ -289,7 +144,7 @@ export default function AdminZltacDashboard() {
                 <p className="text-sm text-[#e5e5e5]/30 py-8 text-center">No activity yet</p>
               ) : (
                 activity.map((a, i) => (
-                  <ActivityRow key={i} icon={a.icon} text={a.text} time={a.time} />
+                  <ActivityRow key={i} icon={a.icon} text={a.text} time={fmt(a.ts)} />
                 ))
               )}
             </div>
