@@ -23,7 +23,7 @@ const PUBLIC_COMPETITION_COLUMNS =
 // Columns shown on the public ZLTAC card. Mirrors the displayable surface of
 // the zltac_events row without exposing fees or admin metadata.
 const PUBLIC_ZLTAC_COLUMNS =
-  'id, year, name, status, location, venue, start_date, end_date, logo_url, reg_open_date, reg_close_date'
+  'id, year, name, status, location, venue, start_date, end_date, logo_url, reg_open_date, reg_close_date, timezone'
 
 // ── event ───────────────────────────────────────────────────────────────────
 

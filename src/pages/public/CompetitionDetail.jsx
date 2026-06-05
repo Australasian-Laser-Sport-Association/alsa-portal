@@ -3,27 +3,13 @@ import { Link, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
 
 // Public competition detail page. Anon-readable. The registration CTA gates
 // on auth: unauthenticated users are routed to /login?redirect=<this page>
 // so they return here (the public registration target lives at
 // /competitions/:slug/register, landing in Phase 3c — for now the CTA
 // is a placeholder that surfaces 'Coming soon').
-
-function formatDateRange(start, end) {
-  if (!start || !end) return ''
-  const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
-  return s === e ? s : `${s} to ${e}`
-}
-
-function formatDateTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString('en-AU', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function windowState(comp) {
   const now = new Date()

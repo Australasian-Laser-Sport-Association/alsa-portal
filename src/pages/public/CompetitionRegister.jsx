@@ -3,26 +3,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
 
 // Authenticated registration confirmation page for a pre-nationals
 // competition. Validates the competition is open and the caller is not
 // already registered, then exposes a single "Confirm Registration" CTA that
 // POSTs /api/superadmin/competition-registration and navigates to the hub.
-
-function formatDateRange(start, end) {
-  if (!start || !end) return ''
-  const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
-  return s === e ? s : `${s} to ${e}`
-}
-
-function formatDateTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString('en-AU', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function windowState(comp) {
   const now = new Date()

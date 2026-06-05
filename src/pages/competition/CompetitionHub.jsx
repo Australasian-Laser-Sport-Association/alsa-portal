@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 import { TEAM_COLOURS } from '../../lib/teamColours'
 import { dollars } from '../../lib/pricing.js'
+import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
 
 // Unified competition hub (Phase 3c). One page combines:
 //   - Your Registration (profile snapshot + cancel)
@@ -14,21 +15,6 @@ import { dollars } from '../../lib/pricing.js'
 //     payment_info_visible on)
 //
 // Auth is page-self-gated so the redirect carries a proper return URL.
-
-function formatDateRange(start, end) {
-  if (!start || !end) return ''
-  const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
-  return s === e ? s : `${s} to ${e}`
-}
-
-function formatDateTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString('en-AU', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function windowState(comp) {
   const now = new Date()

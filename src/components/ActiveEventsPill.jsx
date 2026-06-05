@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { toLocalDate } from '../lib/dateFormat'
 
 // Global "EVENT OPEN" pill in the nav. Self-fetches the public competitions
 // feed and renders one of three states based on how many active events are
@@ -22,8 +23,8 @@ const TYPE_LABEL = {
 function formatDateRange(start, end) {
   if (!start || !end) return ''
   const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
+  const s = toLocalDate(start).toLocaleDateString('en-AU', opts)
+  const e = toLocalDate(end).toLocaleDateString('en-AU', opts)
   return s === e ? s : `${s} to ${e}`
 }
 

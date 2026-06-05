@@ -2,17 +2,20 @@ import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { toLocalDate } from '../../lib/dateFormat'
 
 // Manager Hub — landing page for /manage.
 //   Lists every competition the caller manages (non-archived only).
 //   Each card links to /manage/competitions/:slug.
 //   Empty state asks them to contact a superadmin.
 
+// Note: distinct '-' empty fallback (not the shared helper's '') is preserved,
+// so this stays in-place; only the unsafe date parse is made day-shift-safe.
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
   const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
+  const s = toLocalDate(start).toLocaleDateString('en-AU', opts)
+  const e = toLocalDate(end).toLocaleDateString('en-AU', opts)
   return s === e ? s : `${s} to ${e}`
 }
 

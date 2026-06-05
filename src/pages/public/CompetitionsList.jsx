@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Footer from '../../components/Footer'
+import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
+import { formatInEventTz } from '../../lib/eventTimezone'
 
 // Public listing of ALSA events. No auth required.
 //   - Mirrors ZLTACLanding's hero + content layout (no shared PublicLayout
@@ -10,21 +12,6 @@ import Footer from '../../components/Footer'
 //   - Fetches /api/public?resource=competitions which now returns
 //     { main_events, competitions } — bank details stripped server-side and
 //     visibility filters mirror the anon RLS policies on both tables.
-
-function formatDateRange(start, end) {
-  if (!start || !end) return ''
-  const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
-  return s === e ? s : `${s} to ${e}`
-}
-
-function formatDateTime(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleString('en-AU', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function windowStatus(comp) {
   const now = new Date()
@@ -56,13 +43,13 @@ function zltacStatus(ev) {
   if (ev.status === 'archived') return { label: 'Archived', tone: 'grey' }
   if (ev.status === 'closed') return { label: 'Closed', tone: 'grey' }
   if (regOpen && now < regOpen) {
-    return { label: `Opens ${formatDateTime(ev.reg_open_date)}`, tone: 'amber' }
+    return { label: `Opens ${formatInEventTz(ev.reg_open_date, ev.timezone, 'shortWithTime')}`, tone: 'amber' }
   }
   if (regClose && now > regClose) {
     return { label: 'Closed', tone: 'grey' }
   }
   if (regClose) {
-    return { label: `Closes ${formatDateTime(ev.reg_close_date)}`, tone: 'green' }
+    return { label: `Closes ${formatInEventTz(ev.reg_close_date, ev.timezone, 'shortWithTime')}`, tone: 'green' }
   }
   return { label: 'Open', tone: 'green' }
 }

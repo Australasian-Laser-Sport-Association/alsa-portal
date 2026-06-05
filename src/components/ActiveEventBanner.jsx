@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 import { MapPin, Calendar } from 'lucide-react'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
-import { formatDate } from '../lib/dateFormat'
+import { formatDate, toLocalDate } from '../lib/dateFormat'
 
 function formatDateRange(start, end) {
   if (!start && !end) return ''
   if (!end) return formatDate(start)
   if (!start) return formatDate(end)
-  const s = new Date(start)
-  const e = new Date(end)
+  const s = toLocalDate(start)
+  const e = toLocalDate(end)
   if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
     return `${s.getDate()}-${e.getDate()} ${e.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}`
   }

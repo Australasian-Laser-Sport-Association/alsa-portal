@@ -4,6 +4,7 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { isSuperAdmin } from '../../lib/roles'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
+import { toLocalDate } from '../../lib/dateFormat'
 
 // Superadmin-only competition management.
 //   - List competitions in a table
@@ -18,11 +19,13 @@ import CompetitionEditForm from '../../components/competition/CompetitionEditFor
 // authorised" message rather than the page UI. AdminLayout already filters
 // the sidebar entry so this is defence-in-depth.
 
+// Distinct '-' empty fallback (not the shared helper's ''); fixed in place so
+// only the unsafe date parse becomes day-shift-safe.
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
   const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
+  const s = toLocalDate(start).toLocaleDateString('en-AU', opts)
+  const e = toLocalDate(end).toLocaleDateString('en-AU', opts)
   return s === e ? s : `${s} to ${e}`
 }
 

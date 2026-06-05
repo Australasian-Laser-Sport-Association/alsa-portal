@@ -5,6 +5,7 @@ import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 import { dollars } from '../../lib/pricing.js'
+import { toLocalDate } from '../../lib/dateFormat'
 
 // Per-competition detail page for managers. Auth: the page fetches
 // /api/superadmin/my-competitions and looks for a row matching :slug. If not
@@ -19,11 +20,13 @@ const TABS = [
   { key: 'payments',      label: 'Payments' },
 ]
 
+// Distinct '-' empty fallback (not the shared helper's ''); fixed in place so
+// only the unsafe date parse becomes day-shift-safe.
 function formatDateRange(start, end) {
   if (!start || !end) return '-'
   const opts = { day: '2-digit', month: 'short', year: 'numeric' }
-  const s = new Date(start).toLocaleDateString('en-AU', opts)
-  const e = new Date(end).toLocaleDateString('en-AU', opts)
+  const s = toLocalDate(start).toLocaleDateString('en-AU', opts)
+  const e = toLocalDate(end).toLocaleDateString('en-AU', opts)
   return s === e ? s : `${s} to ${e}`
 }
 

@@ -2,14 +2,15 @@ import { Link } from 'react-router-dom'
 import { Target, ClipboardList, User, CreditCard } from 'lucide-react'
 import { useAuth } from '../lib/useAuth'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
+import { toLocalDate } from '../lib/dateFormat'
 
 function formatDateRange(start, end) {
   if (!start && !end) return ''
-  if (!end) return new Date(start).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
-  if (!start) return new Date(end).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
+  if (!end) return toLocalDate(start).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
+  if (!start) return toLocalDate(end).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  const s = new Date(start)
-  const e = new Date(end)
+  const s = toLocalDate(start)
+  const e = toLocalDate(end)
   const sameYear = s.getFullYear() === e.getFullYear()
   const sameMonth = sameYear && s.getMonth() === e.getMonth()
 
