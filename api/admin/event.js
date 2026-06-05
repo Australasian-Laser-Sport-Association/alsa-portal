@@ -162,7 +162,7 @@ async function handleRegistrations(req, res, user) {
     ] = await Promise.all([
       supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_coc_set_by, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_by, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_by, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_by, admin_override_u18_set_at, admin_override_u18_reason').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),
-      supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at'),
+      supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at, event_id'),
       supabaseAdmin
         .from('legal_acceptances')
         .select('user_id, accepted_at, document:legal_documents!document_id(document_type)')
@@ -1096,6 +1096,54 @@ async function handleProfileSearch(req, res) {
 
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
+// ── team-review ────────────────────────────────────────────────────────────
+// Committee approve/reject of a ZLTAC team's submission. Replaces the old
+// client-side direct teams.update({status}). Runs on the service role so it
+// bypasses the Batch-1 status trigger; the dispatcher already verifyCommittee'd
+// the request. Only a ZLTAC team (event_id) that is currently 'pending' can be
+// reviewed; reject requires a non-empty reason, stored in rejection_reason.
+async function handleTeamReview(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const body = req.body ?? {}
+  const { teamId, action } = body
+  if (!teamId) return res.status(400).json({ error: 'teamId is required' })
+  if (action !== 'approve' && action !== 'reject') {
+    return res.status(400).json({ error: "action must be 'approve' or 'reject'" })
+  }
+
+  const { data: team, error: teamErr } = await supabaseAdmin
+    .from('teams')
+    .select('id, event_id, status')
+    .eq('id', teamId)
+    .maybeSingle()
+  if (teamErr) return res.status(500).json({ error: teamErr.message })
+  if (!team) return res.status(404).json({ error: 'Team not found' })
+
+  // ZLTAC teams only — competition teams are managed elsewhere.
+  if (!team.event_id) {
+    return res.status(400).json({ error: 'Only ZLTAC teams can be reviewed here' })
+  }
+  // Review applies only to a team awaiting approval.
+  if (team.status !== 'pending') {
+    return res.status(409).json({ error: `Team is ${team.status}, not pending — nothing to review.` })
+  }
+
+  let update
+  if (action === 'approve') {
+    update = { status: 'approved', rejection_reason: null }
+  } else {
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+    if (!reason) return res.status(400).json({ error: 'A reason is required to reject a team.' })
+    update = { status: 'rejected', rejection_reason: reason }
+  }
+
+  const { error: updErr } = await supabaseAdmin.from('teams').update(update).eq('id', teamId)
+  if (updErr) return res.status(500).json({ error: updErr.message })
+
+  return res.json({ ok: true, status: update.status })
+}
+
 export default async function handler(req, res) {
   const resource = req.query.resource
 
@@ -1115,5 +1163,6 @@ export default async function handler(req, res) {
   if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.email ?? user.id })
   if (resource === 'profile-search')   return handleProfileSearch(req, res)
   if (resource === 'zltac-dashboard')  return handleZltacDashboard(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", or "zltac-dashboard"' })
+  if (resource === 'team-review')      return handleTeamReview(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", "zltac-dashboard", or "team-review"' })
 }

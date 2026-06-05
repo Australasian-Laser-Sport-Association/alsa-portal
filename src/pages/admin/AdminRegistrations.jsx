@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback, memo, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
@@ -203,8 +203,14 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
   )
 }
 
+// Minimum canonical roster to field a ZLTAC team. Mirrors the captain-side
+// submit gate (CaptainHub / api/captain submit-team); shown here as context for
+// the committee while reviewing.
+const MIN_ROSTER = 5
+
 function StatusBadge({ status }) {
   const styles = {
+    draft:    'bg-line text-[#e5e5e5]/40 border-line',
     pending:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
     approved: 'bg-green-500/15 text-green-400 border-green-500/30',
     rejected: 'bg-red-500/15 text-red-400 border-red-500/30',
@@ -212,6 +218,29 @@ function StatusBadge({ status }) {
   return (
     <span className={`text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${styles[status] ?? styles.pending}`}>
       {status ?? 'pending'}
+    </span>
+  )
+}
+
+// Per-player eligibility chips for the Teams-tab roster view. Reuses the same
+// satisfied/not flags the Players tab computes, and respects the per-event
+// requirement toggles (a disabled requirement renders 'n/a').
+function EligibilityChips({ p, cocRequired, refRequired, paymentRequired }) {
+  return (
+    <span className="inline-flex items-center gap-1 flex-wrap">
+      {cocRequired
+        ? <Pill color={p.coc ? 'green' : 'red'}>CoC</Pill>
+        : <Pill color="grey">CoC n/a</Pill>}
+      {refRequired
+        ? <Pill color={p.refPassed ? 'green' : 'red'}>Rules</Pill>
+        : <Pill color="grey">Rules n/a</Pill>}
+      <Pill color={p.media ? 'green' : 'red'}>Media</Pill>
+      {paymentRequired
+        ? <Pill color={PAY_PILL[p.payStatus].color}>{PAY_PILL[p.payStatus].label}</Pill>
+        : <Pill color="grey">Pay n/a</Pill>}
+      {p.complete
+        ? <Pill color="green">Complete</Pill>
+        : <Pill color="red">{p.doneCount}/{p.totalChecks}</Pill>}
     </span>
   )
 }
@@ -355,6 +384,13 @@ export default function AdminRegistrations() {
   const [placeholderBanner, setPlaceholderBanner] = useState(null) // { reference, name }
   const [linkModal, setLinkModal] = useState(null)                  // { placeholder } currently being linked to a real user
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Teams tab review state
+  const [expandedTeam, setExpandedTeam] = useState(null)  // team id whose roster is expanded
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+  const [rejectingTeam, setRejectingTeam] = useState(null) // team id whose reject-reason input is open
+  const [rejectReason, setRejectReason] = useState('')
 
   // Deep link from the Admin Event page ("Add manual registration") opens the
   // modal directly. Consume the param so a refresh does not reopen it.
@@ -553,10 +589,46 @@ export default function AdminRegistrations() {
     return acc
   }, {})
 
-  async function updateTeamStatus(id, status) {
-    const { error } = await supabase.from('teams').update({ status }).eq('id', id)
-    if (error) { console.error(error); return }
-    setTeams(prev => prev.map(t => t.id === id ? { ...t, status } : t))
+  // Full enriched roster grouped by team, reusing the per-player eligibility
+  // already computed in `players`. The committee expands a team to vet this
+  // before approving.
+  const playersByTeam = useMemo(() => {
+    const m = {}
+    for (const p of players) {
+      if (p.team_id) (m[p.team_id] ??= []).push(p)
+    }
+    return m
+  }, [players])
+
+  // Committee approve/reject via the server action (resource=team-review),
+  // replacing the old client-side direct teams.update. Reject carries the
+  // required reason; the server re-validates ZLTAC + pending + non-empty reason.
+  async function reviewTeam(teamId, action, reason) {
+    setReviewBusy(true)
+    setReviewError('')
+    try {
+      const res = await apiFetch('/api/admin/event?resource=team-review', {
+        method: 'POST',
+        body: JSON.stringify({ teamId, action, reason }),
+      })
+      setTeams(prev => prev.map(t => t.id === teamId ? { ...t, status: res.status } : t))
+      setRejectingTeam(null)
+      setRejectReason('')
+      showToast(`Team ${res.status}`)
+    } catch (err) {
+      setReviewError(err?.message || 'Could not update the team.')
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
+  // Expand/collapse a team's roster; resets any in-progress review state so a
+  // stale error/reason from one team never bleeds into another.
+  function toggleExpand(id) {
+    setExpandedTeam(prev => (prev === id ? null : id))
+    setRejectingTeam(null)
+    setRejectReason('')
+    setReviewError('')
   }
 
   // Called by RecordPaymentModal after a record is added/edited/deleted.
@@ -867,37 +939,132 @@ export default function AdminRegistrations() {
               <tbody>
                 {teams.map(t => {
                   const captain = profMap[t.captain_id]
+                  const roster = playersByTeam[t.id] ?? []
+                  const captainRow = roster.find(p => p.user_id === t.captain_id)
+                  const orderedRoster = captainRow
+                    ? [captainRow, ...roster.filter(p => p.user_id !== t.captain_id)]
+                    : roster
+                  const incompleteCount = roster.filter(p => !p.complete).length
+                  const isExpanded = expandedTeam === t.id
+                  const canReview = !!t.event_id && t.status === 'pending'
                   return (
-                    <tr key={t.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
-                      <td className="px-4 py-3 font-semibold text-white">{t.name}</td>
-                      <td className="px-4 py-3">
-                        {t.state
-                          ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded font-medium">{t.state}</span>
-                          : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">
-                        {captain ? [captain.first_name, captain.last_name].filter(Boolean).join(' ') || captain.alias || '—' : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{playerCountByTeam[t.id] ?? 0}</td>
-                      <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{fmt(t.created_at)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {t.status !== 'approved' && (
-                            <button onClick={() => updateTeamStatus(t.id, 'approved')}
-                              className="text-xs bg-green-500/10 hover:bg-green-500/20 text-green-400 font-semibold px-3 py-1.5 rounded-lg transition-colors">
-                              Approve
-                            </button>
-                          )}
-                          {t.status !== 'rejected' && (
-                            <button onClick={() => updateTeamStatus(t.id, 'rejected')}
-                              className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-colors">
-                              Reject
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={t.id}>
+                      <tr
+                        onClick={() => toggleExpand(t.id)}
+                        className="border-b border-line last:border-0 hover:bg-line/30 transition-colors cursor-pointer"
+                      >
+                        <td className="px-4 py-3 font-semibold text-white">
+                          <span className="inline-flex items-center gap-2">
+                            <span className={`text-[#e5e5e5]/40 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`} aria-hidden>▸</span>
+                            {t.name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {t.state
+                            ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded font-medium">{t.state}</span>
+                            : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+                        </td>
+                        <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
+                        <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">
+                          {captain ? [captain.first_name, captain.last_name].filter(Boolean).join(' ') || captain.alias || '—' : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{playerCountByTeam[t.id] ?? 0}</td>
+                        <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{fmt(t.created_at)}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleExpand(t.id) }}
+                            className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            {isExpanded ? 'Hide roster' : 'Review roster'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-line last:border-0 bg-base/40">
+                          <td colSpan={7} className="px-4 py-4">
+                            <p className="text-xs text-[#e5e5e5]/60 font-semibold mb-3">
+                              Roster: <span className="text-white">{roster.length}</span> / {MIN_ROSTER} players
+                              {incompleteCount > 0 && <span className="text-yellow-400 ml-2">· {incompleteCount} incomplete</span>}
+                            </p>
+
+                            {orderedRoster.length === 0 ? (
+                              <p className="text-[#e5e5e5]/30 text-xs mb-3">No players on this team yet.</p>
+                            ) : (
+                              <div className="space-y-1.5 mb-3">
+                                {orderedRoster.map(p => {
+                                  const isCap = p.user_id === t.captain_id
+                                  const pname = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ')
+                                    || p.profile?.alias || 'Unknown'
+                                  return (
+                                    <div key={p.id} className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-white text-xs font-medium">{pname}</span>
+                                      {isCap && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">Captain</span>}
+                                      {p.profile?.alias && !isCap && <span className="text-brand text-xs">"{p.profile.alias}"</span>}
+                                      <EligibilityChips p={p} cocRequired={cocRequired} refRequired={refRequired} paymentRequired={paymentRequired} />
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {canReview ? (
+                              <div className="pt-2 border-t border-line">
+                                {incompleteCount > 0 && (
+                                  <p className="text-yellow-400 text-xs mb-2">⚠ {incompleteCount} player{incompleteCount !== 1 ? 's' : ''} have incomplete requirements — you can still approve.</p>
+                                )}
+                                {rejectingTeam === t.id ? (
+                                  <div className="space-y-2 max-w-lg">
+                                    <textarea
+                                      value={rejectReason}
+                                      onChange={e => setRejectReason(e.target.value)}
+                                      rows={2}
+                                      placeholder="Reason for rejection (required, shown to the captain)…"
+                                      className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => reviewTeam(t.id, 'reject', rejectReason.trim())}
+                                        disabled={reviewBusy || !rejectReason.trim()}
+                                        className="text-xs bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        {reviewBusy ? 'Rejecting…' : 'Confirm reject'}
+                                      </button>
+                                      <button
+                                        onClick={() => { setRejectingTeam(null); setRejectReason(''); setReviewError('') }}
+                                        className="text-xs border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => reviewTeam(t.id, 'approve')}
+                                      disabled={reviewBusy}
+                                      className="text-xs bg-green-500/10 hover:bg-green-500/20 disabled:opacity-40 text-green-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                    >
+                                      {reviewBusy ? 'Working…' : 'Approve'}
+                                    </button>
+                                    <button
+                                      onClick={() => { setRejectingTeam(t.id); setRejectReason(''); setReviewError('') }}
+                                      className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
+                                {reviewError && <p className="text-red-400 text-xs mt-2">{reviewError}</p>}
+                              </div>
+                            ) : (
+                              <p className="text-[#e5e5e5]/30 text-xs pt-2 border-t border-line">
+                                {!t.event_id ? 'Competition team — reviewed elsewhere.' : `Team is ${t.status} — no review action.`}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>
