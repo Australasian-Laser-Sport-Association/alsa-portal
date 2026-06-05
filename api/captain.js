@@ -10,6 +10,16 @@ async function denyIfLocked(res, year) {
   return true
 }
 
+// A ZLTAC team (event_id set) is locked for roster/identity changes once it has
+// been submitted for approval (pending) or approved. The Batch-1 DB trigger
+// enforces this against direct anon-client writes, but /api/captain runs as the
+// service role and bypasses that trigger — so service-role mutations of the
+// roster or the team must re-check it here. Competition teams (event_id null)
+// are out of scope.
+function isZltacLocked(team) {
+  return !!team?.event_id && (team.status === 'pending' || team.status === 'approved')
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -23,10 +33,14 @@ export default async function handler(req, res) {
     if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
     if (await denyIfLocked(res, year)) return
 
-    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()
+    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id, event_id, status').eq('id', teamId).maybeSingle()
     if (teamErr) return res.status(500).json({ error: teamErr.message })
     if (!team || team.captain_id !== user.id) {
       return res.status(403).json({ error: 'Only the team captain can add players' })
+    }
+    // Re-enforce the team lock (service role bypasses the DB trigger).
+    if (isZltacLocked(team)) {
+      return res.status(409).json({ error: 'This team is locked while it is under review or approved. Contact the committee to change the roster.' })
     }
 
     // Enforce per-event max_players_per_team. When the cap is null, no
@@ -132,10 +146,14 @@ export default async function handler(req, res) {
     if (await denyIfLocked(res, year)) return
 
     // Validate caller is captain
-    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id').eq('id', teamId).maybeSingle()
+    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id, event_id, status').eq('id', teamId).maybeSingle()
     if (teamErr) return res.status(500).json({ error: teamErr.message })
     if (!team) return res.status(404).json({ error: 'Team not found' })
     if (team.captain_id !== user.id) return res.status(403).json({ error: 'Only the team captain can disband the team' })
+    // Re-enforce the team lock (service role bypasses the DB trigger).
+    if (isZltacLocked(team)) {
+      return res.status(409).json({ error: 'This team is locked while it is under review or approved. Contact the committee to disband it.' })
+    }
 
     // 1. Kick all members off the team but keep their registrations
     const { data: affected, error: regErr } = await supabaseAdmin
@@ -320,6 +338,75 @@ export default async function handler(req, res) {
       paid_cents_by_user,
       overrides,
     })
+  }
+
+  if (action === 'submit-team') {
+    // Captain submits a ZLTAC team draft for committee approval (draft|rejected
+    // -> pending). Runs as the service role so it bypasses the Batch-1 status
+    // trigger that blocks captain-driven status changes — but does its own auth
+    // and re-validates every gate server-side. No client count is trusted.
+    const { teamId } = body
+    if (!teamId) return res.status(400).json({ error: 'teamId is required' })
+
+    const { data: team, error: teamErr } = await supabaseAdmin
+      .from('teams')
+      .select('id, captain_id, event_id, status')
+      .eq('id', teamId)
+      .maybeSingle()
+    if (teamErr) return res.status(500).json({ error: teamErr.message })
+    if (!team) return res.status(404).json({ error: 'Team not found' })
+
+    // Auth: caller must be this team's captain.
+    if (team.captain_id !== user.id) {
+      return res.status(403).json({ error: 'Only the team captain can submit the team for approval' })
+    }
+
+    // ZLTAC teams only (event_id set). Competition teams are out of scope.
+    if (!team.event_id) {
+      return res.status(400).json({ error: 'Only ZLTAC teams can be submitted for approval' })
+    }
+
+    // Submit is allowed from draft or rejected (re-submit after a reject).
+    if (team.status !== 'draft' && team.status !== 'rejected') {
+      return res.status(409).json({ error: `Team is already ${team.status} and cannot be submitted again.` })
+    }
+
+    // Canonical roster = zltac_registrations rows pointing at this team for the
+    // event's year (captain included). Re-counted here; the client count is
+    // never trusted.
+    const { data: ev, error: evErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('year')
+      .eq('id', team.event_id)
+      .maybeSingle()
+    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (!ev) return res.status(404).json({ error: 'Event not found for team' })
+
+    const { count, error: countErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('team_id', teamId)
+      .eq('year', ev.year)
+    if (countErr) return res.status(500).json({ error: countErr.message })
+
+    const rosterCount = count ?? 0
+    const MIN_PLAYERS = 5
+    if (rosterCount < MIN_PLAYERS) {
+      return res.status(400).json({
+        error: `A team needs at least ${MIN_PLAYERS} players to submit (currently ${rosterCount}).`,
+        count: rosterCount,
+      })
+    }
+
+    // Flip to pending; clear any prior rejection reason so a re-submit starts
+    // clean. Service role bypasses the status trigger.
+    const { error: updErr } = await supabaseAdmin
+      .from('teams')
+      .update({ status: 'pending', rejection_reason: null })
+      .eq('id', teamId)
+    if (updErr) return res.status(500).json({ error: updErr.message })
+
+    return res.json({ ok: true, status: 'pending', count: rosterCount })
   }
 
   return res.status(400).json({ error: 'Invalid action' })

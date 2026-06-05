@@ -4,7 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
-import { eventPhase } from '../lib/eventPhase'
+import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
@@ -119,6 +119,7 @@ function PaymentChip({ status }) {
 
 function StatusBadge({ status }) {
   const map = {
+    draft:    'bg-line text-[#e5e5e5]/50 border-line',
     pending:  'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     approved: 'bg-brand/10 text-brand border-brand/20',
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
@@ -131,6 +132,10 @@ function StatusBadge({ status }) {
 }
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+
+// Minimum canonical-roster size to submit a ZLTAC team for approval. Mirrors
+// the server-side gate in api/captain.js (submit-team); the server re-checks.
+const MIN_PLAYERS = 5
 
 export default function CaptainHub() {
   const { user, loading: authLoading } = useAuth()
@@ -157,6 +162,10 @@ export default function CaptainHub() {
   const [disbandOpen, setDisbandOpen] = useState(false)
   const [disbanding, setDisbanding] = useState(false)
   const [disbandError, setDisbandError] = useState('')
+
+  // Submit team for approval
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   // Toast
   const [toast, setToast] = useState(null)
@@ -415,6 +424,28 @@ export default function CaptainHub() {
     }
   }
 
+  // ── Submit team for approval ──────────────────────────────────────────────
+  // Service-role endpoint (bypasses the Batch-1 status trigger) that re-checks
+  // captaincy, ZLTAC, draft/rejected status, and the >=5 roster count. We don't
+  // swallow errors — they surface in submitError.
+  async function submitTeam() {
+    if (!team?.id) return
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const res = await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'submit-team', teamId: team.id }),
+      })
+      setTeam(t => ({ ...t, status: res?.status ?? 'pending', rejection_reason: null }))
+      showToast('Team submitted for approval')
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not submit the team. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // ── Team settings ─────────────────────────────────────────────────────────
   // ── Logo upload ──────────────────────────────────────────────────────────
   // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
@@ -590,6 +621,14 @@ export default function CaptainHub() {
   // editable — they don't affect registration, fees, or eligibility.
   const phase = eventPhase(event)
   const locked = phase !== 'open'
+  // Team-status lock (Batch 2): once a ZLTAC team is submitted (pending) or
+  // approved, name + roster are frozen and changes go via the committee. The
+  // server trigger enforces this; the UI mirrors it. Cosmetic logo/colour stay
+  // open. draft/rejected leave the build controls open so captains can fix and
+  // (re-)submit.
+  const statusLocked = team.status === 'pending' || team.status === 'approved'
+  const canSubmit = team.status === 'draft' || team.status === 'rejected'
+  const committeeEmail = event?.committee_email || COMMITTEE_EMAIL
   const filteredRoster = roster.filter(r => {
     if (filter === 'ready') return isPlayerReady(r.user_id)
     if (filter === 'incomplete') return !isPlayerReady(r.user_id)
@@ -701,16 +740,54 @@ export default function CaptainHub() {
         </div>
 
         {/* Status banners */}
-        {team.status === 'pending' && (
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3 mb-5">
-            <p className="text-yellow-400 text-sm font-semibold">⏳ Your team is awaiting ZLTAC approval</p>
-            <p className="text-[#e5e5e5]/40 text-xs mt-0.5">You can add players now. Registrations won't be confirmed until your team is approved.</p>
+        {/* Submitted (pending) or approved: name + roster are frozen; changes
+            go via the committee. Amber lock banner mirrors LockedRegistrationBanner. */}
+        {statusLocked && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 mb-5 flex items-start gap-3">
+            <span className="text-lg flex-shrink-0 leading-none mt-0.5" aria-hidden>🔒</span>
+            <div className="min-w-0 text-sm">
+              <p className="text-yellow-300 font-semibold">
+                Team and roster changes are locked while your team is {team.status === 'approved' ? 'approved' : 'under review'}.
+              </p>
+              <p className="text-yellow-200/80 mt-1 leading-relaxed">
+                Email the committee at{' '}
+                <a href={`mailto:${committeeEmail}`} className="underline hover:text-yellow-100">{committeeEmail}</a>
+                {' '}to make any adjustments.
+              </p>
+            </div>
           </div>
         )}
         {team.status === 'rejected' && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
             <p className="text-red-400 text-sm font-semibold">✗ Team registration was not approved</p>
             {team.rejection_reason && <p className="text-[#e5e5e5]/50 text-xs mt-1">Reason: {team.rejection_reason}</p>}
+            <p className="text-[#e5e5e5]/40 text-xs mt-1">Adjust your team or roster below, then re-submit for approval.</p>
+          </div>
+        )}
+
+        {/* Submit for approval — shown only while the build is open (draft or
+            rejected). Enabled at >= MIN_PLAYERS; the server re-checks. */}
+        {canSubmit && (
+          <div className="bg-surface border border-line rounded-2xl p-5 mb-5">
+            <h2 className="text-white font-bold mb-1">Submit Team for Approval</h2>
+            <p className="text-[#e5e5e5]/50 text-xs leading-relaxed mb-3">
+              Your team and roster will be reviewed by the committee and approved if it meets the ZLTAC rules &amp; regulations. Once approved, all team and roster changes must be made via the committee by email.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={submitTeam}
+                disabled={submitting || roster.length < MIN_PLAYERS}
+                className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-5 py-2.5 rounded-xl text-sm transition-all"
+              >
+                {submitting ? 'Submitting…' : 'Submit Team for Approval'}
+              </button>
+              {roster.length < MIN_PLAYERS && (
+                <span className="text-[#e5e5e5]/40 text-xs">
+                  {roster.length} / {MIN_PLAYERS} players — add {MIN_PLAYERS - roster.length} more to submit
+                </span>
+              )}
+            </div>
+            {submitError && <p className="text-red-400 text-xs mt-2">{submitError}</p>}
           </div>
         )}
 
@@ -731,7 +808,7 @@ export default function CaptainHub() {
               </p>
             </div>
 
-            {locked ? (
+            {(locked || statusLocked) ? (
               <LockedNotice email={event?.committee_email} />
             ) : (
               <>
@@ -926,8 +1003,8 @@ export default function CaptainHub() {
                         {!isMe && (
                           <button
                             onClick={() => setRemoveConfirm({ regId: r.id, userId: r.user_id, alias: alias || name })}
-                            disabled={locked}
-                            title={locked ? 'Locked — contact the committee to change the roster' : undefined}
+                            disabled={locked || statusLocked}
+                            title={(locked || statusLocked) ? 'Locked — contact the committee to change the roster' : undefined}
                             className="flex-shrink-0 text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-red-400/50 disabled:cursor-default"
                           >
                             Remove
@@ -999,15 +1076,24 @@ export default function CaptainHub() {
 
             {editingSettings ? (
               <div className="space-y-4">
+                {statusLocked && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2">
+                    <p className="text-yellow-300/90 text-xs leading-relaxed">
+                      Name, state, and home venue are locked while your team is {team.status === 'approved' ? 'approved' : 'under review'} — email the committee to change them. Logo and colour stay editable.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team Name</label>
                   <input type="text" value={settingsForm.name} onChange={e => setSettingsForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand" />
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed" />
                 </div>
                 <div>
                   <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
                   <select value={settingsForm.state} onChange={e => setSettingsForm(f => ({ ...f, state: e.target.value }))}
-                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand">
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed">
                     <option value="">Select…</option>
                     {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -1016,7 +1102,8 @@ export default function CaptainHub() {
                   <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home Venue</label>
                   <input type="text" value={settingsForm.home_venue} onChange={e => setSettingsForm(f => ({ ...f, home_venue: e.target.value }))}
                     placeholder="e.g. Zone300 Sydney"
-                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand" />
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed" />
                 </div>
                 {/* Team colour — mirrors CaptainRegister.jsx picker exactly. */}
                 <div>
@@ -1063,7 +1150,7 @@ export default function CaptainHub() {
 
             {!editingSettings && (
               <div className="mt-5 pt-4 border-t border-line">
-                {locked ? (
+                {(locked || statusLocked) ? (
                   <LockedNotice email={event?.committee_email} />
                 ) : (
                   <button

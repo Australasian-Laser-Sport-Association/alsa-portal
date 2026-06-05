@@ -109,7 +109,14 @@ export default function CaptainRegister() {
       manager_id: user.id,
       event_id: event.id,
       format: 'team',
-      status: 'pending',
+      // ZLTAC teams start in 'draft' (Batch 2): the captain builds the roster,
+      // then submits for committee approval (draft -> pending via /api/captain
+      // submit-team). 'draft' is also required so the captain's own
+      // registration upsert below isn't blocked by the Batch-1 roster trigger,
+      // which freezes membership once a team is pending/approved. This path only
+      // ever creates ZLTAC teams (event_id set); competition teams are created
+      // 'approved' elsewhere and are unaffected.
+      status: 'draft',
       state: teamState,
       home_venue: homeVenue.trim() || null,
       colour,
