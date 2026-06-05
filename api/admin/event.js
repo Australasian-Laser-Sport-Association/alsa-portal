@@ -901,6 +901,39 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
 }
 
 
+// ── profile-search ────────────────────────────────────────────────────────────
+// Committee-gated typeahead backing the LinkPlaceholderModal merge picker
+// (AdminRegistrations). Replaces a whole-profiles client fetch + client filter.
+// Mirrors the modal's old client semantics: case-insensitive contains-match on
+// the same fields (alias OR first/last name), non-placeholder profiles only.
+// Returns just the columns the picker renders + needs for the link; no
+// sensitive columns. Bounded by limit(25); a query under 2 chars returns [] so
+// the endpoint never runs an unfiltered scan. Committee auth is enforced by the
+// verifyCommittee gate in the dispatcher below.
+async function handleProfileSearch(req, res) {
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+
+  const q = (req.query.q ?? '').trim()
+  if (q.length < 2) return res.json([])
+
+  // Escape LIKE wildcards so a query like "a_b" matches literally, then wrap
+  // the value in double quotes for the PostgREST .or() filter so embedded
+  // commas/parens in the query aren't parsed as logic-tree separators (the
+  // inner " and \ are backslash-escaped for the quoted form).
+  const likeEscaped = q.replace(/[\\%_]/g, m => `\\${m}`)
+  const orValue = `"%${likeEscaped.replace(/["\\]/g, m => `\\${m}`)}%"`
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, first_name, last_name, alias, state, is_placeholder')
+    .eq('is_placeholder', false)
+    .or(`alias.ilike.${orValue},first_name.ilike.${orValue},last_name.ilike.${orValue}`)
+    .limit(25)
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(data ?? [])
+}
+
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   const resource = req.query.resource
@@ -919,5 +952,6 @@ export default async function handler(req, res) {
   if (resource === 'payments')         return handlePayments(req, res, user)
   if (resource === 'backup-settings')  return handleBackupSettings(req, res, user)
   if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.email ?? user.id })
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", or "backup-run"' })
+  if (resource === 'profile-search')   return handleProfileSearch(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", or "profile-search"' })
 }

@@ -49,21 +49,35 @@ function OvrBadge() {
 }
 
 // Modal for the Chunk 2 manual link: committee picks any real user to absorb
-// a placeholder. The picker is local — we already have every profile loaded
-// for the registrations table, so filter the non-placeholders client-side.
-function LinkPlaceholderModal({ placeholder, profiles, summaryCounts, onClose, onLinked }) {
+// a placeholder. The picker queries a committee-gated server search as the
+// admin types (debounced), so it no longer needs the whole profiles table —
+// only matching non-placeholder rows come back.
+function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked }) {
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState(null) // chosen real profile
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState(null)
 
-  const realUsers = profiles.filter(p => !p.is_placeholder)
-  const q = query.trim().toLowerCase()
-  const results = q.length < 2 ? [] : realUsers.filter(p => {
-    const alias = (p.alias ?? '').toLowerCase()
-    const name = [p.first_name, p.last_name].filter(Boolean).join(' ').toLowerCase()
-    return alias.includes(q) || name.includes(q)
-  }).slice(0, 25)
+  const q = query.trim()
+
+  // Debounced server search. Under 2 chars we never hit the endpoint (it would
+  // return [] anyway). Each keystroke cancels the prior in-flight request via
+  // the cancelled flag + cleared timeout so results don't arrive out of order.
+  useEffect(() => {
+    if (q.length < 2) { setResults([]); setSearching(false); setSearchError(null); return }
+    let cancelled = false
+    setSearching(true)
+    setSearchError(null)
+    const t = setTimeout(() => {
+      apiFetch(`/api/admin/event?resource=profile-search&q=${encodeURIComponent(q)}`)
+        .then(data => { if (!cancelled) { setResults(Array.isArray(data) ? data : []); setSearching(false) } })
+        .catch(err => { if (!cancelled) { setSearchError(err.message || 'Search failed.'); setResults([]); setSearching(false) } })
+    }, 280)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [q])
 
   const phName = [placeholder.first_name, placeholder.last_name].filter(Boolean).join(' ')
     || placeholder.alias || 'placeholder'
@@ -120,7 +134,13 @@ function LinkPlaceholderModal({ placeholder, profiles, summaryCounts, onClose, o
               placeholder="Search by alias or name..."
               className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand mb-3"
             />
-            {q.length >= 2 && results.length === 0 && (
+            {searchError && (
+              <p className="text-red-400 text-xs">{searchError}</p>
+            )}
+            {!searchError && searching && (
+              <p className="text-white text-xs italic">Searching…</p>
+            )}
+            {!searchError && !searching && q.length >= 2 && results.length === 0 && (
               <p className="text-white text-xs italic">No matching users.</p>
             )}
             <div className="space-y-1 max-h-72 overflow-y-auto">
@@ -530,7 +550,6 @@ export default function AdminRegistrations() {
       {linkModal && (
         <LinkPlaceholderModal
           placeholder={linkModal.placeholder}
-          profiles={profiles}
           summaryCounts={linkSummaryCounts(linkModal.placeholder.id)}
           onClose={() => setLinkModal(null)}
           onLinked={() => {
