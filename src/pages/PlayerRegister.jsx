@@ -22,6 +22,7 @@ export default function PlayerRegister() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [event, setEvent] = useState(null)
   const [existingReg, setExistingReg] = useState(null)
+  const [aliasLocked, setAliasLocked] = useState(false)
 
   // Form fields (pre-filled from profile)
   const [firstName, setFirstName] = useState('')
@@ -61,6 +62,21 @@ export default function PlayerRegister() {
         setDob(profile.dob ?? '')
         setState(profile.state ?? '')
       }
+
+      // Alias lock (mirrors the enforce_alias_lock trigger): a player who has
+      // registered for ANY competition (ZLTAC any year OR a competition) can no
+      // longer change their alias here. Reuse this year's registration if found,
+      // else lightweight head/count checks across both tables keyed on user_id.
+      let locked = !!reg
+      if (!locked) {
+        const [{ count: zCount }, { count: cCount }] = await Promise.all([
+          supabase.from('zltac_registrations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+          supabase.from('competition_registrations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        ])
+        locked = (zCount ?? 0) > 0 || (cCount ?? 0) > 0
+      }
+      setAliasLocked(locked)
+
       setInitialLoading(false)
     }
     load()
@@ -103,17 +119,21 @@ export default function PlayerRegister() {
     }
 
     // Trigger already created the profile row — just update it with form data
+    const profileUpdate = {
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      dob: dob || null,
+      state: state || null,
+      emergency_contact_name: emergencyName.trim() || null,
+      emergency_contact_phone: emergencyPhone.trim() || null,
+    }
+    // Alias is locked once the player has registered for any competition. Omit
+    // it so this update never trips enforce_alias_lock; the existing alias is
+    // carried forward unchanged.
+    if (!aliasLocked) profileUpdate.alias = alias.trim() || null
     const { error: profErr } = await supabase
       .from('profiles')
-      .update({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        alias: alias.trim() || null,
-        dob: dob || null,
-        state: state || null,
-        emergency_contact_name: emergencyName.trim() || null,
-        emergency_contact_phone: emergencyPhone.trim() || null,
-      })
+      .update(profileUpdate)
       .eq('id', user.id)
     if (profErr) {
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
@@ -274,8 +294,13 @@ export default function PlayerRegister() {
                   value={alias}
                   onChange={e => setAlias(e.target.value)}
                   placeholder="e.g. DarkShot"
-                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
+                  disabled={aliasLocked}
+                  readOnly={aliasLocked}
+                  className={`w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors ${aliasLocked ? 'text-white/40 cursor-not-allowed' : 'text-white'}`}
                 />
+                {aliasLocked && (
+                  <p className="text-xs text-white/40 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

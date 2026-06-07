@@ -55,7 +55,7 @@ function membershipStatusText(membership) {
 }
 
 // ── Profile Card ─────────────────────────────────────────────────────────────
-function ProfileCard({ profile, userId, userEmail, membership, onUpdated }) {
+function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUpdated }) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -102,19 +102,31 @@ function ProfileCard({ profile, userId, userEmail, membership, onUpdated }) {
   async function save() {
     setSaving(true)
     setMsg(null)
-    const { error } = await supabase.from('profiles').update({
+    // Alias is omitted from the payload when locked so the save never trips the
+    // enforce_alias_lock trigger; the existing alias is carried forward
+    // unchanged. The disabled field already prevents edits, this is defence in
+    // depth.
+    const payload = {
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
-      alias: alias.trim() || null,
       dob: dob || null,
       state: state || null,
       home_arena: homeArena.trim() || null,
       phone: phone.trim() || null,
       emergency_contact_name: ecName.trim() || null,
       emergency_contact_phone: ecPhone.trim() || null,
-    }).eq('id', userId)
+    }
+    if (!aliasLocked) payload.alias = alias.trim() || null
+    const { error } = await supabase.from('profiles').update(payload).eq('id', userId)
     setSaving(false)
-    if (error) { setMsg({ type: 'error', text: error.message }); return }
+    if (error) {
+      // check_violation (23514) is the alias-lock trigger firing; surface its
+      // dash-free message rather than a raw SQL error.
+      const text = error.code === '23514'
+        ? 'Your alias is locked because you have registered for a competition. Contact the committee to change it.'
+        : error.message
+      setMsg({ type: 'error', text }); return
+    }
     setMsg({ type: 'ok', text: 'Profile updated.' })
     onUpdated()
     setTimeout(() => setEditing(false), 800)
@@ -183,7 +195,21 @@ function ProfileCard({ profile, userId, userEmail, membership, onUpdated }) {
               <Input label="First Name" value={firstName} onChange={setFirstName} />
               <Input label="Last Name" value={lastName} onChange={setLastName} />
             </div>
-            <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
+            {aliasLocked ? (
+              <div>
+                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Alias (in-game name)</label>
+                <input
+                  type="text"
+                  value={alias}
+                  disabled
+                  readOnly
+                  className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/40 cursor-not-allowed focus:outline-none"
+                />
+                <p className="text-xs text-white/40 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
+              </div>
+            ) : (
+              <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
+            )}
             <div className="grid grid-cols-2 gap-4">
               <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
               <div>
@@ -426,6 +452,7 @@ export default function PlayerDashboard() {
   const [openEvent, setOpenEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [membership, setMembership] = useState(undefined)
+  const [aliasLocked, setAliasLocked] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -437,15 +464,32 @@ export default function PlayerDashboard() {
       .from('zltac_events').select('name, year').eq('status', 'open').maybeSingle()
     setOpenEvent(ev)
 
+    let reg = null
     if (ev?.year) {
-      const { data: reg } = await supabase
+      const { data } = await supabase
         .from('zltac_registrations')
         .select('id, year, status, team_id, teams(name)')
         .eq('user_id', user.id)
         .eq('year', ev.year)
         .maybeSingle()
+      reg = data
       setRegistration(reg)
     }
+
+    // Alias lock (UX mirror of the enforce_alias_lock trigger): the player can
+    // no longer self-edit their alias once they have registered for ANY
+    // competition (ZLTAC any year OR a competition). Reuse the open-event
+    // registration if we already found one, else lightweight head/count checks
+    // across both registration tables keyed on user_id.
+    let locked = !!reg
+    if (!locked) {
+      const [{ count: zCount }, { count: cCount }] = await Promise.all([
+        supabase.from('zltac_registrations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('competition_registrations').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+      ])
+      locked = (zCount ?? 0) > 0 || (cCount ?? 0) > 0
+    }
+    setAliasLocked(locked)
 
     apiFetch('/api/profiles', {
       method: 'POST',
@@ -506,6 +550,7 @@ export default function PlayerDashboard() {
           userId={user.id}
           userEmail={user.email}
           membership={membership}
+          aliasLocked={aliasLocked}
           onUpdated={refreshProfile}
         />
 
