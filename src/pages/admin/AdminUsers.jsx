@@ -121,6 +121,10 @@ export default function AdminUsers() {
   const [draftRoles, setDraftRoles] = useState([])
   const [draftAlsaPosition, setDraftAlsaPosition] = useState('')
   const [savingRoles, setSavingRoles] = useState(false)
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [draftAlias, setDraftAlias] = useState('')
+  const [savingAlias, setSavingAlias] = useState(false)
+  const [aliasMsg, setAliasMsg] = useState(null)
   const [msg, setMsg] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [error, setError] = useState(null)
@@ -172,6 +176,9 @@ export default function AdminUsers() {
     setDraftRoles(u._roles)
     setDraftAlsaPosition(u.alsa_position ?? '')
     setEditingRoles(false)
+    setEditingAlias(false)
+    setDraftAlias(u.alias ?? '')
+    setAliasMsg(null)
     setMsg(null)
     setConfirmDelete(null)
     setLoadingDetail(true)
@@ -206,6 +213,32 @@ export default function AdminUsers() {
       setMsg({ type: 'error', text: err.message })
     } finally {
       setSavingRoles(false)
+    }
+  }
+
+  async function saveAlias(userId) {
+    const trimmed = draftAlias.trim()
+    if (trimmed.length > 30) {
+      setAliasMsg({ type: 'error', text: 'Alias must be 30 characters or fewer.' })
+      return
+    }
+    const nextAlias = trimmed || null
+    setSavingAlias(true)
+    try {
+      await apiFetch(`/api/admin/users?id=${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ alias: nextAlias }),
+      })
+      const update = u => u.id === userId ? { ...u, alias: nextAlias } : u
+      setUsers(us => us.map(update))
+      setSelected(s => s ? { ...s, alias: nextAlias } : s)
+      setDraftAlias(nextAlias ?? '')
+      setEditingAlias(false)
+      setAliasMsg({ type: 'ok', text: 'Alias updated.' })
+    } catch (err) {
+      setAliasMsg({ type: 'error', text: err.message })
+    } finally {
+      setSavingAlias(false)
     }
   }
 
@@ -343,6 +376,49 @@ export default function AdminUsers() {
                   <p className="text-sm text-white">{val}</p>
                 </div>
               ))}
+            </div>
+
+            {/* Alias (in-game name) — committee-editable identity field */}
+            <div className="bg-base border border-line rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Alias</p>
+                {!editingAlias && (
+                  <button onClick={() => { setEditingAlias(true); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
+                    className="text-[10px] text-brand/70 hover:text-brand font-semibold transition-colors">
+                    Edit alias
+                  </button>
+                )}
+              </div>
+
+              {editingAlias ? (
+                <div>
+                  <input
+                    type="text"
+                    value={draftAlias}
+                    onChange={e => setDraftAlias(e.target.value)}
+                    placeholder="e.g. DarkShot"
+                    maxLength={30}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white opacity-100 placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors mb-1.5"
+                  />
+                  <p className="text-[10px] text-white/30 mb-3">Leave blank to clear. Max 30 characters.</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => saveAlias(selected.id)} disabled={savingAlias}
+                      className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black text-xs font-bold px-4 py-2 rounded-lg transition-all">
+                      {savingAlias ? 'Saving…' : 'Save Alias'}
+                    </button>
+                    <button onClick={() => { setEditingAlias(false); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
+                      className="border border-line text-white/50 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                selected.alias
+                  ? <p className="text-sm text-brand opacity-100">"{selected.alias}"</p>
+                  : <p className="text-sm text-white/30">No alias set</p>
+              )}
+
+              {aliasMsg && <p className={`text-xs mt-3 ${aliasMsg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{aliasMsg.text}</p>}
             </div>
 
             {/* Role management */}

@@ -79,6 +79,58 @@ export default async function handler(req, res) {
           if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
         }
         update = { suspended: body.suspended }
+      } else if (Object.prototype.hasOwnProperty.call(body, 'alias')) {
+        // Committee alias edit. Normalise: trim, empty -> null. Length cap 30,
+        // no charset rules (mirrors the trim-only handling at signup; format
+        // validation is intentionally out of scope here).
+        const raw = typeof body.alias === 'string' ? body.alias.trim() : ''
+        const alias = raw || null
+        if (alias && alias.length > 30) {
+          return res.status(400).json({ error: 'Alias must be 30 characters or fewer.' })
+        }
+
+        // Authority: editing the alias of a target whose roles include
+        // 'superadmin' requires superadmin (mirrors the suspend guard). The
+        // whole-endpoint self-block above already prevents editing your own row.
+        const { data: target, error: targetErr } = await supabaseAdmin
+          .from('profiles')
+          .select('roles')
+          .eq('id', id)
+          .maybeSingle()
+        if (targetErr) return res.status(500).json({ error: targetErr.message })
+        if (!target) return res.status(404).json({ error: 'User not found' })
+        if ((target.roles ?? []).includes('superadmin')) {
+          const { error: superErr } = await verifySuperAdmin(req)
+          if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+        }
+
+        // Soft uniqueness guard — committee curation path only. There is NO DB
+        // unique constraint on alias (deliberate; the hard constraint is a
+        // separate task). Compare case-insensitively in JS to match
+        // claim_placeholder's lower() semantics exactly and sidestep ilike
+        // wildcard edge cases (% _ * in an alias). Exclude the target's own row
+        // so re-saving an unchanged alias is a no-op, not a false collision.
+        if (alias) {
+          const { data: others, error: clashErr } = await supabaseAdmin
+            .from('profiles')
+            .select('id, first_name, last_name, alias')
+            .neq('id', id)
+            .not('alias', 'is', null)
+          if (clashErr) return res.status(500).json({ error: clashErr.message })
+          const lc = alias.toLowerCase()
+          const clash = (others ?? []).find(o => (o.alias ?? '').toLowerCase() === lc)
+          if (clash) {
+            const who = [clash.first_name, clash.last_name].filter(Boolean).join(' ') || 'another member'
+            return res.status(409).json({
+              error: `Alias "${clash.alias}" is already used by ${who}. Choose a different alias.`,
+            })
+          }
+        }
+
+        // Update profiles.alias ONLY. Do NOT cascade to existing
+        // payments / zltac_registrations payment_reference values — those are
+        // frozen at insert by design (see 20260514000000_payment_tracking.sql).
+        update = { alias }
       } else {
         return res.status(400).json({ error: 'roles, suspended, or action is required' })
       }
