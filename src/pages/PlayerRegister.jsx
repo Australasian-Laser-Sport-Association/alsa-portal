@@ -136,6 +136,14 @@ export default function PlayerRegister() {
       .update(profileUpdate)
       .eq('id', user.id)
     if (profErr) {
+      // 23505 = the lower(alias) unique index: the chosen alias is taken. Stop
+      // and let the player pick another instead of silently dropping it and
+      // proceeding with the registration.
+      if (profErr.code === '23505') {
+        setSubmitting(false)
+        setError('That alias is already taken, please choose another.')
+        return
+      }
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
     }
 

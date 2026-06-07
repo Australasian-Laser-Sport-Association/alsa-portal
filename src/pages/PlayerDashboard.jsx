@@ -121,11 +121,12 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
     const { error } = await supabase.from('profiles').update(payload).eq('id', userId)
     setSaving(false)
     if (error) {
-      // check_violation (23514) is the alias-lock trigger firing; surface its
-      // dash-free message rather than a raw SQL error.
-      const text = error.code === '23514'
-        ? 'Your alias is locked because you have registered for a competition. Contact the committee to change it.'
-        : error.message
+      // Surface dash-free friendly copy rather than a raw SQL error.
+      //   23514 = the enforce_alias_lock trigger firing
+      //   23505 = the lower(alias) unique index (alias already taken)
+      let text = error.message
+      if (error.code === '23514') text = 'Your alias is locked because you have registered for a competition. Contact the committee to change it.'
+      else if (error.code === '23505') text = 'That alias is already taken, please choose another.'
       setMsg({ type: 'error', text }); return
     }
     setMsg({ type: 'ok', text: 'Profile updated.' })

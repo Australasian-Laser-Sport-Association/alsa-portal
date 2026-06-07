@@ -135,7 +135,16 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'roles, suspended, or action is required' })
       }
       const { error: patchErr } = await supabaseAdmin.from('profiles').update(update).eq('id', id)
-      if (patchErr) return res.status(500).json({ error: patchErr.message })
+      if (patchErr) {
+        // Race backstop to the alias soft-check above: the lower(alias) unique
+        // index (23505) can still fire if a concurrent write took the alias
+        // between the soft-check and this update. The soft-check returns a more
+        // specific message; this is the generic fallback for the race.
+        if (patchErr.code === '23505') {
+          return res.status(409).json({ error: 'That alias is already taken, please choose another.' })
+        }
+        return res.status(500).json({ error: patchErr.message })
+      }
       return res.json({ ok: true })
     }
 
