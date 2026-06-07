@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/dateFormat'
+import { maskStorageUrl } from '../../lib/assetUrl'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
@@ -60,7 +61,7 @@ function uploaderName(p) {
 }
 
 function publicUrl(filePath) {
-  return supabase.storage.from(BUCKET).getPublicUrl(filePath).data.publicUrl
+  return maskStorageUrl(supabase.storage.from(BUCKET).getPublicUrl(filePath).data.publicUrl)
 }
 
 // ---------------------------------------------------------------------------

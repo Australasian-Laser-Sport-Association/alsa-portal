@@ -2,6 +2,8 @@
   "devCommand": "vite",
   "regions": ["syd1"],
   "rewrites": [
+    { "source": "/files/documents/:path*", "destination": "https://atwutsywnlnzqkqudxdv.supabase.co/storage/v1/object/public/legal-documents/:path*" },
+    { "source": "/files/:path*", "destination": "https://atwutsywnlnzqkqudxdv.supabase.co/storage/v1/object/public/:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

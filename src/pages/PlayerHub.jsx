@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
 import { formatInEventTz } from '../lib/eventTimezone'
+import { maskStorageUrl } from '../lib/assetUrl'
 import Footer from '../components/Footer'
 import PlayerHubProgress from '../components/PlayerHubProgress'
 import CommitteeBadge from '../components/CommitteeBadge'
@@ -124,7 +125,7 @@ function ChecklistItem({ status, label, children }) {
 const LEGAL_BUCKET = 'legal-documents'
 function legalDocUrl(filePath) {
   if (!filePath) return null
-  return supabase.storage.from(LEGAL_BUCKET).getPublicUrl(filePath).data.publicUrl
+  return maskStorageUrl(supabase.storage.from(LEGAL_BUCKET).getPublicUrl(filePath).data.publicUrl)
 }
 const DOC_LABELS = {
   code_of_conduct: 'Code of Conduct',
