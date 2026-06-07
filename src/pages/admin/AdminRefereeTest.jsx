@@ -2,6 +2,7 @@
 import { supabase } from '../../lib/supabase'
 import { ShieldAlert, BookOpen } from 'lucide-react'
 import RulesTestRunner from '../../components/RulesTestRunner'
+import { maskStorageUrl } from '../../lib/assetUrl'
 
 const CATEGORIES = ['Rules', 'Safety', 'Equipment', 'Scoring', 'General']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
@@ -399,7 +400,7 @@ export default function AdminRefereeTest() {
                     <p className="text-xs font-bold text-white mb-2">Image</p>
                     {form.image_url && (
                       <div className="mb-2">
-                        <img src={form.image_url} alt="" className="w-full max-h-40 object-contain rounded border border-line bg-[#1a1a1a]" />
+                        <img src={maskStorageUrl(form.image_url)} alt="" className="w-full max-h-40 object-contain rounded border border-line bg-[#1a1a1a]" />
                         <button type="button" onClick={() => setForm(f => ({ ...f, image_url: null }))}
                           className="mt-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors">Remove image</button>
                       </div>
@@ -415,7 +416,7 @@ export default function AdminRefereeTest() {
                     <p className="text-xs font-bold text-white mb-2">Video</p>
                     {form.video_url && (
                       <div className="mb-2">
-                        <video src={form.video_url} controls className="w-full max-h-40 rounded border border-line bg-[#1a1a1a]" />
+                        <video src={maskStorageUrl(form.video_url)} controls className="w-full max-h-40 rounded border border-line bg-[#1a1a1a]" />
                         <button type="button" onClick={() => setForm(f => ({ ...f, video_url: null }))}
                           className="mt-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors">Remove video</button>
                       </div>

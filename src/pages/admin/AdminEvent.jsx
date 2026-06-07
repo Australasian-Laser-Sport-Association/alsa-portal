@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { arePaymentsOpen } from '../../lib/payments'
 import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
+import { maskStorageUrl } from '../../lib/assetUrl'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
 
@@ -217,7 +218,7 @@ export default function AdminEvent() {
       payments_override: ev.payments_override ?? '',
     })
     setLogoFile(null)
-    setLogoPreview(ev.logo_url ?? null)
+    setLogoPreview(maskStorageUrl(ev.logo_url ?? null))
   }
 
   function handleTabClick(i) {
@@ -736,7 +737,7 @@ export default function AdminEvent() {
             <input ref={coverRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCoverSelect} className="hidden" />
             {form.cover_photo_url ? (
               <div className="space-y-2">
-                <img src={form.cover_photo_url} alt="Cover" className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base" />
+                <img src={maskStorageUrl(form.cover_photo_url)} alt="Cover" className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base" />
                 {!isArchived && (
                   <div className="flex gap-2">
                     <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
@@ -1122,7 +1123,7 @@ export default function AdminEvent() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 {(form.photo_urls ?? []).map((url, i) => (
                   <div key={url + i} className="relative group rounded-xl overflow-hidden border border-line bg-base aspect-square">
-                    <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={maskStorageUrl(url)} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
                     {!isArchived && (
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                         <button

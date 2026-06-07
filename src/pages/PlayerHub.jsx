@@ -1649,7 +1649,7 @@ export default function PlayerHub() {
               {/* Team header */}
               <div className="p-5 flex items-center gap-4">
                 {team.logo_url ? (
-                  <img src={team.logo_url} alt={team.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
+                  <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-14 h-14 rounded-xl bg-brand/20 border border-brand/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-brand font-black text-lg">{team.name?.[0] ?? '?'}</span>

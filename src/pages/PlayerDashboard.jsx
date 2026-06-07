@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { formatDate } from '../lib/dateFormat'
 import { apiFetch } from '../lib/apiFetch.js'
+import { maskStorageUrl } from '../lib/assetUrl'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
 import CommitteeBadge from '../components/CommitteeBadge'
 import MemberBadge from '../components/MemberBadge'
@@ -151,7 +152,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
         <div className="flex items-center gap-5 mb-6">
           <div className="relative flex-shrink-0">
             {avatarUrl
-              ? <img src={avatarUrl} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-line" />
+              ? <img src={maskStorageUrl(avatarUrl)} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-line" />
               : <div className="w-16 h-16 rounded-full bg-brand/20 border-2 border-brand/30 flex items-center justify-center text-brand font-black text-xl">{initials}</div>
             }
             {editing && (

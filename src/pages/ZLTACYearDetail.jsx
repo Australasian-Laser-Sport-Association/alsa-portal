@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
+import { maskStorageUrl } from '../lib/assetUrl'
 
 const SIDE_EVENT_LABELS = {
   solos:   'Solos',
@@ -140,6 +141,8 @@ export default function ZLTACYearDetail() {
   const hasPodium = !!(teamPodium[1] || teamPodium[2] || teamPodium[3])
   const hasSideEvents = sideEventGroups.length > 0
   const hasPhotos = event.photo_urls?.length > 0
+  // Mask the gallery URLs once so the thumbnails and the lightbox stay consistent.
+  const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
 
   const dateRange = event.start_date
     ? event.end_date && event.end_date !== event.start_date
@@ -173,7 +176,7 @@ export default function ZLTACYearDetail() {
           <div className="flex items-start gap-8">
             {event.logo_url && (
               <img
-                src={event.logo_url}
+                src={maskStorageUrl(event.logo_url)}
                 alt={event.name}
                 className="w-24 h-24 md:w-32 md:h-32 object-contain rounded-2xl bg-[#191919] p-3 border border-line flex-shrink-0"
               />
@@ -303,7 +306,7 @@ export default function ZLTACYearDetail() {
           <section>
             <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-6">Photo Gallery</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {event.photo_urls.map((url, i) => (
+              {maskedPhotoUrls.map((url, i) => (
                 <button
                   key={i}
                   onClick={() => setLightbox(i)}
@@ -332,7 +335,7 @@ export default function ZLTACYearDetail() {
       {/* Lightbox */}
       {lightbox !== null && (
         <PhotoLightbox
-          urls={event.photo_urls}
+          urls={maskedPhotoUrls}
           startIndex={lightbox}
           onClose={() => setLightbox(null)}
         />

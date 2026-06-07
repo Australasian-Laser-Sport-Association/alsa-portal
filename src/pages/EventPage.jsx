@@ -10,6 +10,7 @@ import RegistrationTimeline from '../components/RegistrationTimeline'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
+import { maskStorageUrl } from '../lib/assetUrl'
 import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
 
 function initials(name = '') {
@@ -49,7 +50,7 @@ function TeamCard({ team, players }) {
             style={{ background: '#00FF41' }}
           >
             {team.logo_url
-              ? <img src={team.logo_url} alt={team.name} className="w-full h-full object-contain" />
+              ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain" />
               : initials(team.name)
             }
           </div>
@@ -574,7 +575,7 @@ export default function EventPage() {
         >
           <div className="relative text-center px-6">
             {event.logo_url
-              ? <img src={event.logo_url} alt={event.name} className="h-16 mx-auto mb-5 object-contain opacity-70" />
+              ? <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-16 mx-auto mb-5 object-contain opacity-70" />
               : <div className="text-4xl mb-4 opacity-50">🏆</div>
             }
             <span className="inline-block text-xs bg-[#2D2D2D] text-[#e5e5e5]/40 px-3 py-1 rounded-full font-bold uppercase tracking-widest mb-4">Archived</span>
@@ -647,6 +648,8 @@ export default function EventPage() {
   const myReg = user ? regs.find(r => r.user_id === user.id) : null
   const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
   const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
+  // Mask the gallery URLs once so thumbnails and the lightbox stay consistent.
+  const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
 
   return (
     <div className="bg-base text-white">
@@ -693,7 +696,7 @@ export default function EventPage() {
         )}
         <div className="relative text-center px-6">
           {event.logo_url ? (
-            <img src={event.logo_url} alt={event.name} className="h-20 mx-auto mb-6 object-contain" />
+            <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-20 mx-auto mb-6 object-contain" />
           ) : (
             <div className="text-5xl mb-4">🎯</div>
           )}
@@ -725,7 +728,7 @@ export default function EventPage() {
       {event.cover_photo_url && (
         <section className="max-w-5xl mx-auto px-6 pt-8">
           <img
-            src={event.cover_photo_url}
+            src={maskStorageUrl(event.cover_photo_url)}
             alt={event.name}
             className="w-full aspect-[4096/1716] object-cover rounded-2xl"
           />
@@ -750,7 +753,7 @@ export default function EventPage() {
       {Array.isArray(event.photo_urls) && event.photo_urls.length > 0 && (
         <section className="max-w-5xl mx-auto px-6 pb-12">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {event.photo_urls.map((url, i) => (
+            {maskedPhotoUrls.map((url, i) => (
               <button
                 key={url + i}
                 onClick={() => setLightboxUrl(url)}

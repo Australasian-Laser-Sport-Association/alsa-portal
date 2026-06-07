@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Footer from '../components/Footer'
+import { maskStorageUrl } from '../lib/assetUrl'
 
 function memberInitials(p) {
   const a = (p.first_name?.[0] ?? '').toUpperCase()
@@ -101,7 +102,7 @@ export default function MemberRegister() {
                     >
                       <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
                         {p.avatar_url
-                          ? <img src={p.avatar_url} alt={memberFullName(p)} className="w-full h-full object-cover" />
+                          ? <img src={maskStorageUrl(p.avatar_url)} alt={memberFullName(p)} className="w-full h-full object-cover" />
                           : <span className="text-emerald-400 font-bold text-sm">{memberInitials(p)}</span>
                         }
                       </div>

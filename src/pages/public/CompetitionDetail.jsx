@@ -4,6 +4,7 @@ import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
+import { maskStorageUrl } from '../../lib/assetUrl'
 
 // Public competition detail page. Anon-readable. The registration CTA gates
 // on auth: unauthenticated users are routed to /login?redirect=<this page>
@@ -318,7 +319,7 @@ export default function CompetitionDetail() {
       {comp.banner_url && (
         <section className="max-w-5xl mx-auto px-6 pt-8">
           <img
-            src={comp.banner_url}
+            src={maskStorageUrl(comp.banner_url)}
             alt={`${comp.name} banner`}
             className="w-full aspect-[4096/1716] object-cover rounded-2xl"
           />

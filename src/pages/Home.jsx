@@ -4,6 +4,7 @@ import { ArrowRight, Trophy, Users, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatInEventTz } from '../lib/eventTimezone'
 import Footer from '../components/Footer'
+import { maskStorageUrl } from '../lib/assetUrl'
 
 const CrosshairIcon = ({ className }) => (
   <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -244,7 +245,7 @@ export default function Home() {
                 <div className="flex items-start gap-6">
                   {/* Logo */}
                   <img
-                    src={activeEvent.logo_url || '/alsa-logo.png'}
+                    src={maskStorageUrl(activeEvent.logo_url) || '/alsa-logo.png'}
                     alt={activeEvent.name}
                     className="h-20 w-20 object-contain rounded-xl border border-line bg-base p-1.5 flex-shrink-0"
                   />

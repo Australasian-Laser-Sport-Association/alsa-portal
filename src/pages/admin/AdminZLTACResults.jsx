@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { maskStorageUrl } from '../../lib/assetUrl'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
@@ -1483,7 +1484,7 @@ function ExtrasTab() {
               <label className={labelClass}>Event Logo</label>
               {form.logo_url && (
                 <div className="mb-3">
-                  <img src={form.logo_url} alt="logo" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
+                  <img src={maskStorageUrl(form.logo_url)} alt="logo" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
                 </div>
               )}
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -1551,7 +1552,7 @@ function ExtrasTab() {
                 <div className="grid grid-cols-4 gap-2">
                   {form.photo_urls.map((url, i) => (
                     <div key={i} className="relative group">
-                      <img src={url} alt="" className="h-20 w-full object-cover rounded-lg bg-[#191919] border border-line" />
+                      <img src={maskStorageUrl(url)} alt="" className="h-20 w-full object-cover rounded-lg bg-[#191919] border border-line" />
                       <button
                         onClick={() => removePhoto(i)}
                         className="absolute top-1 right-1 bg-black/80 text-red-400 text-xs w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

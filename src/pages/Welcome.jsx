@@ -3,6 +3,7 @@ import { Target, ClipboardList, User, CreditCard } from 'lucide-react'
 import { useAuth } from '../lib/useAuth'
 import { useCurrentEvent } from '../hooks/useCurrentEvent'
 import { toLocalDate } from '../lib/dateFormat'
+import { maskStorageUrl } from '../lib/assetUrl'
 
 function formatDateRange(start, end) {
   if (!start && !end) return ''
@@ -90,7 +91,7 @@ export default function Welcome() {
           ) : event && event.status === 'open' ? (
             <div className="bg-brand/10 border border-brand/40 rounded-2xl p-6 flex flex-col">
               {event.logo_url && (
-                <img src={event.logo_url} alt="" style={{ height: 80 }} className="mb-4 self-start" />
+                <img src={maskStorageUrl(event.logo_url)} alt="" style={{ height: 80 }} className="mb-4 self-start" />
               )}
               <h2 className="text-2xl font-black text-white mb-2">
                 ZLTAC {event.year} is open!
