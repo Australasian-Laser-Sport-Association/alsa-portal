@@ -109,7 +109,6 @@ export default function MyEventsPill({
       ref={triggerRef}
       type="button"
       onClick={() => setOpen(v => !v)}
-      aria-haspopup="menu"
       aria-expanded={open}
       style={pillStyle(variant)}
       className={variant === 'mobile'
@@ -143,7 +142,6 @@ export default function MyEventsPill({
           <Link
             to="/player-hub"
             onClick={handleNavigate}
-            role="menuitem"
             className="block px-6 py-2 text-sm text-white hover:bg-line/40 transition-colors"
           >
             Player Hub
@@ -152,7 +150,6 @@ export default function MyEventsPill({
             <Link
               to="/captain-hub"
               onClick={handleNavigate}
-              role="menuitem"
               className="flex items-center gap-2 px-6 py-2 text-sm text-white hover:bg-line/40 transition-colors"
             >
               Team Hub
@@ -178,7 +175,6 @@ export default function MyEventsPill({
               key={r.competition.id}
               to={`/competitions/${r.competition.slug}/hub`}
               onClick={handleNavigate}
-              role="menuitem"
               className="block px-4 py-2 text-sm text-white hover:bg-line/40 transition-colors"
             >
               {r.competition.name}
@@ -196,7 +192,6 @@ export default function MyEventsPill({
         {open && (
           <div
             ref={panelRef}
-            role="menu"
             className="absolute top-full right-0 mt-1 min-w-[240px] bg-surface border border-line rounded-lg shadow-lg py-1 overflow-hidden z-50"
           >
             {panelInner}
@@ -213,7 +208,6 @@ export default function MyEventsPill({
       {open && (
         <div
           ref={panelRef}
-          role="menu"
           className="mt-1 bg-surface border border-line rounded-lg py-1 overflow-hidden"
         >
           {panelInner}

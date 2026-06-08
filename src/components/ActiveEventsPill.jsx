@@ -130,7 +130,6 @@ export default function ActiveEventsPill({ variant = 'desktop', onNavigate }) {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(v => !v)}
-        aria-haspopup="menu"
         aria-expanded={open}
         className={triggerClass}
       >
@@ -149,7 +148,6 @@ export default function ActiveEventsPill({ variant = 'desktop', onNavigate }) {
       {open && (
         <div
           ref={panelRef}
-          role="menu"
           className={
             variant === 'desktop'
               ? 'absolute top-full right-0 mt-1 min-w-[280px] bg-surface border border-line rounded-lg shadow-lg overflow-hidden z-50'
@@ -160,7 +158,6 @@ export default function ActiveEventsPill({ variant = 'desktop', onNavigate }) {
             <Link
               key={e.key}
               to={e.href}
-              role="menuitem"
               onClick={() => {
                 setOpen(false)
                 if (onNavigate) onNavigate()

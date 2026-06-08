@@ -31,3 +31,21 @@ body {
   margin: 0;
   background-color: #0F0F0F;
 }
+
+/* Visible keyboard focus indicator. Keyed on :focus-visible so mouse clicks
+   don't get rings. !important is required to beat the per-element
+   `focus:outline-none` utility (specificity (0,2,0)) used across inputs;
+   outline (not box-shadow) so the ring isn't clipped by the overflow-hidden
+   pills/galleries. Swap var(--color-brand) → #fff if green-on-green reads
+   poorly on the green EVENTS-OPEN pill. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--color-brand) !important;
+  outline-offset: 2px;
+}

@@ -97,11 +97,18 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-brand focus:text-black focus:font-bold"
+        >
+          Skip to content
+        </a>
         <ScrollToTop />
         <NavBar />
         <PinnedActiveEventBanner />
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
+        <main id="main-content">
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
             {/* Public */}
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
@@ -173,8 +180,9 @@ function App() {
             </Route>
 
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </main>
       </BrowserRouter>
     </AuthProvider>
   )
