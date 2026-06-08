@@ -1,7 +1,7 @@
 # Environment Variables
 
 **Status:** Draft
-**Last updated:** 2026-04-22
+**Last updated:** 2026-06-08
 
 ---
 
@@ -29,12 +29,18 @@ This distinction is security-relevant: a value prefixed `VITE_` will be embedded
 |---|---|---|---|
 | `VITE_SUPABASE_URL` | The Supabase project URL the frontend connects to. | Yes — this is a public URL. | Supabase dashboard → Settings → API |
 | `VITE_SUPABASE_ANON_KEY` | The anon/public API key for the Supabase project. Grants only what the `anon` and `authenticated` Postgres roles are permitted to do (see [ADR-0002](../adr/0002-rls-plus-grant-security-model.md)). | Yes — designed to be public. Security is enforced by RLS and GRANTs, not by keeping this secret. | Supabase dashboard → Settings → API |
+| `VITE_SENTRY_DSN` | The public Sentry DSN the browser uses to report errors/traces (`src/main.jsx`). Sentry initialises only when this is set; otherwise it no-ops silently. | Yes — a DSN is designed to be public (it only permits sending events, not reading them). | Sentry dashboard → Project → Settings → Client Keys (DSN) |
 
 ### Server-side (Vercel API routes only — never exposed to the browser)
 
 | Variable | Purpose | Safe to expose? | Where to get it |
 |---|---|---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | The service role key. Bypasses RLS entirely. Used only from server-side API routes for privileged operations (see [ADR-0002](../adr/0002-rls-plus-grant-security-model.md), Layer 3). | **No** — leak of this key is a full database compromise. Rotate immediately if exposed. | Supabase dashboard → Settings → API |
+| `RESEND_API_KEY` | Resend API key for transactional email. Used by `api/contact.js` (contact-form mail) and the backup cron `api/admin/event.js?resource=backup-run` (emails CSV backups). | **No** — allows sending mail from the project's Resend domain. | Resend dashboard → API Keys |
+| `CRON_SECRET` | Shared secret protecting the backup cron. Vercel auto-injects `Authorization: Bearer <secret>` on scheduled requests; the handler rejects any request that does not match (constant-time compare). | **No** — leak lets anyone trigger the backup-run endpoint. Generate a long random string. | Self-generated (e.g. `openssl rand -hex 32`); set the same value in Vercel. |
+| `SENTRY_AUTH_TOKEN` | Build-time token used by the Sentry Vite plugin (`vite.config.js`) to upload source maps during `vite build`. If unset, the upload (and the post-upload `.map` cleanup) is skipped. | **No** — grants Sentry project write access. Build-time only; not in the runtime bundle. | Sentry dashboard → Settings → Auth Tokens |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint. Read via `Redis.fromEnv()` in `api/contact.js` for contact-form rate limiting. Required (with the token below) for that endpoint. | **No** — server-side only. | Upstash dashboard → Redis database → REST API |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST auth token. Paired with `UPSTASH_REDIS_REST_URL` for rate limiting in `api/contact.js`. | **No** — grants read/write to the rate-limit store. | Upstash dashboard → Redis database → REST API |
 
 ## Adding a new variable
 

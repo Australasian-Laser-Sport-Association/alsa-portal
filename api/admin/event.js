@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import { Resend } from 'resend'
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
@@ -29,7 +29,15 @@ import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/l
 function isCronRequest(req) {
   const expected = process.env.CRON_SECRET
   if (!expected) return false
-  return req.headers.authorization === `Bearer ${expected}`
+  const header = req.headers.authorization
+  if (typeof header !== 'string' || header.length === 0) return false
+  // Constant-time comparison so a forged header can't be tuned byte-by-byte
+  // from response timing. timingSafeEqual throws on unequal buffer lengths,
+  // so bail on a length mismatch first (the length is not itself secret).
+  const provided = Buffer.from(header)
+  const wanted = Buffer.from(`Bearer ${expected}`)
+  if (provided.length !== wanted.length) return false
+  return timingSafeEqual(provided, wanted)
 }
 
 // "Day of week" + "today's date" both resolved in Australia/Sydney — the
