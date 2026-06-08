@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
 import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
@@ -662,9 +663,15 @@ export default function CaptainHub() {
 
       {/* Disband team confirmation modal */}
       {disbandOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Disband team?</p>
+        <Dialog
+          open
+          onClose={() => { setDisbandOpen(false); setDisbandError('') }}
+          variant="center"
+          size="sm"
+          closeOnBackdrop={false}
+          className="p-6"
+        >
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Disband team?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               This permanently deletes <span className="text-white font-semibold">{team?.name}</span> and removes all <span className="text-white font-semibold">{roster.length}</span> member{roster.length !== 1 ? 's' : ''} from the team.
               They will remain registered for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${event?.year ?? ''}`}</span> but will need to create or join another team. This cannot be undone. Continue?
@@ -689,8 +696,7 @@ export default function CaptainHub() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       <div className="max-w-4xl mx-auto px-6 py-10">

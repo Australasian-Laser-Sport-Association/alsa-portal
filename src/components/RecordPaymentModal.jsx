@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Dialog from './Dialog'
 import { apiFetch } from '../lib/apiFetch.js'
 import { dollars } from '../lib/pricing.js'
 import { formatDate } from '../lib/dateFormat'
@@ -224,13 +225,12 @@ export default function RecordPaymentModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto">
-      <div className="bg-surface border border-line rounded-2xl w-full max-w-lg my-auto">
+    <Dialog open onClose={onClose} variant="scroll" size="lg" closeOnBackdrop={false}>
         {/* Header */}
         <div className="p-6 border-b border-line">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-white font-bold text-lg">Record Payment or Refund</h2>
+              <Dialog.Title className="text-white font-bold text-lg">Record Payment or Refund</Dialog.Title>
               <p className="text-[#e5e5e5]/50 text-sm mt-0.5">
                 {name}{profile?.alias ? <span className="text-brand"> ({profile.alias})</span> : ''}
               </p>
@@ -472,7 +472,6 @@ export default function RecordPaymentModal({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
+import Dialog from '../../components/Dialog'
 
 const TABS = ['Roles', 'Event Settings', 'Signups']
 
@@ -971,10 +972,9 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <Dialog open onClose={onClose} variant="center" size="md" closeOnBackdrop className="p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-black text-white">Add manual signup</h2>
+          <Dialog.Title className="text-lg font-black text-white">Add manual signup</Dialog.Title>
           <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
         </div>
 
@@ -1057,8 +1057,7 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

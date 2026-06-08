@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
 import { COMMITTEE_ROLES, ROLE_ORDER, isCommittee } from '../../lib/roles'
+import Dialog from '../../components/Dialog'
 
 const ALL_ROLES = ['player', 'captain', 'zltac_committee', 'alsa_committee', 'advisor', 'superadmin']
 
@@ -347,10 +348,9 @@ export default function AdminUsers() {
 
       {/* User detail slide-in panel */}
       {selected && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-end" onClick={() => { setSelected(null); setMsg(null) }}>
-          <div className="w-full max-w-md bg-surface border-l border-line h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+        <Dialog open onClose={() => { setSelected(null); setMsg(null) }} variant="drawer" closeOnBackdrop className="p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-white">User Profile</h2>
+              <Dialog.Title className="text-lg font-black text-white">User Profile</Dialog.Title>
               <button onClick={() => { setSelected(null); setMsg(null) }} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
             </div>
 
@@ -591,8 +591,7 @@ export default function AdminUsers() {
                 )}
               </div>
             )}
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )
