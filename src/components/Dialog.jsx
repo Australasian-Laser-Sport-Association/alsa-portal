@@ -15,6 +15,14 @@ import { createContext, useContext, useEffect, useId, useRef } from 'react'
 
 const DialogTitleContext = createContext(null)
 
+// Open-dialog stack, shared across all instances, so nested dialogs cooperate:
+// only the topmost handles Escape/Tab, and the body stays scroll-locked until
+// the LAST dialog closes (counter-style — a nested dialog closing must not
+// unlock the body while its parent is still open). savedOverflow captures the
+// pre-lock body overflow once, when the first dialog opens.
+const dialogStack = []
+let savedOverflow = ''
+
 const SIZE_MAX_W = {
   sm: 'max-w-sm',
   md: 'max-w-md',
@@ -57,14 +65,23 @@ export default function Dialog({
 }) {
   const panelRef = useRef(null)
   const restoreRef = useRef(null)
+  const idRef = useRef({})
   const generatedId = useId()
   // aria-labelledby points at <Dialog.Title> (which renders this id) unless an
   // explicit labelledBy is passed; `label` takes over as aria-label instead.
   const titleId = labelledBy || `${generatedId}-title`
 
-  // Focus into the dialog on open; restore focus to the trigger on close.
+  // Open lifecycle: register on the shared stack, lock body scroll (once, when
+  // the first dialog opens), and move focus in. On close: pop the stack, unlock
+  // the body only once the last dialog closes, and restore focus to the trigger.
   useEffect(() => {
     if (!open) return
+    const id = idRef.current
+    dialogStack.push(id)
+    if (dialogStack.length === 1) {
+      savedOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
     restoreRef.current = document.activeElement
     const panel = panelRef.current
     // Don't override focus already inside the panel (e.g. a child's autoFocus fired
@@ -75,23 +92,21 @@ export default function Dialog({
       else panel.focus()
     }
     return () => {
+      const i = dialogStack.indexOf(id)
+      if (i !== -1) dialogStack.splice(i, 1)
+      if (dialogStack.length === 0) document.body.style.overflow = savedOverflow
       const el = restoreRef.current
       if (el && typeof el.focus === 'function') el.focus()
     }
-  }, [open])
-
-  // Lock background scroll while open.
-  useEffect(() => {
-    if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previous }
   }, [open])
 
   // Escape closes (always); Tab/Shift+Tab cycle stays trapped inside the panel.
   useEffect(() => {
     if (!open) return
     function onKey(e) {
+      // Only the topmost dialog reacts, so a nested dialog owns Escape/Tab while
+      // its parent stays inert underneath.
+      if (dialogStack[dialogStack.length - 1] !== idRef.current) return
       if (e.key === 'Escape') {
         e.stopPropagation()
         onClose()

@@ -134,9 +134,8 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
         )}
 
         {archiveConfirm && (
-          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-4">
-            <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-              <p className="text-white font-bold mb-2">Archive competition?</p>
+          <Dialog open onClose={() => setArchiveConfirm(false)} variant="center" size="sm" className="p-6">
+              <Dialog.Title as="p" className="text-white font-bold mb-2">Archive competition?</Dialog.Title>
               <p className="text-white text-sm mb-5 opacity-80">
                 Archive <span className="font-semibold">{initial.name}</span>? It will be hidden from the default list. Existing registrations and managers are not affected.
               </p>
@@ -158,8 +157,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
                   Cancel
                 </button>
               </div>
-            </div>
-          </div>
+          </Dialog>
         )}
     </Dialog>
   )

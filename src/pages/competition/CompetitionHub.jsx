@@ -87,10 +87,9 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-      <form onSubmit={submit} className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full">
+    <Dialog open onClose={onClose} variant="center" size="md" className="p-6">
         <div className="flex items-start justify-between gap-3 mb-4">
-          <p className="text-white font-bold text-lg">Create team</p>
+          <Dialog.Title as="p" className="text-white font-bold text-lg">Create team</Dialog.Title>
           <button type="button" onClick={onClose} aria-label="Close" className="text-white text-xl leading-none px-2">×</button>
         </div>
 
@@ -100,6 +99,7 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
           </div>
         )}
 
+        <form onSubmit={submit}>
         <div className="space-y-4">
           <div>
             <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Team name</label>
@@ -145,8 +145,8 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
             Cancel
           </button>
         </div>
-      </form>
-    </div>
+        </form>
+    </Dialog>
   )
 }
 
