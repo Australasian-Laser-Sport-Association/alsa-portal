@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
 import { maskStorageUrl } from '../../lib/assetUrl'
+import { dollars } from '../../lib/pricing.js'
 
 // Public competition detail page. Anon-readable. The registration CTA gates
 // on auth: unauthenticated users are routed to /login?redirect=<this page>
@@ -358,7 +359,7 @@ export default function CompetitionDetail() {
             <Fact label="Dates" value={formatDateRange(comp.start_date, comp.end_date)} />
             <Fact
               label="Price per player"
-              value={comp.price_per_player != null ? `$${Number(comp.price_per_player).toFixed(2)} AUD` : null}
+              value={comp.price_per_player != null ? `${dollars(comp.price_per_player)} AUD` : null}
             />
             <Fact label="Registration opens" value={comp.registration_open_at ? formatDateTime(comp.registration_open_at) : null} />
             <Fact label="Registration closes" value={comp.registration_close_at ? formatDateTime(comp.registration_close_at) : null} />

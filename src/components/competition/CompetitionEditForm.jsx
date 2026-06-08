@@ -12,6 +12,12 @@ import { maskStorageUrl } from '../../lib/assetUrl'
 // expected to perform the API call; thrown errors are surfaced inline in the
 // form's error banner.
 
+// price_per_player is stored as integer cents (matches ZLTAC fees +
+// payment_records). The price field edits dollars at the edge, mirroring
+// AdminEvent's DollarInput helpers.
+const centsToDisplay = cents => ((cents ?? 0) / 100).toFixed(2)
+const displayToCents = v => Math.round((parseFloat(v) || 0) * 100)
+
 const DESCRIPTION_MAX = 10000
 const LINK_LABEL_MAX = 80
 const LINK_URL_MAX = 2048
@@ -68,7 +74,7 @@ export default function CompetitionEditForm({
   const [endDate, setEndDate] = useState(initial?.end_date ?? '')
   const [regOpen, setRegOpen] = useState(isoToLocalInput(initial?.registration_open_at))
   const [regClose, setRegClose] = useState(isoToLocalInput(initial?.registration_close_at))
-  const [price, setPrice] = useState(initial?.price_per_player != null ? String(initial.price_per_player) : '')
+  const [price, setPrice] = useState(initial?.price_per_player != null ? centsToDisplay(initial.price_per_player) : '')
   const [bankName, setBankName] = useState(initial?.bank_account_name ?? '')
   const [bankBsb, setBankBsb] = useState(initial?.bank_bsb ?? '')
   const [bankAccount, setBankAccount] = useState(initial?.bank_account_number ?? '')
@@ -91,7 +97,7 @@ export default function CompetitionEditForm({
     setEndDate(initial?.end_date ?? '')
     setRegOpen(isoToLocalInput(initial?.registration_open_at))
     setRegClose(isoToLocalInput(initial?.registration_close_at))
-    setPrice(initial?.price_per_player != null ? String(initial.price_per_player) : '')
+    setPrice(initial?.price_per_player != null ? centsToDisplay(initial.price_per_player) : '')
     setBankName(initial?.bank_account_name ?? '')
     setBankBsb(initial?.bank_bsb ?? '')
     setBankAccount(initial?.bank_account_number ?? '')
@@ -216,7 +222,7 @@ export default function CompetitionEditForm({
         end_date: endDate,
         registration_open_at: regOpen ? new Date(regOpen).toISOString() : null,
         registration_close_at: regClose ? new Date(regClose).toISOString() : null,
-        price_per_player: price === '' ? null : Number(price),
+        price_per_player: price === '' ? null : displayToCents(price),
         bank_account_name: bankName.trim() || null,
         bank_bsb: bankBsb.trim() || null,
         bank_account_number: bankAccount.trim() || null,

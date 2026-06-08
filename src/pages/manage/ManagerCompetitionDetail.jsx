@@ -674,7 +674,7 @@ function OverviewPanel({ comp }) {
           <Field label="Registration closes" value={formatDateTime(comp.registration_close_at)} />
           <Field
             label="Price per player"
-            value={comp.price_per_player != null ? `$${Number(comp.price_per_player).toFixed(2)} AUD` : null}
+            value={comp.price_per_player != null ? `${dollars(comp.price_per_player)} AUD` : null}
           />
           <Field
             label="Payment info visible to players"
@@ -972,7 +972,7 @@ export default function ManagerCompetitionDetail() {
           <span className="opacity-30">·</span>
           <span>
             {comp.price_per_player != null
-              ? `$${Number(comp.price_per_player).toFixed(2)} AUD per player`
+              ? `${dollars(comp.price_per_player)} AUD per player`
               : 'Price not set'}
           </span>
         </div>

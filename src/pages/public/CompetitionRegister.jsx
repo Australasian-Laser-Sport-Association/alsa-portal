@@ -4,6 +4,7 @@ import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
+import { dollars } from '../../lib/pricing.js'
 
 // Authenticated registration confirmation page for a pre-nationals
 // competition. Validates the competition is open and the caller is not
@@ -165,7 +166,7 @@ export default function CompetitionRegister() {
               </p>
               {comp.price_per_player != null && (
                 <p className="text-white text-sm">
-                  <span className="opacity-60">Price:</span> ${Number(comp.price_per_player).toFixed(2)} AUD per player
+                  <span className="opacity-60">Price:</span> {dollars(comp.price_per_player)} AUD per player
                 </p>
               )}
               {comp.registration_close_at && (

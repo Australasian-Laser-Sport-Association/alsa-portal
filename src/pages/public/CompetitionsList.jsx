@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
 import { formatInEventTz } from '../../lib/eventTimezone'
+import { dollars } from '../../lib/pricing.js'
 
 // Public listing of ALSA events. No auth required.
 //   - Mirrors ZLTACLanding's hero + content layout (no shared PublicLayout
@@ -200,7 +201,7 @@ export default function CompetitionsList() {
                         title={c.name}
                         subtitle={null}
                         dateLine={formatDateRange(c.start_date, c.end_date)}
-                        priceLine={c.price_per_player != null ? `$${Number(c.price_per_player).toFixed(2)} AUD per player` : null}
+                        priceLine={c.price_per_player != null ? `${dollars(c.price_per_player)} AUD per player` : null}
                         pill={pill}
                       />
                     )
