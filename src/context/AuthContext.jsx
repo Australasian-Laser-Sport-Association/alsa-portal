@@ -19,7 +19,18 @@ export function AuthProvider({ children }) {
   async function fetchProfile(userId, { force = false } = {}) {
     if (!force && fetchedForUserId.current === userId) return
     fetchedForUserId.current = userId
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    // Explicit column list (not select('*')) so privileged/audit columns
+    // (suspended, alsa_position, is_placeholder, placeholder_email,
+    // created_by_admin_id, alsa_member_id, updated_at) and the new `email`
+    // mirror don't ride along in the client context. email in particular is
+    // omitted deliberately — the user's own email is read from the auth session
+    // (useAuth().user.email), not from the profile row. This is exactly the set
+    // consumed off the context `profile` across all useAuth() consumers.
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, alias, dob, phone, state, home_arena, emergency_contact_name, emergency_contact_phone, avatar_url, roles, created_at')
+      .eq('id', userId)
+      .single()
     if (error) {
       // A transient load failure must not collapse to a null profile — that
       // would flicker a committee member down to a plain player. Keep the

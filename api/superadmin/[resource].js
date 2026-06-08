@@ -484,34 +484,25 @@ async function handleCompetitionManagers(req, res, user) {
     // fetch it separately and merge — same pattern other admin routes use.
     const { data: rows, error } = await supabaseAdmin
       .from('competition_managers')
-      .select('user_id, granted_at, granted_by, profiles:user_id(alias, first_name, last_name)')
+      .select('user_id, granted_at, granted_by, profiles:user_id(alias, first_name, last_name, email)')
       .eq('competition_id', competitionId)
       .order('granted_at', { ascending: true })
     if (error) return res.status(500).json({ error: error.message })
 
     // SECURITY NOTE: response includes email per manager. Caller (superadmin grant UI) needs it to disambiguate users. Do not surface this endpoint to non-superadmin contexts.
-    // Pull emails for the granted users from auth.users via the admin API.
-    // Cheap because manager grants per competition are a tiny set. Fetched in
-    // parallel (matches handleCompetitionRegistrations); map preserves order.
-    const out = await Promise.all((rows ?? []).map(async r => {
-      let email = null
-      try {
-        const { data: au } = await supabaseAdmin.auth.admin.getUserById(r.user_id)
-        email = au?.user?.email ?? null
-      } catch {
-        // Placeholder profiles have no auth.users row — leave email null.
-      }
-      return {
-        user_id: r.user_id,
-        granted_at: r.granted_at,
-        granted_by: r.granted_by,
-        profile: {
-          alias: r.profiles?.alias ?? null,
-          first_name: r.profiles?.first_name ?? null,
-          last_name: r.profiles?.last_name ?? null,
-          email,
-        },
-      }
+    // email comes from the profiles.email mirror (synced from auth.users), so a
+    // placeholder profile (no auth row) surfaces email: null — same as the old
+    // getUserById-catch-returns-null behaviour, without the per-row fan-out.
+    const out = (rows ?? []).map(r => ({
+      user_id: r.user_id,
+      granted_at: r.granted_at,
+      granted_by: r.granted_by,
+      profile: {
+        alias: r.profiles?.alias ?? null,
+        first_name: r.profiles?.first_name ?? null,
+        last_name: r.profiles?.last_name ?? null,
+        email: r.profiles?.email ?? null,
+      },
     }))
     return res.json(out)
   }
@@ -955,7 +946,7 @@ async function handleCompetitionRegistrations(req, res) {
     .select(`
       id, user_id, competition_id, payment_status, amount_paid, amount_owing,
       payment_reference, registered_at, team_id,
-      profile:profiles!user_id(alias, first_name, last_name)
+      profile:profiles!user_id(alias, first_name, last_name, email)
     `)
     .eq('competition_id', competitionId)
   if (regErr) return res.status(500).json({ error: regErr.message })
@@ -991,19 +982,9 @@ async function handleCompetitionRegistrations(req, res) {
     }
   }
 
-  // Emails via auth.admin.getUserById in parallel. Placeholder profiles
-  // (no auth.users row) surface as null. Fan-out is bounded by the
-  // registration count, which is small for typical pre-nats.
-  const emailMap = new Map()
-  await Promise.all(userIds.map(async uid => {
-    try {
-      const { data } = await supabaseAdmin.auth.admin.getUserById(uid)
-      if (data?.user?.email) emailMap.set(uid, data.user.email)
-    } catch {
-      // No auth row — leave email null.
-    }
-  }))
-
+  // email comes from the profiles.email mirror (synced from auth.users) via the
+  // embed above; placeholder profiles (no auth row) surface email: null — same
+  // as the old per-row getUserById-catch-returns-null behaviour.
   const out = rows.map(r => {
     const team = r.team_id ? (teamMap.get(r.team_id) ?? null) : null
     const roles = roleMap.get(`${r.team_id}::${r.user_id}`) ?? []
@@ -1020,7 +1001,7 @@ async function handleCompetitionRegistrations(req, res) {
         alias: r.profile?.alias ?? null,
         first_name: r.profile?.first_name ?? null,
         last_name: r.profile?.last_name ?? null,
-        email: emailMap.get(r.user_id) ?? null,
+        email: r.profile?.email ?? null,
       },
       team: team
         ? {

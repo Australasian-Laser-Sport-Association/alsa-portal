@@ -240,7 +240,7 @@ async function fetchEnrichedSignups({ signupId = null, year = null } = {}) {
   const years   = [...new Set(signups.map(s => s.year).filter(v => v != null))]
 
   const [{ data: profiles }, { data: teams }, { data: events }] = await Promise.all([
-    userIds.length ? supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, phone').in('id', userIds) : Promise.resolve({ data: [] }),
+    userIds.length ? supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, phone, email').in('id', userIds) : Promise.resolve({ data: [] }),
     teamIds.length ? supabaseAdmin.from('teams').select('id, name').in('id', teamIds) : Promise.resolve({ data: [] }),
     years.length ? supabaseAdmin.from('zltac_events').select('year, name').in('year', years) : Promise.resolve({ data: [] }),
   ])
@@ -249,12 +249,9 @@ async function fetchEnrichedSignups({ signupId = null, year = null } = {}) {
   const teamMap = Object.fromEntries((teams ?? []).map(t => [t.id, t.name]))
   const eventMap = Object.fromEntries((events ?? []).map(e => [e.year, e.name]))
 
-  const emailMap = {}
-  await Promise.all(userIds.map(async uid => {
-    const { data } = await supabaseAdmin.auth.admin.getUserById(uid)
-    if (data?.user?.email) emailMap[uid] = data.user.email
-  }))
-
+  // email comes from the profiles.email mirror (synced from auth.users), so a
+  // placeholder profile (no auth row) surfaces email: null — same as the old
+  // getUserById fan-out, without the per-row Auth Admin calls.
   const enriched = signups.map(s => {
     const p = profMap[s.user_id] ?? {}
     return {
@@ -266,7 +263,7 @@ async function fetchEnrichedSignups({ signupId = null, year = null } = {}) {
       full_name: [p.first_name, p.last_name].filter(Boolean).join(' ') || null,
       alias: p.alias ?? null,
       phone: p.phone ?? null,
-      email: emailMap[s.user_id] ?? null,
+      email: p.email ?? null,
       team_name: s.team_id ? (teamMap[s.team_id] ?? null) : null,
       event_year: s.year,
       event_name: s.year != null ? (eventMap[s.year] ?? `ZLTAC ${s.year}`) : null,
