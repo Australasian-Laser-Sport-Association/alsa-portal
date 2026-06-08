@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef, useId } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
@@ -18,6 +18,7 @@ export default function PlayerRegister() {
   // prefill runs once the context profile is resolved.
   const { user, loading: authLoading, profile, profileLoading } = useAuth()
   const navigate = useNavigate()
+  const uid = useId()
 
   const [initialLoading, setInitialLoading] = useState(true)
   const [event, setEvent] = useState(null)
@@ -274,8 +275,9 @@ export default function PlayerRegister() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">First Name *</label>
+                  <label htmlFor={`${uid}-first-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">First Name *</label>
                   <input
+                    id={`${uid}-first-name`}
                     type="text"
                     value={firstName}
                     onChange={e => setFirstName(e.target.value)}
@@ -283,8 +285,9 @@ export default function PlayerRegister() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Last Name *</label>
+                  <label htmlFor={`${uid}-last-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Last Name *</label>
                   <input
+                    id={`${uid}-last-name`}
                     type="text"
                     value={lastName}
                     onChange={e => setLastName(e.target.value)}
@@ -294,10 +297,11 @@ export default function PlayerRegister() {
               </div>
 
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1">
+                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1">
                   Alias <span className="text-brand normal-case font-normal">— your in-game name</span>
                 </label>
                 <input
+                  id={`${uid}-alias`}
                   type="text"
                   value={alias}
                   onChange={e => setAlias(e.target.value)}
@@ -313,8 +317,9 @@ export default function PlayerRegister() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Date of Birth *</label>
+                  <label htmlFor={`${uid}-dob`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Date of Birth *</label>
                   <input
+                    id={`${uid}-dob`}
                     type="date"
                     value={dob}
                     onChange={e => setDob(e.target.value)}
@@ -322,8 +327,9 @@ export default function PlayerRegister() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
                   <select
+                    id={`${uid}-state`}
                     value={state}
                     onChange={e => setState(e.target.value)}
                     className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand transition-colors"
@@ -341,8 +347,9 @@ export default function PlayerRegister() {
             <p className="text-brand text-xs font-bold uppercase tracking-wider mb-4">Emergency Contact <span className="text-[#e5e5e5]/30 font-normal normal-case">(optional)</span></p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Name</label>
+                <label htmlFor={`${uid}-ec-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Name</label>
                 <input
+                  id={`${uid}-ec-name`}
                   type="text"
                   value={emergencyName}
                   onChange={e => setEmergencyName(e.target.value)}
@@ -351,8 +358,9 @@ export default function PlayerRegister() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Phone</label>
+                <label htmlFor={`${uid}-ec-phone`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Phone</label>
                 <input
+                  id={`${uid}-ec-phone`}
                   type="tel"
                   value={emergencyPhone}
                   onChange={e => setEmergencyPhone(e.target.value)}

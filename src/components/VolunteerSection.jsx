@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
@@ -32,6 +32,7 @@ function StatusBadge({ status }) {
 }
 
 export default function VolunteerSection({ registrationId = null, eventId, mode = 'hub', teamId = null, onChange, bare = false }) {
+  const uid = useId()
   const [loading, setLoading] = useState(true)
   const [roles, setRoles] = useState([]) // all roles (active + inactive), sorted
   const [caveat, setCaveat] = useState(DEFAULT_CAVEAT)
@@ -332,10 +333,11 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-1.5">
+            <label htmlFor={`${uid}-notes`} className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-1.5">
               Notes <span className="text-[#e5e5e5]/25 normal-case font-normal">(optional)</span>
             </label>
             <textarea
+              id={`${uid}-notes`}
               rows={3}
               value={notes}
               maxLength={MAX_NOTES}

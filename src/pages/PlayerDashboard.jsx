@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useState, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
@@ -30,10 +30,12 @@ function Field({ label, value, green }) {
 }
 
 function Input({ label, type = 'text', value, onChange, placeholder }) {
+  const id = useId()
   return (
     <div>
-      <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+      <label htmlFor={id} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -57,6 +59,7 @@ function membershipStatusText(membership) {
 
 // ── Profile Card ─────────────────────────────────────────────────────────────
 function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUpdated }) {
+  const uid = useId()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -199,8 +202,9 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
             </div>
             {aliasLocked ? (
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Alias (in-game name)</label>
+                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Alias (in-game name)</label>
                 <input
+                  id={`${uid}-alias`}
                   type="text"
                   value={alias}
                   disabled
@@ -215,8 +219,8 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
             <div className="grid grid-cols-2 gap-4">
               <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
-                <select value={state} onChange={e => setState(e.target.value)} className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors">
+                <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                <select id={`${uid}-state`} value={state} onChange={e => setState(e.target.value)} className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors">
                   <option value="">Select…</option>
                   {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>

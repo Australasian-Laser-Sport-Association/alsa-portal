@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useId } from 'react'
 import { supabase } from '../../lib/supabase.js'
 import { maskStorageUrl } from '../../lib/assetUrl'
 
@@ -60,6 +60,7 @@ export default function CompetitionEditForm({
   onCancel,
 }) {
   const isEdit = mode === 'edit'
+  const uid = useId()
 
   const [name, setName] = useState(initial?.name ?? '')
   const [abbreviation, setAbbreviation] = useState(initial?.abbreviation ?? '')
@@ -250,8 +251,9 @@ export default function CompetitionEditForm({
       )}
 
       <div>
-        <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
+        <label htmlFor={`${uid}-name`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
         <input
+          id={`${uid}-name`}
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
@@ -264,8 +266,9 @@ export default function CompetitionEditForm({
       </div>
 
       <div>
-        <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Abbreviation</label>
+        <label htmlFor={`${uid}-abbreviation`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Abbreviation</label>
         <input
+          id={`${uid}-abbreviation`}
           type="text"
           value={abbreviation}
           onChange={e => setAbbreviation(e.target.value.toUpperCase())}
@@ -298,8 +301,9 @@ export default function CompetitionEditForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Start date</label>
+          <label htmlFor={`${uid}-start-date`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Start date</label>
           <input
+            id={`${uid}-start-date`}
             type="date"
             value={startDate}
             onChange={e => setStartDate(e.target.value)}
@@ -307,8 +311,9 @@ export default function CompetitionEditForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">End date</label>
+          <label htmlFor={`${uid}-end-date`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">End date</label>
           <input
+            id={`${uid}-end-date`}
             type="date"
             value={endDate}
             onChange={e => setEndDate(e.target.value)}
@@ -319,8 +324,9 @@ export default function CompetitionEditForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration opens</label>
+          <label htmlFor={`${uid}-reg-opens`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration opens</label>
           <input
+            id={`${uid}-reg-opens`}
             type="datetime-local"
             value={regOpen}
             onChange={e => setRegOpen(e.target.value)}
@@ -328,8 +334,9 @@ export default function CompetitionEditForm({
           />
         </div>
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration closes</label>
+          <label htmlFor={`${uid}-reg-closes`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Registration closes</label>
           <input
+            id={`${uid}-reg-closes`}
             type="datetime-local"
             value={regClose}
             onChange={e => setRegClose(e.target.value)}
@@ -339,8 +346,9 @@ export default function CompetitionEditForm({
       </div>
 
       <div>
-        <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Price per player (AUD)</label>
+        <label htmlFor={`${uid}-price`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Price per player (AUD)</label>
         <input
+          id={`${uid}-price`}
           type="number"
           step="0.01"
           min="0"
@@ -357,8 +365,9 @@ export default function CompetitionEditForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account name</label>
+            <label htmlFor={`${uid}-bank-name`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account name</label>
             <input
+              id={`${uid}-bank-name`}
               type="text"
               value={bankName}
               onChange={e => setBankName(e.target.value)}
@@ -366,8 +375,9 @@ export default function CompetitionEditForm({
             />
           </div>
           <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">BSB</label>
+            <label htmlFor={`${uid}-bank-bsb`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">BSB</label>
             <input
+              id={`${uid}-bank-bsb`}
               type="text"
               value={bankBsb}
               onChange={e => setBankBsb(e.target.value)}
@@ -378,8 +388,9 @@ export default function CompetitionEditForm({
         </div>
 
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account number</label>
+          <label htmlFor={`${uid}-bank-account`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Account number</label>
           <input
+            id={`${uid}-bank-account`}
             type="text"
             value={bankAccount}
             onChange={e => setBankAccount(e.target.value)}
@@ -465,8 +476,9 @@ export default function CompetitionEditForm({
       )}
 
       <div>
-        <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Description</label>
+        <label htmlFor={`${uid}-description`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Description</label>
         <textarea
+          id={`${uid}-description`}
           value={description}
           onChange={e => setDescription(e.target.value)}
           rows={6}

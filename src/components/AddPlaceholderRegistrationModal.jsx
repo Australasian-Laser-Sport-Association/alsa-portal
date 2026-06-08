@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useId } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
 import Dialog from './Dialog'
 
@@ -30,6 +30,7 @@ export default function AddPlaceholderRegistrationModal({
   onClose,
   onCreated,         // (result: { registration, profile, payment_reference }) => void
 }) {
+  const uid = useId()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [alias, setAlias] = useState('')
@@ -149,36 +150,36 @@ export default function AddPlaceholderRegistrationModal({
             <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Player details</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>First name *</label>
-                <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="First name" />
+                <label htmlFor={`${uid}-first-name`} className={labelCls}>First name *</label>
+                <input id={`${uid}-first-name`} type="text" value={firstName} onChange={e => setFirstName(e.target.value)} className={inputCls} placeholder="First name" />
               </div>
               <div>
-                <label className={labelCls}>Last name</label>
-                <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Last name" />
+                <label htmlFor={`${uid}-last-name`} className={labelCls}>Last name</label>
+                <input id={`${uid}-last-name`} type="text" value={lastName} onChange={e => setLastName(e.target.value)} className={inputCls} placeholder="Last name" />
               </div>
               <div>
-                <label className={labelCls}>Alias *</label>
-                <input type="text" value={alias} onChange={e => setAlias(e.target.value)} className={inputCls} placeholder="In game name" />
+                <label htmlFor={`${uid}-alias`} className={labelCls}>Alias *</label>
+                <input id={`${uid}-alias`} type="text" value={alias} onChange={e => setAlias(e.target.value)} className={inputCls} placeholder="In game name" />
               </div>
               <div>
-                <label className={labelCls}>State</label>
-                <select value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
+                <label htmlFor={`${uid}-state`} className={labelCls}>State</label>
+                <select id={`${uid}-state`} value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
                   <option value="">Select</option>
                   {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Date of birth</label>
-                <input type="date" value={dob} onChange={e => setDob(e.target.value)} className={inputCls} />
+                <label htmlFor={`${uid}-dob`} className={labelCls}>Date of birth</label>
+                <input id={`${uid}-dob`} type="date" value={dob} onChange={e => setDob(e.target.value)} className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Phone</label>
-                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="04XX XXX XXX" />
+                <label htmlFor={`${uid}-phone`} className={labelCls}>Phone</label>
+                <input id={`${uid}-phone`} type="tel" value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="04XX XXX XXX" />
               </div>
             </div>
             <div className="mt-3">
-              <label className={labelCls}>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="player@example.com" />
+              <label htmlFor={`${uid}-email`} className={labelCls}>Email</label>
+              <input id={`${uid}-email`} type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="player@example.com" />
               <p className="text-[10px] text-[#e5e5e5]/35 mt-1">Optional. Recommended so this player can claim their registration if they sign up later.</p>
             </div>
           </div>
@@ -190,12 +191,12 @@ export default function AddPlaceholderRegistrationModal({
             <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Emergency contact <span className="text-[#e5e5e5]/30 font-normal normal-case">(optional)</span></p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Name</label>
-                <input type="text" value={ecName} onChange={e => setEcName(e.target.value)} className={inputCls} placeholder="Full name" />
+                <label htmlFor={`${uid}-ec-name`} className={labelCls}>Name</label>
+                <input id={`${uid}-ec-name`} type="text" value={ecName} onChange={e => setEcName(e.target.value)} className={inputCls} placeholder="Full name" />
               </div>
               <div>
-                <label className={labelCls}>Phone</label>
-                <input type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="04XX XXX XXX" />
+                <label htmlFor={`${uid}-ec-phone`} className={labelCls}>Phone</label>
+                <input id={`${uid}-ec-phone`} type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="04XX XXX XXX" />
               </div>
             </div>
           </div>
@@ -221,8 +222,8 @@ export default function AddPlaceholderRegistrationModal({
             )}
 
             <div className="mt-4">
-              <label className={labelCls}>Team</label>
-              <select value={teamId} onChange={e => setTeamId(e.target.value)} className={inputCls}>
+              <label htmlFor={`${uid}-team`} className={labelCls}>Team</label>
+              <select id={`${uid}-team`} value={teamId} onChange={e => setTeamId(e.target.value)} className={inputCls}>
                 <option value="">No team (side events only)</option>
                 {(teams ?? []).map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
@@ -231,8 +232,8 @@ export default function AddPlaceholderRegistrationModal({
             </div>
 
             <div className="mt-4">
-              <label className={labelCls}>Doubles partner</label>
-              <select value={doublesPartnerId} onChange={e => pickDoubles(e.target.value)} className={inputCls}>
+              <label htmlFor={`${uid}-doubles`} className={labelCls}>Doubles partner</label>
+              <select id={`${uid}-doubles`} value={doublesPartnerId} onChange={e => pickDoubles(e.target.value)} className={inputCls}>
                 <option value="">No doubles partner</option>
                 {partnerOptions.map(p => (
                   <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
@@ -262,8 +263,8 @@ export default function AddPlaceholderRegistrationModal({
             </div>
 
             <div className="mt-4 w-40">
-              <label className={labelCls}>Dinner guests</label>
-              <input type="number" min={0} value={dinnerGuests} onChange={e => setDinnerGuests(e.target.value)} className={inputCls} />
+              <label htmlFor={`${uid}-dinner-guests`} className={labelCls}>Dinner guests</label>
+              <input id={`${uid}-dinner-guests`} type="number" min={0} value={dinnerGuests} onChange={e => setDinnerGuests(e.target.value)} className={inputCls} />
             </div>
           </div>
         </div>

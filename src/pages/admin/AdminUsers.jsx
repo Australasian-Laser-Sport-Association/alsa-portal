@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback, memo, useId } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
@@ -108,6 +108,7 @@ const UserRow = memo(function UserRow({ u, onView }) {
 export default function AdminUsers() {
   const { userRoles: adminRoles = [] } = useOutletContext()
   const isSuperAdmin = adminRoles.includes('superadmin')
+  const uid = useId()
 
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -464,13 +465,14 @@ export default function AdminUsers() {
 
                   {/* ALSA position — only meaningful when alsa_committee is selected */}
                   <div className="mb-4 pt-3 border-t border-line">
-                    <label className="block text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1.5">
+                    <label htmlFor={`${uid}-alsa-position`} className="block text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1.5">
                       ALSA Position
                       {!draftRoles.includes('alsa_committee') && (
                         <span className="ml-1 text-[#e5e5e5]/30 normal-case font-normal">(requires ALSA Committee role)</span>
                       )}
                     </label>
                     <input
+                      id={`${uid}-alsa-position`}
                       type="text"
                       value={draftAlsaPosition}
                       onChange={e => setDraftAlsaPosition(e.target.value)}

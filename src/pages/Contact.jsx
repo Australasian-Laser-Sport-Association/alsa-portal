@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+﻿import { useState, useId } from 'react'
 import Footer from '../components/Footer'
 
 const SUBJECTS = [
@@ -13,6 +13,7 @@ export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '', website: '' })
   const [status, setStatus] = useState('idle') // 'idle' | 'loading' | 'success' | 'error'
   const [errorMsg, setErrorMsg] = useState(null)
+  const uid = useId()
 
   const inputClass = 'w-full bg-base text-white rounded-xl px-4 py-3 border border-line focus:outline-none focus:border-brand text-sm transition-colors placeholder:text-[#e5e5e5]/20'
 
@@ -90,8 +91,9 @@ export default function Contact() {
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Name</label>
+                    <label htmlFor={`${uid}-name`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Name</label>
                     <input
+                      id={`${uid}-name`}
                       type="text"
                       value={form.name}
                       onChange={set('name')}
@@ -101,8 +103,9 @@ export default function Contact() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Email</label>
+                    <label htmlFor={`${uid}-email`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Email</label>
                     <input
+                      id={`${uid}-email`}
                       type="email"
                       value={form.email}
                       onChange={set('email')}
@@ -113,8 +116,9 @@ export default function Contact() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Subject</label>
+                  <label htmlFor={`${uid}-subject`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Subject</label>
                   <select
+                    id={`${uid}-subject`}
                     value={form.subject}
                     onChange={set('subject')}
                     required
@@ -125,8 +129,9 @@ export default function Contact() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Message</label>
+                  <label htmlFor={`${uid}-message`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Message</label>
                   <textarea
+                    id={`${uid}-message`}
                     value={form.message}
                     onChange={set('message')}
                     placeholder="Tell us what you'd like to discuss..."

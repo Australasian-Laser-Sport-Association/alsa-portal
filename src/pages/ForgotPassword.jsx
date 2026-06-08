@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -7,6 +7,7 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const uid = useId()
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -44,8 +45,9 @@ export default function ForgotPassword() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e5e5] mb-1">Email</label>
+              <label htmlFor={`${uid}-email`} className="block text-sm text-[#e5e5e5] mb-1">Email</label>
               <input
+                id={`${uid}-email`}
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}

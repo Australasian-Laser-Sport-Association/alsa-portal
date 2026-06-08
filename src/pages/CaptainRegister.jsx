@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect, useId } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
@@ -14,6 +14,7 @@ export default function CaptainRegister() {
   const { year } = useParams()
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const uid = useId()
 
   const [step, setStep] = useState(1) // 1 = form, 2 = success
   const [submittedTeam, setSubmittedTeam] = useState(null)
@@ -274,8 +275,9 @@ export default function CaptainRegister() {
 
           {/* Team name */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team Name *</label>
+            <label htmlFor={`${uid}-team-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team Name *</label>
             <input
+              id={`${uid}-team-name`}
               type="text"
               value={teamName}
               onChange={e => setTeamName(e.target.value)}
@@ -286,8 +288,9 @@ export default function CaptainRegister() {
 
           {/* State */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home State / Territory *</label>
+            <label htmlFor={`${uid}-home-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home State / Territory *</label>
             <select
+              id={`${uid}-home-state`}
               value={teamState}
               onChange={e => setTeamState(e.target.value)}
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand transition-colors"
@@ -299,8 +302,9 @@ export default function CaptainRegister() {
 
           {/* Home venue */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home Venue / Arena</label>
+            <label htmlFor={`${uid}-home-venue`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home Venue / Arena</label>
             <input
+              id={`${uid}-home-venue`}
               type="text"
               value={homeVenue}
               onChange={e => setHomeVenue(e.target.value)}

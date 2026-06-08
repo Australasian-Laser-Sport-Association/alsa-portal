@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -11,6 +11,7 @@ export default function Register() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [submittedEmail, setSubmittedEmail] = useState(null)
+  const uid = useId()
 
   const [form, setForm] = useState({
     firstName: '',
@@ -88,46 +89,46 @@ export default function Register() {
               {/* Name */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelClass}>First Name</label>
-                  <input type="text" value={form.firstName} onChange={set('firstName')} placeholder="Alex" required className={inputClass} />
+                  <label htmlFor={`${uid}-first-name`} className={labelClass}>First Name</label>
+                  <input id={`${uid}-first-name`} type="text" value={form.firstName} onChange={set('firstName')} placeholder="Alex" required className={inputClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>Last Name</label>
-                  <input type="text" value={form.lastName} onChange={set('lastName')} placeholder="Smith" required className={inputClass} />
+                  <label htmlFor={`${uid}-last-name`} className={labelClass}>Last Name</label>
+                  <input id={`${uid}-last-name`} type="text" value={form.lastName} onChange={set('lastName')} placeholder="Smith" required className={inputClass} />
                 </div>
               </div>
 
               {/* Alias */}
               <div>
-                <label className={labelClass}>Alias <span className="text-[#e5e5e5]/40 font-normal">(your in-game name — e.g. "DarkShot", "Viper")</span></label>
-                <input type="text" value={form.alias} onChange={set('alias')} placeholder="DarkShot" className={inputClass} />
+                <label htmlFor={`${uid}-alias`} className={labelClass}>Alias <span className="text-[#e5e5e5]/40 font-normal">(your in-game name — e.g. "DarkShot", "Viper")</span></label>
+                <input id={`${uid}-alias`} type="text" value={form.alias} onChange={set('alias')} placeholder="DarkShot" className={inputClass} />
               </div>
 
               {/* Auth */}
               <div>
-                <label className={labelClass}>Email</label>
-                <input type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required className={inputClass} />
+                <label htmlFor={`${uid}-email`} className={labelClass}>Email</label>
+                <input id={`${uid}-email`} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" required className={inputClass} />
               </div>
               <div>
-                <label className={labelClass}>Password</label>
-                <input type="password" value={form.password} onChange={set('password')} placeholder="Min. 10 characters" minLength={10} required className={inputClass} />
+                <label htmlFor={`${uid}-password`} className={labelClass}>Password</label>
+                <input id={`${uid}-password`} type="password" value={form.password} onChange={set('password')} placeholder="Min. 10 characters" minLength={10} required className={inputClass} />
               </div>
 
               {/* Contact */}
               <div>
-                <label className={labelClass}>Phone</label>
-                <input type="tel" value={form.phone} onChange={set('phone')} placeholder="+61 400 000 000" className={inputClass} />
+                <label htmlFor={`${uid}-phone`} className={labelClass}>Phone</label>
+                <input id={`${uid}-phone`} type="tel" value={form.phone} onChange={set('phone')} placeholder="+61 400 000 000" className={inputClass} />
               </div>
 
               {/* Personal */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelClass}>Date of Birth</label>
-                  <input type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} className={inputClass + ' [color-scheme:dark]'} />
+                  <label htmlFor={`${uid}-dob`} className={labelClass}>Date of Birth</label>
+                  <input id={`${uid}-dob`} type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} className={inputClass + ' [color-scheme:dark]'} />
                 </div>
                 <div>
-                  <label className={labelClass}>State / Territory</label>
-                  <select value={form.state} onChange={set('state')} required className={inputClass}>
+                  <label htmlFor={`${uid}-state`} className={labelClass}>State / Territory</label>
+                  <select id={`${uid}-state`} value={form.state} onChange={set('state')} required className={inputClass}>
                     <option value="">Select state</option>
                     {AU_NZ_STATES.map(s => <option key={s}>{s}</option>)}
                   </select>
@@ -135,8 +136,8 @@ export default function Register() {
               </div>
 
               <div>
-                <label className={labelClass}>Home Arena</label>
-                <input type="text" value={form.homeArena} onChange={set('homeArena')} placeholder="e.g. Zone Laser Force Sydney" className={inputClass} />
+                <label htmlFor={`${uid}-home-arena`} className={labelClass}>Home Arena</label>
+                <input id={`${uid}-home-arena`} type="text" value={form.homeArena} onChange={set('homeArena')} placeholder="e.g. Zone Laser Force Sydney" className={inputClass} />
               </div>
 
               {error && (

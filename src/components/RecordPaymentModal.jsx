@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import Dialog from './Dialog'
 import { apiFetch } from '../lib/apiFetch.js'
 import { dollars } from '../lib/pricing.js'
@@ -44,6 +44,7 @@ export default function RecordPaymentModal({
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const uid = useId()
 
   // Pre-nats parents store dollars; the panel converts and passes
   // amountOwingCents so this internal cents-based math stays unchanged.
@@ -272,8 +273,9 @@ export default function RecordPaymentModal({
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 mb-1">Amount (AUD) *</label>
+              <label htmlFor={`${uid}-amount`} className="block text-xs text-[#e5e5e5]/50 mb-1">Amount (AUD) *</label>
               <input
+                id={`${uid}-amount`}
                 type="number" min="0.01" step="0.01" required
                 value={newForm.amount}
                 onChange={e => { setNewForm(f => ({ ...f, amount: e.target.value })); setConfirmingRefund(false) }}
@@ -282,8 +284,9 @@ export default function RecordPaymentModal({
               />
             </div>
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 mb-1">Date</label>
+              <label htmlFor={`${uid}-date`} className="block text-xs text-[#e5e5e5]/50 mb-1">Date</label>
               <input
+                id={`${uid}-date`}
                 type="date"
                 value={newForm.datePaid}
                 onChange={e => setNewForm(f => ({ ...f, datePaid: e.target.value }))}
@@ -292,8 +295,9 @@ export default function RecordPaymentModal({
             </div>
           </div>
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 mb-1">Bank Reference</label>
+            <label htmlFor={`${uid}-bank-ref`} className="block text-xs text-[#e5e5e5]/50 mb-1">Bank Reference</label>
             <input
+              id={`${uid}-bank-ref`}
               type="text"
               value={newForm.bankRef}
               onChange={e => setNewForm(f => ({ ...f, bankRef: e.target.value }))}
@@ -302,8 +306,9 @@ export default function RecordPaymentModal({
             />
           </div>
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 mb-1">Notes</label>
+            <label htmlFor={`${uid}-notes`} className="block text-xs text-[#e5e5e5]/50 mb-1">Notes</label>
             <textarea
+              id={`${uid}-notes`}
               rows={2}
               value={newForm.notes}
               onChange={e => setNewForm(f => ({ ...f, notes: e.target.value }))}
@@ -315,10 +320,11 @@ export default function RecordPaymentModal({
               for refund submissions; ignored for payments. */}
           {refundMode && (
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 mb-1">
+              <label htmlFor={`${uid}-refund-reason`} className="block text-xs text-[#e5e5e5]/50 mb-1">
                 Refund reason *
               </label>
               <input
+                id={`${uid}-refund-reason`}
                 type="text"
                 value={newForm.reason}
                 onChange={e => { setNewForm(f => ({ ...f, reason: e.target.value })); setConfirmingRefund(false) }}

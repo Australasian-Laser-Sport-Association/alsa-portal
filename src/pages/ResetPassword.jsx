@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useId } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -25,6 +25,7 @@ export default function ResetPassword() {
   const [confirmPw, setConfirmPw] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const uid = useId()
 
   useEffect(() => {
     // Subscribe first — covers the case where the event fires after mount.
@@ -98,8 +99,9 @@ export default function ResetPassword() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e5e5] mb-1">New password</label>
+              <label htmlFor={`${uid}-new-password`} className="block text-sm text-[#e5e5e5] mb-1">New password</label>
               <input
+                id={`${uid}-new-password`}
                 type="password"
                 value={newPw}
                 onChange={e => setNewPw(e.target.value)}
@@ -110,8 +112,9 @@ export default function ResetPassword() {
               />
             </div>
             <div>
-              <label className="block text-sm text-[#e5e5e5] mb-1">Confirm new password</label>
+              <label htmlFor={`${uid}-confirm-password`} className="block text-sm text-[#e5e5e5] mb-1">Confirm new password</label>
               <input
+                id={`${uid}-confirm-password`}
                 type="password"
                 value={confirmPw}
                 onChange={e => setConfirmPw(e.target.value)}

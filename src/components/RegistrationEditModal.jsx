@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useId } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
 import { dollars } from '../lib/pricing.js'
 import Dialog from './Dialog'
@@ -88,6 +88,7 @@ export default function RegistrationEditModal({
   onClose,
   onSaved,             // (summary: { amountOwing, amountPaid, balance }) => void
 }) {
+  const uid = useId()
   // Player identity (alias/state live on profiles; emergency contact on the reg)
   const [alias, setAlias] = useState(profile?.alias ?? '')
   const [stateVal, setStateVal] = useState(profile?.state ?? '')
@@ -254,23 +255,23 @@ export default function RegistrationEditModal({
             <SectionHeader>Player identity</SectionHeader>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Alias</label>
-                <input type="text" value={alias} onChange={e => setAlias(e.target.value)} className={inputCls} placeholder="—" />
+                <label htmlFor={`${uid}-alias`} className={labelCls}>Alias</label>
+                <input id={`${uid}-alias`} type="text" value={alias} onChange={e => setAlias(e.target.value)} className={inputCls} placeholder="—" />
               </div>
               <div>
-                <label className={labelCls}>State</label>
-                <select value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
+                <label htmlFor={`${uid}-state`} className={labelCls}>State</label>
+                <select id={`${uid}-state`} value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
                   <option value="">—</option>
                   {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Emergency contact name</label>
-                <input type="text" value={ecName} onChange={e => setEcName(e.target.value)} className={inputCls} placeholder="—" />
+                <label htmlFor={`${uid}-ec-name`} className={labelCls}>Emergency contact name</label>
+                <input id={`${uid}-ec-name`} type="text" value={ecName} onChange={e => setEcName(e.target.value)} className={inputCls} placeholder="—" />
               </div>
               <div>
-                <label className={labelCls}>Emergency contact phone</label>
-                <input type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="—" />
+                <label htmlFor={`${uid}-ec-phone`} className={labelCls}>Emergency contact phone</label>
+                <input id={`${uid}-ec-phone`} type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="—" />
               </div>
             </div>
             <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Alias and state are saved to the player's profile.</p>
@@ -304,8 +305,8 @@ export default function RegistrationEditModal({
 
             {/* Team */}
             <div className="mt-4">
-              <label className={labelCls}>Team</label>
-              <select value={teamId} onChange={e => setTeamId(e.target.value)} className={inputCls}>
+              <label htmlFor={`${uid}-team`} className={labelCls}>Team</label>
+              <select id={`${uid}-team`} value={teamId} onChange={e => setTeamId(e.target.value)} className={inputCls}>
                 <option value="">No team (side events only)</option>
                 {(teams ?? []).map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
@@ -315,8 +316,8 @@ export default function RegistrationEditModal({
 
             {/* Doubles partner */}
             <div className="mt-4">
-              <label className={labelCls}>Doubles partner</label>
-              <select value={doublesPartnerId} onChange={e => setDoublesPartnerId(e.target.value)} className={inputCls}>
+              <label htmlFor={`${uid}-doubles`} className={labelCls}>Doubles partner</label>
+              <select id={`${uid}-doubles`} value={doublesPartnerId} onChange={e => setDoublesPartnerId(e.target.value)} className={inputCls}>
                 <option value="">No doubles partner</option>
                 {partnerOptions.map(p => (
                   <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
@@ -350,14 +351,14 @@ export default function RegistrationEditModal({
             {/* Dinner guests + status */}
             <div className="grid grid-cols-2 gap-3 mt-4">
               <div>
-                <label className={labelCls}>Dinner guests</label>
-                <input type="number" min={0} value={dinnerGuests}
+                <label htmlFor={`${uid}-dinner-guests`} className={labelCls}>Dinner guests</label>
+                <input id={`${uid}-dinner-guests`} type="number" min={0} value={dinnerGuests}
                   onChange={e => setDinnerGuests(e.target.value)} className={inputCls} />
                 <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Affects amount owing — recomputed on save.</p>
               </div>
               <div>
-                <label className={labelCls}>Status</label>
-                <select value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
+                <label htmlFor={`${uid}-status`} className={labelCls}>Status</label>
+                <select id={`${uid}-status`} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
                   <option value="cancelled">Cancelled</option>

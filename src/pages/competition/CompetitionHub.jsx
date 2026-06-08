@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useId } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
 import Dialog from '../../components/Dialog'
@@ -63,6 +63,7 @@ function Field({ label, value }) {
 
 // ── Team create modal ───────────────────────────────────────────────────────
 function CreateTeamModal({ competitionId, onClose, onCreated }) {
+  const uid = useId()
   const [name, setName] = useState('')
   const [colour, setColour] = useState(TEAM_COLOURS[0])
   const [submitting, setSubmitting] = useState(false)
@@ -102,8 +103,9 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
         <form onSubmit={submit}>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Team name</label>
+            <label htmlFor={`${uid}-team-name`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Team name</label>
             <input
+              id={`${uid}-team-name`}
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -153,6 +155,7 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
 
 // ── Captain team edit card ──────────────────────────────────────────────────
 function CaptainTeamCard({ team, onChanged }) {
+  const uid = useId()
   const [name, setName] = useState(team.name)
   const [colour, setColour] = useState(team.colour ?? TEAM_COLOURS[0])
   const [saving, setSaving] = useState(false)
@@ -222,8 +225,9 @@ function CaptainTeamCard({ team, onChanged }) {
           />
           <div className="flex-1 space-y-3">
             <div>
-              <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
+              <label htmlFor={`${uid}-team-name`} className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Name</label>
               <input
+                id={`${uid}-team-name`}
                 type="text"
                 value={name}
                 onChange={e => setName(e.target.value)}
