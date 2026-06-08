@@ -87,12 +87,11 @@ export function AuthProvider({ children }) {
 
   const userRoles = profile?.roles ?? ['player']
   const isAdmin = isCommittee(profile)
-  const isCaptain = userRoles.includes('captain')
   function hasRole(role) { return userRoles.includes(role) }
   function refreshProfile() { if (user) fetchProfile(user.id, { force: true }) }
 
   return (
-    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, isCaptain, hasRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, hasRole, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

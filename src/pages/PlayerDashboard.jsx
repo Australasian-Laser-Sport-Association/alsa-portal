@@ -453,12 +453,13 @@ export default function PlayerDashboard() {
   // Profile is read from AuthContext (already holds the full select('*') row)
   // rather than re-queried on mount. refreshProfile() re-reads it after a
   // profile edit (see ProfileCard onUpdated) so post-write freshness is kept.
-  const { user, userRoles, profile, refreshProfile, profileLoading } = useAuth()
+  const { user, profile, refreshProfile, profileLoading } = useAuth()
   const [loading, setLoading] = useState(true)
   const [openEvent, setOpenEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [membership, setMembership] = useState(undefined)
   const [aliasLocked, setAliasLocked] = useState(false)
+  const [ownsTeam, setOwnsTeam] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -497,6 +498,18 @@ export default function PlayerDashboard() {
     }
     setAliasLocked(locked)
 
+    // Team Hub eligibility — captain status is team OWNERSHIP, not a role.
+    // Mirrors NavBar: own a ZLTAC team as captain OR manager (event_id IS NOT
+    // NULL scopes to ZLTAC; pre-nats has its own hub surface).
+    const { data: ownTeam } = await supabase
+      .from('teams')
+      .select('id')
+      .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
+      .not('event_id', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    setOwnsTeam(!!ownTeam)
+
     apiFetch('/api/profiles', {
       method: 'POST',
       body: JSON.stringify({ ids: [user.id] }),
@@ -522,7 +535,7 @@ export default function PlayerDashboard() {
   const alsaId = `ALSA #${user.id.split('-')[0].toUpperCase()}`
 
   const showPlayerHub = !!registration
-  const showTeamHub   = userRoles.includes('captain') || isCommittee(profile)
+  const showTeamHub   = ownsTeam || isCommittee(profile)
   const showAdminHub  = isCommittee(profile)
   const showAnyHub    = showPlayerHub || showTeamHub || showAdminHub
 
