@@ -8,6 +8,7 @@ import { formatDate } from '../lib/dateFormat'
 import { formatInEventTz } from '../lib/eventTimezone'
 import { maskStorageUrl } from '../lib/assetUrl'
 import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
 import PlayerHubProgress from '../components/PlayerHubProgress'
 import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
@@ -1208,9 +1209,8 @@ export default function PlayerHub() {
 
       {/* Cancel registration confirmation modal */}
       {cancelOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Cancel your registration?</p>
+        <Dialog open onClose={() => { setCancelOpen(false); setCancelError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Cancel your registration?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               This permanently deletes your registration for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${eventYear}`}</span>.
               You'll lose your team membership and side event selections. Continue?
@@ -1242,8 +1242,7 @@ export default function PlayerHub() {
                 Keep registration
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       <div className="max-w-3xl mx-auto px-6 py-10">

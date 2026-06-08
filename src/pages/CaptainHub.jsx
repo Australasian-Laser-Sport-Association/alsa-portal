@@ -649,16 +649,14 @@ export default function CaptainHub() {
 
       {/* Remove confirmation modal */}
       {removeConfirm && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Remove player?</p>
+        <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove player?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">Remove <span className="text-white font-semibold">{removeConfirm.alias}</span> from your team? Their registration will remain but they'll be unassigned.</p>
             <div className="flex gap-3">
               <button onClick={confirmRemove} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove</button>
               <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Disband team confirmation modal */}

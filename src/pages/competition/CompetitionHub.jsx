@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Footer from '../../components/Footer'
+import Dialog from '../../components/Dialog'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
@@ -307,9 +308,8 @@ function CaptainTeamCard({ team, onChanged }) {
       </div>
 
       {disbandOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Disband team?</p>
+        <Dialog open onClose={() => { setDisbandOpen(false); setDisbandError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Disband team?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               Disband <span className="font-semibold">{team.name}</span>? Your registration stays, but you will no longer be on a team for this competition.
             </p>
@@ -336,8 +336,7 @@ function CaptainTeamCard({ team, onChanged }) {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )
@@ -414,9 +413,8 @@ function MemberTeamCard({ team, userId, onChanged }) {
       )}
 
       {leaveOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Leave team?</p>
+        <Dialog open onClose={() => { setLeaveOpen(false); setLeaveError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Leave team?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               Leave <span className="font-semibold">{team.name}</span>? You will need to be re-invited to rejoin.
             </p>
@@ -443,8 +441,7 @@ function MemberTeamCard({ team, userId, onChanged }) {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )
@@ -495,9 +492,8 @@ function CaptainRosterRow({ member, isCaptainRow, fullName, canRemove, onChanged
       </div>
 
       {confirmOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Remove {member.profile?.alias ?? 'member'}?</p>
+        <Dialog open onClose={() => { setConfirmOpen(false); setError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove {member.profile?.alias ?? 'member'}?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               They will need to be re-invited if they want to rejoin the team.
             </p>
@@ -524,8 +520,7 @@ function CaptainRosterRow({ member, isCaptainRow, fullName, canRemove, onChanged
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </>
   )
@@ -780,9 +775,8 @@ function InviteeAlerts({ invites, onChanged }) {
       </div>
 
       {declineConfirm && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Decline invitation?</p>
+        <Dialog open onClose={() => setDeclineConfirm(null)} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Decline invitation?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               Decline the invitation to <span className="font-semibold">{declineConfirm.team?.name ?? 'this team'}</span>?
               The captain will need to invite you again if you change your mind.
@@ -805,8 +799,7 @@ function InviteeAlerts({ invites, onChanged }) {
                 Keep
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )
@@ -1132,9 +1125,8 @@ export default function CompetitionHub() {
 
       {/* Cancel registration confirm */}
       {cancelOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Cancel registration?</p>
+        <Dialog open onClose={() => { setCancelOpen(false); setCancelError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Cancel registration?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               Cancel your registration for <span className="font-semibold">{comp.name}</span>?
               {team && isCaptain && otherAcceptedCount > 0
@@ -1164,8 +1156,7 @@ export default function CompetitionHub() {
                 Keep
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {createTeamOpen && (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
+import Dialog from './Dialog'
 
 // Shared volunteer opt-in section, used in both the registration form
 // (mode="registration", registrationId=null → parent submits via onChange after
@@ -371,9 +372,8 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
 
       {/* Opt-out confirmation (only when no approved roles) */}
       {confirmOptOut && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Remove your volunteer application?</p>
+        <Dialog open onClose={() => { setConfirmOptOut(false); setError('') }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove your volunteer application?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">This will remove your volunteer application. Continue?</p>
             {error && <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4"><p className="text-red-400 text-xs">{error}</p></div>}
             <div className="flex gap-3">
@@ -386,8 +386,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
                 Keep volunteering
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </>
   )

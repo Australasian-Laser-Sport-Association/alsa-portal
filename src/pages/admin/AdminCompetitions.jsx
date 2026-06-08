@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { isSuperAdmin } from '../../lib/roles'
+import Dialog from '../../components/Dialog'
 import { relativeTime } from '../../lib/relativeTime.js'
 import CompetitionEditForm from '../../components/competition/CompetitionEditForm.jsx'
 import { toLocalDate } from '../../lib/dateFormat'
@@ -260,9 +261,8 @@ function ManagerPanel({ competition, onCountChanged }) {
     <div className="bg-base border-t border-line px-6 py-5">
       {/* Revoke confirm dialog */}
       {revokeConfirm && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Revoke manager access?</p>
+        <Dialog open onClose={() => { setRevokeConfirm(null); setRevokeError(null) }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Revoke manager access?</Dialog.Title>
             <p className="text-white text-sm mb-5 opacity-80">
               Revoke manager access for <span className="font-semibold">{revokeConfirm.alias || 'this user'}</span>? They will lose the ability to manage this competition.
             </p>
@@ -285,8 +285,7 @@ function ManagerPanel({ competition, onCountChanged }) {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Current managers */}

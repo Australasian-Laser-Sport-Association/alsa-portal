@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
+import Dialog from '../../components/Dialog'
 
 function isCurrent(period) {
   if (!period) return false
@@ -508,9 +509,8 @@ export default function AdminMembers() {
 
       {/* Remove confirm */}
       {removeConfirm && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={() => setRemoveConfirm(null)}>
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-            <p className="text-white font-bold mb-2">Remove membership?</p>
+        <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" closeOnBackdrop className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove membership?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               Remove <span className="text-white font-semibold">{memberName(removeConfirm.profiles ?? {})}</span>'s
               {' '}membership for <span className="text-white font-semibold">{removeConfirm.period?.label}</span>?
@@ -525,8 +525,7 @@ export default function AdminMembers() {
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

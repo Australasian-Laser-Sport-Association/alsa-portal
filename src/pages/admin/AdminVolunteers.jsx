@@ -351,11 +351,10 @@ function RolesTab() {
 
       {/* Delete / soft-delete modal */}
       {deleteModal && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
+        <Dialog open onClose={() => setDeleteModal(null)} variant="center" size="sm" className="p-6">
             {deleteModal.soft ? (
               <>
-                <p className="text-white font-bold mb-2">Can't delete {deleteModal.role.name}</p>
+                <Dialog.Title as="p" className="text-white font-bold mb-2">Can't delete {deleteModal.role.name}</Dialog.Title>
                 <p className="text-[#e5e5e5]/50 text-sm mb-5">
                   {deleteModal.error || 'This role is in use by existing signups.'}{' '}
                   Deactivate it instead to hide it from the sign-up form while keeping the existing records intact.
@@ -374,7 +373,7 @@ function RolesTab() {
               </>
             ) : (
               <>
-                <p className="text-white font-bold mb-2">Delete {deleteModal.role.name}?</p>
+                <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {deleteModal.role.name}?</Dialog.Title>
                 <p className="text-[#e5e5e5]/50 text-sm mb-5">
                   This permanently removes the <span className="text-white font-mono">{deleteModal.role.code}</span> role. If it's referenced by any signup you'll be offered to deactivate it instead.
                 </p>
@@ -391,8 +390,7 @@ function RolesTab() {
                 </div>
               </>
             )}
-          </div>
-        </div>
+        </Dialog>
       )}
     </div>
   )

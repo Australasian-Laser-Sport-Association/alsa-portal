@@ -6,6 +6,7 @@ import { formatDate } from '../../lib/dateFormat'
 import { dollars } from '../../lib/pricing.js'
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 import RegistrationEditModal from '../../components/RegistrationEditModal.jsx'
+import Dialog from '../../components/Dialog'
 import AddPlaceholderRegistrationModal from '../../components/AddPlaceholderRegistrationModal.jsx'
 import { eventPhase } from '../../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../lib/eventSettings'
@@ -685,9 +686,8 @@ export default function AdminRegistrations() {
 
       {/* Remove confirmation modal */}
       {removeConfirm && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Remove player?</p>
+        <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove player?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               Remove <span className="text-white font-semibold">{removeConfirm.name}</span>
               {removeConfirm.alias ? <span className="text-brand"> ({removeConfirm.alias})</span> : ''} from ZLTAC {eventYear}?
@@ -697,8 +697,7 @@ export default function AdminRegistrations() {
               <button onClick={removePlayer} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove player</button>
               <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Record Payment modal */}

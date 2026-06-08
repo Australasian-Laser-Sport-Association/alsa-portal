@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { arePaymentsOpen } from '../../lib/payments'
 import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
 import { maskStorageUrl } from '../../lib/assetUrl'
+import Dialog from '../../components/Dialog'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
 
@@ -522,9 +523,8 @@ export default function AdminEvent() {
     <div>
       {/* Archive confirmation modal */}
       {archiveOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Archive {event?.name} {event?.year}?</p>
+        <Dialog open onClose={() => { setArchiveOpen(false); setArchiveError('') }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Archive {event?.name} {event?.year}?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">
               This event will be moved to history and no longer appear on the current event page.
               All registrations and team data are preserved for the record.
@@ -550,15 +550,13 @@ export default function AdminEvent() {
                 Keep editing
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Delete confirmation modal */}
       {deleteOpen && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
-            <p className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</p>
+        <Dialog open onClose={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mb-3">
               This permanently deletes the event and ALL associated data:{' '}
               <span className="text-white font-semibold">
@@ -597,8 +595,7 @@ export default function AdminEvent() {
                 Keep event
               </button>
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Header */}
