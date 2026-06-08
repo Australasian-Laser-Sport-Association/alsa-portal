@@ -20,7 +20,7 @@ function InducteeCard({ realName, alias, inductionYear, contribution }) {
       </div>
 
       <div className="mt-3 ml-5">
-        <p className="text-white/40 text-xs uppercase tracking-widest font-bold">Alias</p>
+        <p className="text-white/60 text-xs uppercase tracking-widest font-bold">Alias</p>
         <p className="text-amber-400 text-2xl font-bold leading-tight mt-0.5">{alias}</p>
       </div>
 
@@ -33,11 +33,11 @@ function InducteeCard({ realName, alias, inductionYear, contribution }) {
             {contribution}
           </p>
         ) : (
-          <p className="text-white/30 text-xs italic">Citation to be added</p>
+          <p className="text-white/60 text-xs italic">Citation to be added</p>
         )}
       </div>
 
-      <p className="text-white/50 text-xs mt-4 text-right">
+      <p className="text-white/60 text-xs mt-4 text-right">
         Inducted {inductionYear}
       </p>
     </div>

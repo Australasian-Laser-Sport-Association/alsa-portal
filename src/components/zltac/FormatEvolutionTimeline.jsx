@@ -383,7 +383,7 @@ export default function FormatEvolutionTimeline({ events = [] }) {
                   </span>
                 ))}
               </div>
-              <p className="text-[#e5e5e5]/35 text-[10px] uppercase tracking-wider">
+              <p className="text-[#e5e5e5]/60 text-[10px] uppercase tracking-wider">
                 {divisionCount} format{divisionCount !== 1 ? 's' : ''}
               </p>
             </div>
@@ -413,7 +413,7 @@ export default function FormatEvolutionTimeline({ events = [] }) {
                   </span>
                 ))}
               </div>
-              <p className="text-[#e5e5e5]/35 text-[10px] uppercase tracking-wider mt-1">
+              <p className="text-[#e5e5e5]/60 text-[10px] uppercase tracking-wider mt-1">
                 {divisionCount} format{divisionCount !== 1 ? 's' : ''}
               </p>
             </div>
@@ -428,7 +428,7 @@ export default function FormatEvolutionTimeline({ events = [] }) {
         </p>
         <div className="md:max-w-4xl md:mx-auto">
           <TournamentGrowthSparkline events={events} />
-          <p className="text-[#e5e5e5]/40 text-[10px] uppercase tracking-widest text-center mt-3">
+          <p className="text-[#e5e5e5]/60 text-[10px] uppercase tracking-widest text-center mt-3">
             Team count per year, 1999-2026
           </p>
         </div>

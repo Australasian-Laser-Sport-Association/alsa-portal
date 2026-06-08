@@ -97,7 +97,7 @@ export default function About() {
           />
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-4">The Association</p>
           <h1 className="text-5xl md:text-6xl font-black text-white">About ALSA</h1>
-          <p className="text-[#e5e5e5]/50 mt-4 text-lg max-w-lg mx-auto">
+          <p className="text-[#e5e5e5]/60 mt-4 text-lg max-w-lg mx-auto">
             The governing body for competitive laser sport in Australasia
           </p>
         </div>
@@ -166,7 +166,7 @@ export default function About() {
               <div key={title} className="bg-base border border-line rounded-xl p-6">
                 <Icon className="w-12 h-12 md:w-14 md:h-14 text-brand mb-4 mx-auto" />
                 <p className="text-brand font-black text-lg mb-2">{title}</p>
-                <p className="text-[#e5e5e5]/50 text-sm">{desc}</p>
+                <p className="text-[#e5e5e5]/60 text-sm">{desc}</p>
               </div>
             ))}
           </div>
@@ -225,11 +225,11 @@ export default function About() {
         <div className="max-w-7xl mx-auto px-6 py-24">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Leadership</p>
           <h2 className="text-3xl font-black text-white text-center mb-3">The Committee</h2>
-          <p className="text-[#e5e5e5]/40 text-sm text-center mb-14 max-w-md mx-auto">
+          <p className="text-[#e5e5e5]/60 text-sm text-center mb-14 max-w-md mx-auto">
             ALSA is led by a volunteer committee of players and organisers committed to the growth of the sport.
           </p>
           {committee.length === 0 ? (
-            <p className="text-center text-[#e5e5e5]/30 text-sm">Committee details will appear here soon.</p>
+            <p className="text-center text-[#e5e5e5]/60 text-sm">Committee details will appear here soon.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {committee.map(p => (

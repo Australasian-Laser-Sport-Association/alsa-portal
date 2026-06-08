@@ -232,27 +232,27 @@ export default function RecordPaymentModal({
           <div className="flex items-start justify-between gap-4">
             <div>
               <Dialog.Title className="text-white font-bold text-lg">Record Payment or Refund</Dialog.Title>
-              <p className="text-[#e5e5e5]/50 text-sm mt-0.5">
+              <p className="text-[#e5e5e5]/60 text-sm mt-0.5">
                 {name}{profile?.alias ? <span className="text-brand"> ({profile.alias})</span> : ''}
               </p>
             </div>
-            <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
+            <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-2xl leading-none">×</button>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-4">
             <div className="col-span-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">Payment Reference</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">Payment Reference</p>
               <p className="text-white font-mono text-sm mt-0.5 select-all">{registration.payment_reference ?? '—'}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">Amount Owing</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">Amount Owing</p>
               <p className="text-white font-bold text-sm mt-0.5">{dollars(amountOwing)}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">Paid to Date</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">Paid to Date</p>
               <p className="text-white font-bold text-sm mt-0.5">{dollars(amountPaid)}</p>
             </div>
             <div className="col-span-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">Balance Remaining</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">Balance Remaining</p>
               <p className={`font-black text-sm mt-0.5 ${balance > 0 ? 'text-red-400' : balance < 0 ? 'text-blue-400' : 'text-green-400'}`}>
                 {dollars(balance)}
               </p>
@@ -268,12 +268,12 @@ export default function RecordPaymentModal({
 
         {/* New payment / refund form */}
         <form onSubmit={clickRecordPayment} className="p-6 border-b border-line space-y-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">
             New Payment or Refund
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor={`${uid}-amount`} className="block text-xs text-[#e5e5e5]/50 mb-1">Amount (AUD) *</label>
+              <label htmlFor={`${uid}-amount`} className="block text-xs text-[#e5e5e5]/60 mb-1">Amount (AUD) *</label>
               <input
                 id={`${uid}-amount`}
                 type="number" min="0.01" step="0.01" required
@@ -284,7 +284,7 @@ export default function RecordPaymentModal({
               />
             </div>
             <div>
-              <label htmlFor={`${uid}-date`} className="block text-xs text-[#e5e5e5]/50 mb-1">Date</label>
+              <label htmlFor={`${uid}-date`} className="block text-xs text-[#e5e5e5]/60 mb-1">Date</label>
               <input
                 id={`${uid}-date`}
                 type="date"
@@ -295,7 +295,7 @@ export default function RecordPaymentModal({
             </div>
           </div>
           <div>
-            <label htmlFor={`${uid}-bank-ref`} className="block text-xs text-[#e5e5e5]/50 mb-1">Bank Reference</label>
+            <label htmlFor={`${uid}-bank-ref`} className="block text-xs text-[#e5e5e5]/60 mb-1">Bank Reference</label>
             <input
               id={`${uid}-bank-ref`}
               type="text"
@@ -306,7 +306,7 @@ export default function RecordPaymentModal({
             />
           </div>
           <div>
-            <label htmlFor={`${uid}-notes`} className="block text-xs text-[#e5e5e5]/50 mb-1">Notes</label>
+            <label htmlFor={`${uid}-notes`} className="block text-xs text-[#e5e5e5]/60 mb-1">Notes</label>
             <textarea
               id={`${uid}-notes`}
               rows={2}
@@ -320,7 +320,7 @@ export default function RecordPaymentModal({
               for refund submissions; ignored for payments. */}
           {refundMode && (
             <div>
-              <label htmlFor={`${uid}-refund-reason`} className="block text-xs text-[#e5e5e5]/50 mb-1">
+              <label htmlFor={`${uid}-refund-reason`} className="block text-xs text-[#e5e5e5]/60 mb-1">
                 Refund reason *
               </label>
               <input
@@ -379,11 +379,11 @@ export default function RecordPaymentModal({
 
         {/* History */}
         <div className="p-6">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-3">
             Payment History ({records.length})
           </p>
           {records.length === 0 ? (
-            <p className="text-[#e5e5e5]/30 text-sm">No payments recorded yet.</p>
+            <p className="text-[#e5e5e5]/60 text-sm">No payments recorded yet.</p>
           ) : (
             <div className="space-y-2">
               {records.map(rec => (
@@ -432,16 +432,16 @@ export default function RecordPaymentModal({
                       <div className="min-w-0">
                         <p className={`font-bold text-sm ${rec.amount < 0 ? 'text-blue-400' : 'text-white'}`}>
                           {dollars(rec.amount)}
-                          <span className="text-[#e5e5e5]/40 font-normal text-xs ml-2">{formatDate(rec.recorded_at, 'short')}</span>
+                          <span className="text-[#e5e5e5]/60 font-normal text-xs ml-2">{formatDate(rec.recorded_at, 'short')}</span>
                         </p>
-                        {rec.bank_reference && <p className="text-[#e5e5e5]/50 text-xs mt-1">Ref: {rec.bank_reference}</p>}
-                        {rec.notes && <p className="text-[#e5e5e5]/50 text-xs mt-0.5">{rec.notes}</p>}
-                        <p className="text-[#e5e5e5]/30 text-[10px] mt-1">Recorded by {resolveRecorder(rec.recorded_by)}</p>
+                        {rec.bank_reference && <p className="text-[#e5e5e5]/60 text-xs mt-1">Ref: {rec.bank_reference}</p>}
+                        {rec.notes && <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{rec.notes}</p>}
+                        <p className="text-[#e5e5e5]/60 text-[10px] mt-1">Recorded by {resolveRecorder(rec.recorded_by)}</p>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
                         <button
                           onClick={() => startEdit(rec)}
-                          className="text-xs text-[#e5e5e5]/50 hover:text-white hover:bg-line font-semibold px-2 py-1 rounded transition-colors"
+                          className="text-xs text-[#e5e5e5]/60 hover:text-white hover:bg-line font-semibold px-2 py-1 rounded transition-colors"
                         >
                           Edit
                         </button>

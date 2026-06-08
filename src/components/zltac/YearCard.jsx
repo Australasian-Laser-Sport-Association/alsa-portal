@@ -32,7 +32,7 @@ function RankChip({ rank, glow }) {
 function FormatList({ name, entries, highlightFirstRank }) {
   return (
     <div>
-      <p className="text-[#e5e5e5]/35 text-[10px] uppercase tracking-widest font-bold mb-2">{name}</p>
+      <p className="text-[#e5e5e5]/60 text-[10px] uppercase tracking-widest font-bold mb-2">{name}</p>
       <div className="space-y-1.5">
         {entries.map((e) => {
           const emphasize = highlightFirstRank && e.rank === 1
@@ -44,7 +44,7 @@ function FormatList({ name, entries, highlightFirstRank }) {
                   {e.name}
                 </span>
                 {e.subtitle && (
-                  <span className="text-[#e5e5e5]/40 text-xs ml-2">({e.subtitle})</span>
+                  <span className="text-[#e5e5e5]/60 text-xs ml-2">({e.subtitle})</span>
                 )}
               </div>
             </div>
@@ -66,7 +66,7 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
             Cancelled
           </span>
         </div>
-        <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">{event.notes}</p>
+        <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">{event.notes}</p>
       </div>
     )
   }
@@ -85,7 +85,7 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
           </span>
         </div>
         <p className="text-white text-sm font-bold mb-1">{event.location}</p>
-        <p className="text-[#e5e5e5]/50 text-xs">{event.state}, Australia</p>
+        <p className="text-[#e5e5e5]/60 text-xs">{event.state}, Australia</p>
       </div>
     )
   }
@@ -115,17 +115,17 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
       >
         <div className="flex items-baseline justify-between gap-3 mb-2">
           <span className="text-brand font-black text-2xl tabular-nums">{event.year}</span>
-          <span className="text-[#e5e5e5]/30 text-xs">{totalFormats} format{totalFormats !== 1 ? 's' : ''}</span>
+          <span className="text-[#e5e5e5]/60 text-xs">{totalFormats} format{totalFormats !== 1 ? 's' : ''}</span>
         </div>
         {event.historicNote && (
           <p className="text-white/60 italic text-sm mb-1">{event.historicNote}</p>
         )}
         <p className="text-white text-sm font-bold leading-tight mb-1 truncate">{locationLabel}</p>
         {teamWinner && (
-          <p className="text-[#e5e5e5]/55 text-xs leading-snug">
-            <span className="text-[#e5e5e5]/55" aria-hidden>🏆 </span>
+          <p className="text-[#e5e5e5]/60 text-xs leading-snug">
+            <span className="text-[#e5e5e5]/60" aria-hidden>🏆 </span>
             <span className="font-semibold text-[#e5e5e5]/80">{teamWinner.name}</span>
-            {teamWinner.subtitle && <span className="text-[#e5e5e5]/45">, {teamWinner.subtitle}</span>}
+            {teamWinner.subtitle && <span className="text-[#e5e5e5]/60">, {teamWinner.subtitle}</span>}
           </p>
         )}
         <div className="flex items-center gap-2 mt-3 text-[10px] font-bold uppercase tracking-wider text-brand/80">
@@ -160,7 +160,7 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
           {sideFormatKeys.length > 0 && (
             <>
               <div className="flex items-center gap-3 mt-6 mb-3">
-                <p className="text-[#e5e5e5]/40 text-[10px] uppercase tracking-widest font-bold">Side Events</p>
+                <p className="text-[#e5e5e5]/60 text-[10px] uppercase tracking-widest font-bold">Side Events</p>
                 <div className="flex-1 h-px bg-line" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -177,7 +177,7 @@ export default function YearCard({ event, expanded, onToggle, matchesSearch }) {
 
           {event.notes && (
             <div className="mt-5 pt-4 border-t border-line">
-              <p className="text-[#e5e5e5]/55 text-xs leading-relaxed italic">{event.notes}</p>
+              <p className="text-[#e5e5e5]/60 text-xs leading-relaxed italic">{event.notes}</p>
             </div>
           )}
         </div>

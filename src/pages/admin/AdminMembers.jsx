@@ -67,7 +67,7 @@ function PeriodModal({ open, period, onClose, onSaved }) {
         <Dialog.Title as="h3" className="text-white font-bold mb-4">{editing ? 'Edit period' : 'Add new period'}</Dialog.Title>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Label</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Label</label>
             <input
               type="text"
               value={label}
@@ -78,7 +78,7 @@ function PeriodModal({ open, period, onClose, onSaved }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Starts</label>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Starts</label>
               <input
                 type="date"
                 value={startsAt}
@@ -87,7 +87,7 @@ function PeriodModal({ open, period, onClose, onSaved }) {
               />
             </div>
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Ends</label>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Ends</label>
               <input
                 type="date"
                 value={endsAt}
@@ -155,10 +155,10 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
   return (
     <Dialog open onClose={onClose} variant="center" size="sm" closeOnBackdrop className="p-6">
         <Dialog.Title as="h3" className="text-white font-bold mb-1">Grant membership</Dialog.Title>
-        <p className="text-[#e5e5e5]/50 text-xs mb-4">{memberName(profile)}{profile.alias && ` "${profile.alias}"`}</p>
+        <p className="text-[#e5e5e5]/60 text-xs mb-4">{memberName(profile)}{profile.alias && ` "${profile.alias}"`}</p>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Period</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Period</label>
             <select
               value={periodId}
               onChange={e => setPeriodId(e.target.value)}
@@ -173,7 +173,7 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
             </select>
           </div>
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Payment reference (optional)</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Payment reference (optional)</label>
             <input
               type="text"
               value={paymentRef}
@@ -183,7 +183,7 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
             />
           </div>
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Notes (optional)</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Notes (optional)</label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -221,11 +221,11 @@ function MembershipRow({ row, onRemove }) {
           {memberName(p)}
           {p.alias && <span className="text-brand text-xs ml-2">"{p.alias}"</span>}
         </p>
-        <p className="text-[#e5e5e5]/40 text-xs">
+        <p className="text-[#e5e5e5]/60 text-xs">
           {period.label} · expires {formatDate(period.ends_at, 'short')}
-          {row.payment_reference && <span className="ml-2 text-[#e5e5e5]/30">· {row.payment_reference}</span>}
+          {row.payment_reference && <span className="ml-2 text-[#e5e5e5]/60">· {row.payment_reference}</span>}
         </p>
-        {row.notes && <p className="text-[#e5e5e5]/35 text-[11px] mt-0.5 italic">{row.notes}</p>}
+        {row.notes && <p className="text-[#e5e5e5]/60 text-[11px] mt-0.5 italic">{row.notes}</p>}
       </div>
       <button
         onClick={() => onRemove(row)}
@@ -247,18 +247,18 @@ function Section({ title, count, color, rows, onRemove, defaultOpen = true }) {
       >
         <div className="flex items-center gap-3">
           <h2 className={`text-sm font-bold uppercase tracking-wider ${color}`}>{title}</h2>
-          <span className="text-xs text-[#e5e5e5]/40 font-semibold bg-line/40 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-[#e5e5e5]/60 font-semibold bg-line/40 px-2 py-0.5 rounded-full">
             {count}
           </span>
         </div>
-        <svg className={`w-4 h-4 text-[#e5e5e5]/40 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
       {open && (
         <div className="border-t border-line">
           {rows.length === 0
-            ? <p className="px-5 py-6 text-center text-[#e5e5e5]/30 text-sm">None</p>
+            ? <p className="px-5 py-6 text-center text-[#e5e5e5]/60 text-sm">None</p>
             : rows.map(r => <MembershipRow key={r.id} row={r} onRemove={onRemove} />)
           }
         </div>
@@ -352,7 +352,7 @@ export default function AdminMembers() {
     <div>
       <div className="mb-5">
         <h1 className="text-2xl font-black text-white">ALSA Members</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">Paid annual membership of the incorporated association.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">Paid annual membership of the incorporated association.</p>
       </div>
 
       {error && (
@@ -372,16 +372,16 @@ export default function AdminMembers() {
           <div className="bg-surface border border-line rounded-2xl p-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
-                <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1">Current period</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Current period</p>
                 {currentPeriod ? (
                   <>
                     <p className="text-white text-xl font-black">{currentPeriod.label}</p>
-                    <p className="text-[#e5e5e5]/50 text-sm">
+                    <p className="text-[#e5e5e5]/60 text-sm">
                       {formatDate(currentPeriod.starts_at, 'short')} → {formatDate(currentPeriod.ends_at, 'short')}
                     </p>
                   </>
                 ) : (
-                  <p className="text-[#e5e5e5]/40 text-sm italic">No active period — create one to start granting memberships.</p>
+                  <p className="text-[#e5e5e5]/60 text-sm italic">No active period — create one to start granting memberships.</p>
                 )}
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -400,7 +400,7 @@ export default function AdminMembers() {
 
             <button
               onClick={() => setPeriodsListOpen(o => !o)}
-              className="mt-4 text-xs text-[#e5e5e5]/50 hover:text-white transition-colors flex items-center gap-1"
+              className="mt-4 text-xs text-[#e5e5e5]/60 hover:text-white transition-colors flex items-center gap-1"
             >
               <svg className={`w-3 h-3 transition-transform ${periodsListOpen ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -410,19 +410,19 @@ export default function AdminMembers() {
             {periodsListOpen && (
               <div className="mt-3 border-t border-line pt-3 space-y-1">
                 {periods.length === 0 ? (
-                  <p className="text-[#e5e5e5]/30 text-xs">No periods yet.</p>
+                  <p className="text-[#e5e5e5]/60 text-xs">No periods yet.</p>
                 ) : periods.map(p => (
                   <div key={p.id} className="flex items-center justify-between gap-3 px-2 py-1.5 rounded hover:bg-line/30">
                     <div className="text-sm">
                       <span className="text-white font-semibold">{p.label}</span>
-                      <span className="text-[#e5e5e5]/40 ml-2">
+                      <span className="text-[#e5e5e5]/60 ml-2">
                         {formatDate(p.starts_at, 'short')} → {formatDate(p.ends_at, 'short')}
                       </span>
                       {isCurrent(p) && <span className="ml-2 text-[10px] text-brand font-bold uppercase">Current</span>}
                     </div>
                     <div className="flex gap-1">
                       <button onClick={() => openEditPeriod(p)}
-                        className="text-[10px] text-[#e5e5e5]/40 hover:text-white px-2 py-1 rounded">
+                        className="text-[10px] text-[#e5e5e5]/60 hover:text-white px-2 py-1 rounded">
                         Edit
                       </button>
                       <button onClick={() => deletePeriod(p)}
@@ -438,7 +438,7 @@ export default function AdminMembers() {
 
           {/* Search + Grant */}
           <div className="bg-surface border border-line rounded-2xl p-5">
-            <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-2">Grant a membership</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Grant a membership</p>
             <input
               type="text"
               value={search}
@@ -449,7 +449,7 @@ export default function AdminMembers() {
             {search.trim().length >= 2 && (
               <div className="mt-3 border border-line rounded-xl overflow-hidden">
                 {searchResults.length === 0 ? (
-                  <p className="px-4 py-3 text-[#e5e5e5]/30 text-sm">No matches.</p>
+                  <p className="px-4 py-3 text-[#e5e5e5]/60 text-sm">No matches.</p>
                 ) : searchResults.map(p => {
                   const alreadyActive = activeMemberProfileIds.has(p.id)
                   return (
@@ -482,7 +482,7 @@ export default function AdminMembers() {
             rows={memberships.active} onRemove={setRemoveConfirm} defaultOpen={true} />
           <Section title="Recently expired" count={memberships.recently_expired.length} color="text-yellow-400"
             rows={memberships.recently_expired} onRemove={setRemoveConfirm} defaultOpen={false} />
-          <Section title="Long expired" count={memberships.long_expired.length} color="text-[#e5e5e5]/50"
+          <Section title="Long expired" count={memberships.long_expired.length} color="text-[#e5e5e5]/60"
             rows={memberships.long_expired} onRemove={setRemoveConfirm} defaultOpen={false} />
         </div>
       )}
@@ -507,7 +507,7 @@ export default function AdminMembers() {
       {removeConfirm && (
         <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" closeOnBackdrop className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Remove membership?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
               Remove <span className="text-white font-semibold">{memberName(removeConfirm.profiles ?? {})}</span>'s
               {' '}membership for <span className="text-white font-semibold">{removeConfirm.period?.label}</span>?
             </p>

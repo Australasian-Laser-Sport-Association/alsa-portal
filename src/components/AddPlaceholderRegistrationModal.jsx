@@ -124,18 +124,18 @@ export default function AddPlaceholderRegistrationModal({
   }
 
   const inputCls = 'w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand'
-  const labelCls = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
+  const labelCls = 'block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5'
 
   return (
     <Dialog open onClose={onClose} variant="scroll" size="2xl" closeOnBackdrop>
         <div className="p-6 border-b border-line flex items-start justify-between gap-4">
           <div className="min-w-0">
             <Dialog.Title className="text-white font-bold text-lg">Add manual registration</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mt-0.5">
+            <p className="text-[#e5e5e5]/60 text-sm mt-0.5">
               Creates a player profile and registration for ZLTAC {eventYear} without a portal account.
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-2xl leading-none">×</button>
         </div>
 
         {error && (
@@ -147,7 +147,7 @@ export default function AddPlaceholderRegistrationModal({
         <div className="p-6 space-y-5">
           {/* Player details */}
           <div>
-            <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Player details</p>
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Player details</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uid}-first-name`} className={labelCls}>First name *</label>
@@ -180,7 +180,7 @@ export default function AddPlaceholderRegistrationModal({
             <div className="mt-3">
               <label htmlFor={`${uid}-email`} className={labelCls}>Email</label>
               <input id={`${uid}-email`} type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="player@example.com" />
-              <p className="text-[10px] text-[#e5e5e5]/35 mt-1">Optional. Recommended so this player can claim their registration if they sign up later.</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Optional. Recommended so this player can claim their registration if they sign up later.</p>
             </div>
           </div>
 
@@ -188,7 +188,7 @@ export default function AddPlaceholderRegistrationModal({
 
           {/* Emergency contact */}
           <div>
-            <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Emergency contact <span className="text-[#e5e5e5]/30 font-normal normal-case">(optional)</span></p>
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Emergency contact <span className="text-[#e5e5e5]/60 font-normal normal-case">(optional)</span></p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uid}-ec-name`} className={labelCls}>Name</label>
@@ -205,11 +205,11 @@ export default function AddPlaceholderRegistrationModal({
 
           {/* Registration */}
           <div>
-            <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Registration</p>
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Registration</p>
 
             <label className={labelCls}>Side events</label>
             {enabledSlugs.length === 0 ? (
-              <p className="text-[#e5e5e5]/40 text-xs italic">No side events configured for this event.</p>
+              <p className="text-[#e5e5e5]/60 text-xs italic">No side events configured for this event.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {enabledSlugs.map(se => (
@@ -239,7 +239,7 @@ export default function AddPlaceholderRegistrationModal({
                   <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Selecting a partner clears any existing pairing for either player and is confirmed automatically.</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Selecting a partner clears any existing pairing for either player and is confirmed automatically.</p>
             </div>
 
             <div className="mt-4">
@@ -250,7 +250,7 @@ export default function AddPlaceholderRegistrationModal({
                   { value: triplesP3, set: setTriplesP3, label: 'Player 3' },
                 ].map(({ value, set, label }) => (
                   <div key={label}>
-                    <p className="text-[10px] text-[#e5e5e5]/35 mb-1">{label}</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mb-1">{label}</p>
                     <select value={value} onChange={e => pickTriples(set, e.target.value)} className={inputCls}>
                       <option value="">None</option>
                       {partnerOptions.map(p => (

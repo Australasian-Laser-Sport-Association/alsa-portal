@@ -28,7 +28,7 @@ function displayName(p) {
 
 function SectionHeader({ children }) {
   return (
-    <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3 pt-1">{children}</p>
+    <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3 pt-1">{children}</p>
   )
 }
 
@@ -38,7 +38,7 @@ function CheckRow({ checked, onChange, label, hint }) {
       <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="w-4 h-4 accent-brand mt-0.5" />
       <span className="min-w-0">
         <span className="text-sm text-white block">{label}</span>
-        {hint && <span className="text-[10px] text-[#e5e5e5]/35 block mt-0.5">{hint}</span>}
+        {hint && <span className="text-[10px] text-[#e5e5e5]/60 block mt-0.5">{hint}</span>}
       </span>
     </label>
   )
@@ -228,19 +228,19 @@ export default function RegistrationEditModal({
   const enabledSlugs = (enabledSideEvents ?? []).filter(se => se.slug !== 'presentation-dinner')
 
   const inputCls = 'w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand'
-  const labelCls = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
+  const labelCls = 'block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5'
 
   return (
     <Dialog open onClose={onClose} variant="scroll" size="2xl" closeOnBackdrop>
         <div className="p-6 border-b border-line flex items-start justify-between gap-4">
           <div className="min-w-0">
             <Dialog.Title className="text-white font-bold text-lg">Edit registration</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mt-0.5 truncate">
+            <p className="text-[#e5e5e5]/60 text-sm mt-0.5 truncate">
               {playerName}{profile?.alias && <span className="text-brand"> ({profile.alias})</span>}
-              <span className="text-[#e5e5e5]/30"> · ZLTAC {registration.year}</span>
+              <span className="text-[#e5e5e5]/60"> · ZLTAC {registration.year}</span>
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-2xl leading-none">×</button>
         </div>
 
         {error && (
@@ -274,7 +274,7 @@ export default function RegistrationEditModal({
                 <input id={`${uid}-ec-phone`} type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="—" />
               </div>
             </div>
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Alias and state are saved to the player's profile.</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Alias and state are saved to the player's profile.</p>
           </div>
 
           <div className="border-t border-line" />
@@ -286,7 +286,7 @@ export default function RegistrationEditModal({
             {/* Side events */}
             <label className={labelCls}>Side events</label>
             {enabledSlugs.length === 0 ? (
-              <p className="text-[#e5e5e5]/40 text-xs italic">No side events configured for this event.</p>
+              <p className="text-[#e5e5e5]/60 text-xs italic">No side events configured for this event.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {enabledSlugs.map(se => (
@@ -323,7 +323,7 @@ export default function RegistrationEditModal({
                   <option key={p.id} value={p.id}>{p.name}{p.alias ? ` (${p.alias})` : ''}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Replacing a partnership will clear any existing pairing for either player.</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Replacing a partnership will clear any existing pairing for either player.</p>
             </div>
 
             {/* Triples partners */}
@@ -335,7 +335,7 @@ export default function RegistrationEditModal({
                   { value: triplesP3, set: setTriplesP3, label: 'Player 3' },
                 ].map(({ value, set, label }) => (
                   <div key={label}>
-                    <p className="text-[10px] text-[#e5e5e5]/35 mb-1">{label}</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mb-1">{label}</p>
                     <select value={value} onChange={e => set(e.target.value)} className={inputCls}>
                       <option value="">—</option>
                       {partnerOptions.map(p => (
@@ -345,7 +345,7 @@ export default function RegistrationEditModal({
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Editing the triples team will clear any existing team containing this player.</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Editing the triples team will clear any existing team containing this player.</p>
             </div>
 
             {/* Dinner guests + status */}
@@ -354,7 +354,7 @@ export default function RegistrationEditModal({
                 <label htmlFor={`${uid}-dinner-guests`} className={labelCls}>Dinner guests</label>
                 <input id={`${uid}-dinner-guests`} type="number" min={0} value={dinnerGuests}
                   onChange={e => setDinnerGuests(e.target.value)} className={inputCls} />
-                <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Affects amount owing — recomputed on save.</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Affects amount owing — recomputed on save.</p>
               </div>
               <div>
                 <label htmlFor={`${uid}-status`} className={labelCls}>Status</label>
@@ -372,7 +372,7 @@ export default function RegistrationEditModal({
           {/* ── Manual overrides ── */}
           <div>
             <SectionHeader>Manual overrides</SectionHeader>
-            <p className="text-[10px] text-[#e5e5e5]/40 mb-3 leading-relaxed">
+            <p className="text-[10px] text-[#e5e5e5]/60 mb-3 leading-relaxed">
               Use when the committee has verified a requirement outside the system. An override
               marks the concern satisfied without creating a (player-signed) record — record the
               reason in the admin note below.
@@ -438,12 +438,12 @@ export default function RegistrationEditModal({
               placeholder="Reason for any change or override — e.g. CoC signed on paper at venue, partner withdrew"
               className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand resize-none"
             />
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Stored on the registration as audit trail; never shown to the player.</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Stored on the registration as audit trail; never shown to the player.</p>
           </div>
         </div>
 
         <div className="px-6 py-4 border-t border-line flex items-center justify-between gap-3">
-          <p className="text-xs text-[#e5e5e5]/40">
+          <p className="text-xs text-[#e5e5e5]/60">
             Current owing: <span className="text-white">{dollars(registration.amount_owing ?? 0)}</span>
           </p>
           <div className="flex gap-3">

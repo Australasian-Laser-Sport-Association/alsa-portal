@@ -79,7 +79,7 @@ export default function MemberRegister() {
             </div>
           ) : !data.current_period ? (
             <div className="text-center py-20">
-              <p className="text-[#e5e5e5]/40 text-base">
+              <p className="text-[#e5e5e5]/60 text-base">
                 Between membership periods — check back after the next National Championship.
               </p>
             </div>
@@ -87,12 +87,12 @@ export default function MemberRegister() {
             <>
               <div className="text-center mb-12">
                 <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-2">{data.current_period.label}</p>
-                <p className="text-[#e5e5e5]/40 text-sm">
+                <p className="text-[#e5e5e5]/60 text-sm">
                   {data.members.length} member{data.members.length === 1 ? '' : 's'}
                 </p>
               </div>
               {data.members.length === 0 ? (
-                <p className="text-center text-[#e5e5e5]/30 text-sm">No members yet for this period.</p>
+                <p className="text-center text-[#e5e5e5]/60 text-sm">No members yet for this period.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
                   {data.members.map(p => (

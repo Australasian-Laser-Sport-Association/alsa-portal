@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { maskStorageUrl } from '../../lib/assetUrl'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
-const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
+const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
 
 const DIVISIONS = [
   { key: 'team',    label: 'Teams (main event)' },
@@ -167,7 +167,7 @@ function TournamentsTab() {
             + Add year
           </button>
         </div>
-        <p className="text-xs text-[#e5e5e5]/30">{years.length} {years.length === 1 ? 'year' : 'years'}</p>
+        <p className="text-xs text-[#e5e5e5]/60">{years.length} {years.length === 1 ? 'year' : 'years'}</p>
 
         <div className="flex flex-col gap-2 max-h-[60vh] md:max-h-none overflow-y-auto pr-1">
           {loadingList && (
@@ -176,7 +176,7 @@ function TournamentsTab() {
             </div>
           )}
           {!loadingList && years.length === 0 && (
-            <p className="text-[#e5e5e5]/30 text-sm text-center py-10">No tournaments yet.</p>
+            <p className="text-[#e5e5e5]/60 text-sm text-center py-10">No tournaments yet.</p>
           )}
           {years.map(y => {
             const placings = placingCounts.get(y.year) ?? 0
@@ -210,8 +210,8 @@ function TournamentsTab() {
                   </div>
                 </div>
                 <p className="text-sm font-semibold text-white truncate">{y.name || `ZLTAC ${y.year}`}</p>
-                {loc && <p className="text-xs text-[#e5e5e5]/40 truncate mt-0.5">{loc}</p>}
-                <p className="text-[10px] text-[#e5e5e5]/30 mt-1 uppercase tracking-wider">
+                {loc && <p className="text-xs text-[#e5e5e5]/60 truncate mt-0.5">{loc}</p>}
+                <p className="text-[10px] text-[#e5e5e5]/60 mt-1 uppercase tracking-wider">
                   {placings} {placings === 1 ? 'placing' : 'placings'}
                 </p>
               </button>
@@ -242,7 +242,7 @@ function TournamentsTab() {
             <div className="w-14 h-14 bg-[#191919] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">🏆</span>
             </div>
-            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">
+            <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">
               Select a tournament year from the list<br />
               or click <span className="text-brand/60">+ Add year</span> to create one.
             </p>
@@ -467,19 +467,19 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
       {/* Header */}
       <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3 flex-shrink-0">
         <div className="min-w-0">
-          <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider">
+          <p className="text-xs text-[#e5e5e5]/60 uppercase tracking-wider">
             {isNew ? 'New tournament year' : 'Editing'}
           </p>
           <p className="text-white font-bold text-sm truncate">
             {form.name || (form.year ? `ZLTAC ${form.year}` : '(unnamed)')}
           </p>
         </div>
-        <button onClick={onClose} className="text-xs text-[#e5e5e5]/40 hover:text-white">✕ Close</button>
+        <button onClick={onClose} className="text-xs text-[#e5e5e5]/60 hover:text-white">✕ Close</button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8">
         {!isNew && (
-          <div className="bg-[#191919] border border-line rounded-lg px-4 py-3 text-xs text-[#e5e5e5]/50 flex items-center gap-2">
+          <div className="bg-[#191919] border border-line rounded-lg px-4 py-3 text-xs text-[#e5e5e5]/60 flex items-center gap-2">
             <span>For event logo, photos, full results text, and committee notes, use the Extras tab.</span>
           </div>
         )}
@@ -551,7 +551,7 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
               onChange={e => setField('description', e.target.value)}
               placeholder="e.g. Vikings (Hobart) back-to-back team champions."
             />
-            <p className="text-xs text-[#e5e5e5]/30 mt-1">Shown on the public detail page hero and in the year card expanded details.</p>
+            <p className="text-xs text-[#e5e5e5]/60 mt-1">Shown on the public detail page hero and in the year card expanded details.</p>
           </div>
 
           <div>
@@ -562,7 +562,7 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
               onChange={e => setField('historic_note', e.target.value)}
               placeholder="e.g. Originally known as the Australian Zone 3 Nationals"
             />
-            <p className="text-xs text-[#e5e5e5]/30 mt-1">Shown as italic sub-heading above the location on the year card. Use sparingly.</p>
+            <p className="text-xs text-[#e5e5e5]/60 mt-1">Shown as italic sub-heading above the location on the year card. Use sparingly.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -618,7 +618,7 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
         <section className="space-y-5">
           <div>
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">Placings</h3>
-            <p className="text-xs text-[#e5e5e5]/40 mt-1">
+            <p className="text-xs text-[#e5e5e5]/60 mt-1">
               Drives the public-page podium and side events for this year. One row per (division, rank).
             </p>
           </div>
@@ -654,7 +654,7 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
               >
                 {deleting ? 'Deleting…' : 'Yes, delete'}
               </button>
-              <button onClick={() => setConfirmDelete(false)} className="text-xs text-[#e5e5e5]/40 hover:text-white">Cancel</button>
+              <button onClick={() => setConfirmDelete(false)} className="text-xs text-[#e5e5e5]/60 hover:text-white">Cancel</button>
             </div>
           )}
         </div>
@@ -719,7 +719,7 @@ function PlacingsEditor({ placings, setPlacings }) {
             </div>
 
             {rows.length === 0 ? (
-              <p className="text-xs text-[#e5e5e5]/25 italic text-center py-3">No placings recorded for this division.</p>
+              <p className="text-xs text-[#e5e5e5]/60 italic text-center py-3">No placings recorded for this division.</p>
             ) : (
               <div className="space-y-3">
                 {rows.map(p => {
@@ -887,7 +887,7 @@ function LegendsSection({ showToast }) {
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider">Legends (Stand-Out Players)</h2>
-          <p className="text-xs text-[#e5e5e5]/40 mt-1">Editorial spotlight cards on the public Stand Out Players section.</p>
+          <p className="text-xs text-[#e5e5e5]/60 mt-1">Editorial spotlight cards on the public Stand Out Players section.</p>
         </div>
         <button
           onClick={startNew}
@@ -910,7 +910,7 @@ function LegendsSection({ showToast }) {
             />
           )}
           {rows.length === 0 && editingId !== 'new' && (
-            <p className="text-[#e5e5e5]/30 text-sm text-center py-6 bg-surface border border-line rounded-xl">No legends yet.</p>
+            <p className="text-[#e5e5e5]/60 text-sm text-center py-6 bg-surface border border-line rounded-xl">No legends yet.</p>
           )}
           {rows.map(r => (
             editingId === r.id ? (
@@ -944,11 +944,11 @@ function LegendDisplayCard({ row, onEdit, onDeleteRequest, deleteRequested, onCo
         <div className="flex items-center gap-2 mb-1">
           <span className="text-white font-black text-base">{row.alias}</span>
           {!row.is_visible && (
-            <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/40 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Hidden</span>
+            <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Hidden</span>
           )}
         </div>
         {row.titles && <p className="text-xs text-brand/70 leading-relaxed">{row.titles}</p>}
-        {row.summary && <p className="text-xs text-[#e5e5e5]/50 mt-2 leading-relaxed">{row.summary}</p>}
+        {row.summary && <p className="text-xs text-[#e5e5e5]/60 mt-2 leading-relaxed">{row.summary}</p>}
       </div>
       <div className="flex flex-col items-end gap-2 flex-shrink-0">
         {!deleteRequested ? (
@@ -961,7 +961,7 @@ function LegendDisplayCard({ row, onEdit, onDeleteRequest, deleteRequested, onCo
             <span className="text-xs text-red-400">Delete?</span>
             <div className="flex gap-2">
               <button onClick={onConfirmDelete} className="text-xs bg-red-500/15 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-medium">Yes</button>
-              <button onClick={onCancelDelete} className="text-xs text-[#e5e5e5]/40 hover:text-white">No</button>
+              <button onClick={onCancelDelete} className="text-xs text-[#e5e5e5]/60 hover:text-white">No</button>
             </div>
           </div>
         )}
@@ -1011,7 +1011,7 @@ function LegendEditCard({ draft, setDraft, saving, isNew, onSave, onCancel }) {
           <span className="text-sm text-white">Show on public page</span>
         </label>
         <div className="flex gap-2">
-          <button onClick={onCancel} className="text-xs px-3 py-1.5 text-[#e5e5e5]/50 hover:text-white">Cancel</button>
+          <button onClick={onCancel} className="text-xs px-3 py-1.5 text-[#e5e5e5]/60 hover:text-white">Cancel</button>
           <button onClick={onSave} disabled={saving} className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-1.5 rounded-lg">
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -1154,7 +1154,7 @@ function DynastiesSection({ showToast }) {
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider">Dynasties (Team)</h2>
-          <p className="text-xs text-[#e5e5e5]/40 mt-1">Three-peats and back-to-back team championship runs.</p>
+          <p className="text-xs text-[#e5e5e5]/60 mt-1">Three-peats and back-to-back team championship runs.</p>
         </div>
         <button
           onClick={startNew}
@@ -1177,7 +1177,7 @@ function DynastiesSection({ showToast }) {
             />
           )}
           {rows.length === 0 && editingId !== 'new' && (
-            <p className="text-[#e5e5e5]/30 text-sm text-center py-6 bg-surface border border-line rounded-xl">No dynasties yet.</p>
+            <p className="text-[#e5e5e5]/60 text-sm text-center py-6 bg-surface border border-line rounded-xl">No dynasties yet.</p>
           )}
           {rows.map(r => (
             editingId === r.id ? (
@@ -1215,7 +1215,7 @@ function DynastyDisplayCard({ row, onEdit, onDeleteRequest, deleteRequested, onC
             {categoryLabel}
           </span>
           {!row.is_visible && (
-            <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/40 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Hidden</span>
+            <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">Hidden</span>
           )}
         </div>
         <div className="flex flex-wrap gap-1 mt-1">
@@ -1223,7 +1223,7 @@ function DynastyDisplayCard({ row, onEdit, onDeleteRequest, deleteRequested, onC
             <span key={y} className="text-xs font-bold text-brand bg-brand/10 px-2 py-0.5 rounded tabular-nums">{y}</span>
           ))}
         </div>
-        {row.note && <p className="text-xs text-[#e5e5e5]/50 mt-2 italic">{row.note}</p>}
+        {row.note && <p className="text-xs text-[#e5e5e5]/60 mt-2 italic">{row.note}</p>}
       </div>
       <div className="flex flex-col items-end gap-2 flex-shrink-0">
         {!deleteRequested ? (
@@ -1236,7 +1236,7 @@ function DynastyDisplayCard({ row, onEdit, onDeleteRequest, deleteRequested, onC
             <span className="text-xs text-red-400">Delete?</span>
             <div className="flex gap-2">
               <button onClick={onConfirmDelete} className="text-xs bg-red-500/15 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-medium">Yes</button>
-              <button onClick={onCancelDelete} className="text-xs text-[#e5e5e5]/40 hover:text-white">No</button>
+              <button onClick={onCancelDelete} className="text-xs text-[#e5e5e5]/60 hover:text-white">No</button>
             </div>
           </div>
         )}
@@ -1295,7 +1295,7 @@ function DynastyEditCard({ draft, setDraft, errors, saving, isNew, onSave, onCan
           onChange={e => set('years_text', e.target.value)}
           placeholder={draft.category === 'three_peat' ? '2015, 2016, 2017' : '2023, 2024'}
         />
-        <p className="text-xs text-[#e5e5e5]/30 mt-1">Comma-separated. Must be consecutive.</p>
+        <p className="text-xs text-[#e5e5e5]/60 mt-1">Comma-separated. Must be consecutive.</p>
       </div>
 
       <div>
@@ -1320,7 +1320,7 @@ function DynastyEditCard({ draft, setDraft, errors, saving, isNew, onSave, onCan
           <span className="text-sm text-white">Show on public page</span>
         </label>
         <div className="flex gap-2">
-          <button onClick={onCancel} className="text-xs px-3 py-1.5 text-[#e5e5e5]/50 hover:text-white">Cancel</button>
+          <button onClick={onCancel} className="text-xs px-3 py-1.5 text-[#e5e5e5]/60 hover:text-white">Cancel</button>
           <button onClick={onSave} disabled={saving} className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-1.5 rounded-lg">
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -1469,7 +1469,7 @@ function ExtrasTab() {
             </option>
           ))}
         </select>
-        <p className="text-xs text-[#e5e5e5]/40 mt-2">
+        <p className="text-xs text-[#e5e5e5]/60 mt-2">
           Only years that already exist appear here. To add a new year, create it on the Tournaments tab first.
         </p>
       </div>
@@ -1508,7 +1508,7 @@ function ExtrasTab() {
             {/* Full results text */}
             <div>
               <label className={labelClass}>Full Results Text</label>
-              <p className="text-[#e5e5e5]/30 text-xs mb-2">
+              <p className="text-[#e5e5e5]/60 text-xs mb-2">
                 Paste or type the complete results, standings, notable mentions. Rendered publicly as formatted text.
               </p>
               <textarea
@@ -1546,7 +1546,7 @@ function ExtrasTab() {
                 </button>
               </div>
               {(form.photo_urls ?? []).length === 0 && (
-                <p className="text-[#e5e5e5]/25 text-sm text-center py-4">No photos added yet.</p>
+                <p className="text-[#e5e5e5]/60 text-sm text-center py-4">No photos added yet.</p>
               )}
               {(form.photo_urls ?? []).length > 0 && (
                 <div className="grid grid-cols-4 gap-2">
@@ -1569,10 +1569,10 @@ function ExtrasTab() {
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">Committee Only Notes</p>
               <div className="flex items-center gap-2 mb-4 p-3 bg-[#191919] border border-line rounded-lg">
-                <svg className="w-4 h-4 text-[#e5e5e5]/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-4 h-4 text-[#e5e5e5]/60 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                <p className="text-xs text-[#e5e5e5]/40">Committee-only notes. Not displayed publicly.</p>
+                <p className="text-xs text-[#e5e5e5]/60">Committee-only notes. Not displayed publicly.</p>
               </div>
               <textarea
                 className={`${inputClass} resize-y`}
@@ -1602,7 +1602,7 @@ function ExtrasTab() {
             <div className="w-14 h-14 bg-[#191919] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">🖼️</span>
             </div>
-            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">
+            <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">
               Select a tournament year above to edit its logo, photos,<br />
               full results text, and committee notes.
             </p>

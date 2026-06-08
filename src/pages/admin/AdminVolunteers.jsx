@@ -35,7 +35,7 @@ function Pill({ color, children }) {
     red:   'bg-red-500/15 text-red-400 border-red-500/30',
     amber: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
     brand: 'bg-brand/10 text-brand border-brand/20',
-    grey:  'bg-[#374056] text-[#e5e5e5]/40 border-line',
+    grey:  'bg-[#374056] text-[#e5e5e5]/60 border-line',
   }
   return (
     <span className={`inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border whitespace-nowrap ${styles[color]}`}>
@@ -45,7 +45,7 @@ function Pill({ color, children }) {
 }
 
 const INPUT_CLS = 'w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors placeholder-[#e5e5e5]/25 disabled:opacity-40'
-const LABEL_CLS = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
+const LABEL_CLS = 'block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5'
 
 // Raw fetch that exposes status + parsed body, so callers can branch on 409
 // (delete-in-use, duplicate code) and read extra fields. apiFetch throws away
@@ -193,7 +193,7 @@ function RolesTab() {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-[#e5e5e5]/40 text-sm">{roles.length} role{roles.length !== 1 ? 's' : ''} in the library</p>
+        <p className="text-[#e5e5e5]/60 text-sm">{roles.length} role{roles.length !== 1 ? 's' : ''} in the library</p>
         <div className="flex items-center gap-3">
           {msg && <span className={`text-sm ${msg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{msg.text}</span>}
           <button onClick={startAdd}
@@ -259,7 +259,7 @@ function RolesTab() {
                 <Toggle value={form.requires_experience} onChange={v => setForm(f => ({ ...f, requires_experience: v }))} />
                 <div>
                   <p className="text-sm font-semibold text-white">Requires experience</p>
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5">Surfaces the experience notes to players for this role</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">Surfaces the experience notes to players for this role</p>
                 </div>
               </label>
               {form.requires_experience && (
@@ -274,14 +274,14 @@ function RolesTab() {
                 <Toggle value={form.is_default} onChange={v => setForm(f => ({ ...f, is_default: v }))} />
                 <div>
                   <p className="text-sm font-semibold text-white">Default role</p>
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5">Pre-selected for new volunteers. Only one role can be the default — setting this clears it elsewhere.</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">Pre-selected for new volunteers. Only one role can be the default — setting this clears it elsewhere.</p>
                 </div>
               </label>
               <label className="flex items-start gap-3 cursor-pointer bg-base border border-line rounded-xl p-4">
                 <Toggle value={form.is_active} onChange={v => setForm(f => ({ ...f, is_active: v }))} />
                 <div>
                   <p className="text-sm font-semibold text-white">Active</p>
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5">Inactive roles are hidden from the volunteer sign-up form</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">Inactive roles are hidden from the volunteer sign-up form</p>
                 </div>
               </label>
             </div>
@@ -311,13 +311,13 @@ function RolesTab() {
             <thead>
               <tr className="border-b border-line">
                 {['Sort', 'Code', 'Name', 'Active', 'Default', 'Exp', 'Target / Min', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {roles.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-12 text-[#e5e5e5]/30 text-sm">No roles yet</td></tr>
+                <tr><td colSpan={8} className="text-center py-12 text-[#e5e5e5]/60 text-sm">No roles yet</td></tr>
               ) : roles.map(r => (
                 <tr key={r.id} className={`border-b border-line last:border-0 hover:bg-line/30 transition-colors ${r.is_active ? '' : 'opacity-50'}`}>
                   <td className="px-4 py-3">
@@ -333,13 +333,13 @@ function RolesTab() {
                   <td className="px-4 py-3 text-white font-semibold whitespace-nowrap">{r.name}</td>
                   <td className="px-4 py-3"><Toggle value={r.is_active} onChange={() => toggleActive(r)} /></td>
                   <td className="px-4 py-3"><Toggle value={r.is_default} onChange={() => toggleDefault(r)} /></td>
-                  <td className="px-4 py-3">{r.requires_experience ? <Pill color="amber">Yes</Pill> : <span className="text-[#e5e5e5]/25 text-xs">—</span>}</td>
+                  <td className="px-4 py-3">{r.requires_experience ? <Pill color="amber">Yes</Pill> : <span className="text-[#e5e5e5]/60 text-xs">—</span>}</td>
                   <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs whitespace-nowrap">{r.target_count ?? '—'} / {r.min_count ?? '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <button onClick={() => startEdit(r)} className="text-xs text-[#e5e5e5]/50 hover:text-brand transition-colors font-semibold">Edit</button>
+                      <button onClick={() => startEdit(r)} className="text-xs text-[#e5e5e5]/60 hover:text-brand transition-colors font-semibold">Edit</button>
                       <button onClick={() => setDeleteModal({ role: r, refCount: null, busy: false, error: null, soft: false })}
-                        className="text-xs text-[#e5e5e5]/50 hover:text-red-400 transition-colors font-semibold">Delete</button>
+                        className="text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors font-semibold">Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -355,7 +355,7 @@ function RolesTab() {
             {deleteModal.soft ? (
               <>
                 <Dialog.Title as="p" className="text-white font-bold mb-2">Can't delete {deleteModal.role.name}</Dialog.Title>
-                <p className="text-[#e5e5e5]/50 text-sm mb-5">
+                <p className="text-[#e5e5e5]/60 text-sm mb-5">
                   {deleteModal.error || 'This role is in use by existing signups.'}{' '}
                   Deactivate it instead to hide it from the sign-up form while keeping the existing records intact.
                 </p>
@@ -374,7 +374,7 @@ function RolesTab() {
             ) : (
               <>
                 <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {deleteModal.role.name}?</Dialog.Title>
-                <p className="text-[#e5e5e5]/50 text-sm mb-5">
+                <p className="text-[#e5e5e5]/60 text-sm mb-5">
                   This permanently removes the <span className="text-white font-mono">{deleteModal.role.code}</span> role. If it's referenced by any signup you'll be offered to deactivate it instead.
                 </p>
                 {deleteModal.error && (
@@ -453,7 +453,7 @@ function SettingsTab() {
     return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
   }
   if (events.length === 0) {
-    return <div className="text-center py-16 text-[#e5e5e5]/40 text-sm">No events found. Create one in the Current Event panel first.</div>
+    return <div className="text-center py-16 text-[#e5e5e5]/60 text-sm">No events found. Create one in the Current Event panel first.</div>
   }
 
   return (
@@ -476,7 +476,7 @@ function SettingsTab() {
             <Toggle value={form.required_per_team} onChange={v => setForm(f => ({ ...f, required_per_team: v }))} />
             <div>
               <p className="text-sm font-semibold text-white">Require volunteers per team</p>
-              <p className="text-xs text-[#e5e5e5]/40 mt-0.5">Each team is expected to put forward volunteers for this event</p>
+              <p className="text-xs text-[#e5e5e5]/60 mt-0.5">Each team is expected to put forward volunteers for this event</p>
             </div>
           </label>
 
@@ -503,12 +503,12 @@ function SettingsTab() {
                     className="accent-brand w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="text-sm font-semibold text-white">{opt.title}</p>
-                    <p className="text-xs text-[#e5e5e5]/40 mt-0.5">{opt.desc}</p>
+                    <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{opt.desc}</p>
                   </div>
                 </label>
               ))}
             </div>
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-2 leading-snug">
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-2 leading-snug">
               Enforcement only takes effect in a later phase — for now it records the committee's intended policy.
             </p>
           </div>
@@ -518,7 +518,7 @@ function SettingsTab() {
             <textarea rows={3} value={form.caveat_message}
               onChange={e => setForm(f => ({ ...f, caveat_message: e.target.value }))}
               className={`${INPUT_CLS} resize-y`} />
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">Shown to players in the volunteer section. Leave blank to restore the default.</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1 leading-snug">Shown to players in the volunteer section. Leave blank to restore the default.</p>
           </div>
 
           <div className="flex items-center gap-3 pt-2 border-t border-line">
@@ -686,7 +686,7 @@ function SignupsTab() {
           className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-lg transition-colors">
           + Add manual signup
         </button>
-        <span className="text-[#e5e5e5]/30 text-xs ml-auto self-center">{displayed.length} of {signups.length} signup{signups.length !== 1 ? 's' : ''}</span>
+        <span className="text-[#e5e5e5]/60 text-xs ml-auto self-center">{displayed.length} of {signups.length} signup{signups.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Role chips (multi-select) */}
@@ -696,13 +696,13 @@ function SignupsTab() {
             const on = filterRoleIds.includes(r.id)
             return (
               <button key={r.id} onClick={() => toggleRole(r.id)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${on ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/50 hover:text-white'}`}>
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${on ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/60 hover:text-white'}`}>
                 {r.code}
               </button>
             )
           })}
           {filterRoleIds.length > 0 && (
-            <button onClick={() => setFilterRoleIds([])} className="text-xs text-[#e5e5e5]/40 hover:text-white px-2 py-1.5 transition-colors">Clear</button>
+            <button onClick={() => setFilterRoleIds([])} className="text-xs text-[#e5e5e5]/60 hover:text-white px-2 py-1.5 transition-colors">Clear</button>
           )}
         </div>
       )}
@@ -716,13 +716,13 @@ function SignupsTab() {
       ) : (
         <div className="bg-surface border border-line rounded-xl overflow-x-auto">
           {displayed.length === 0 ? (
-            <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No signups match these filters</p>
+            <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No signups match these filters</p>
           ) : (
             <table className="w-full text-sm min-w-[920px]">
               <thead>
                 <tr className="border-b border-line">
                   {['Player', 'Alias', 'Team', 'Event', 'Roles offered', 'Approved', 'Notes', 'Signed up'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -731,16 +731,16 @@ function SignupsTab() {
                   <tr key={s.id} onClick={() => { setDetail(s); setDetailErr('') }}
                     className="border-b border-line last:border-0 hover:bg-line/30 transition-colors cursor-pointer">
                     <td className="px-4 py-3 whitespace-nowrap">
-                      {s.full_name ? <span className="font-semibold text-white">{s.full_name}</span> : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
+                      {s.full_name ? <span className="font-semibold text-white">{s.full_name}</span> : <span className="text-[#e5e5e5]/60 italic text-xs">Unknown</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      {s.alias ? <span className="text-brand text-xs font-medium">{s.alias}</span> : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+                      {s.alias ? <span className="text-brand text-xs font-medium">{s.alias}</span> : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{s.team_name ?? <span className="text-[#e5e5e5]/25">No team</span>}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{s.team_name ?? <span className="text-[#e5e5e5]/60">No team</span>}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{s.event_name ?? '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {s.roles.length === 0 ? <span className="text-[#e5e5e5]/25 text-xs">—</span>
+                        {s.roles.length === 0 ? <span className="text-[#e5e5e5]/60 text-xs">—</span>
                           : s.roles.map(r => <Pill key={r.id} color={statusColor(r.status)}>{r.code}</Pill>)}
                       </div>
                     </td>
@@ -748,14 +748,14 @@ function SignupsTab() {
                       {(() => {
                         const ap = approvedRolesOf(s)
                         return ap.length === 0
-                          ? <span className="text-[#e5e5e5]/25 text-xs">—</span>
+                          ? <span className="text-[#e5e5e5]/60 text-xs">—</span>
                           : <div className="flex flex-wrap gap-1">{ap.map(r => <Pill key={r.id} color="green">{r.name}</Pill>)}</div>
                       })()}
                     </td>
                     <td className="px-4 py-3 max-w-[220px]">
-                      {s.notes?.trim() ? <span className="text-[#e5e5e5]/60 text-xs line-clamp-1">{s.notes}</span> : <span className="text-[#e5e5e5]/25 text-xs">—</span>}
+                      {s.notes?.trim() ? <span className="text-[#e5e5e5]/60 text-xs line-clamp-1">{s.notes}</span> : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/40 text-xs">{formatDate(s.created_at, 'short') || '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-[#e5e5e5]/60 text-xs">{formatDate(s.created_at, 'short') || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -769,31 +769,31 @@ function SignupsTab() {
         <Dialog open onClose={() => setDetail(null)} variant="drawer" closeOnBackdrop className="p-6">
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-black text-white">Volunteer Signup</Dialog.Title>
-              <button onClick={() => setDetail(null)} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => setDetail(null)} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-xl leading-none">✕</button>
             </div>
 
             <div className="mb-5">
               <p className="text-white font-bold">{detail.full_name || 'Unknown'}</p>
               {detail.alias && <p className="text-brand text-sm">"{detail.alias}"</p>}
-              <p className="text-[#e5e5e5]/40 text-xs mt-0.5">{detail.event_name ?? '—'}{detail.team_name ? ` · ${detail.team_name}` : ''}</p>
+              <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{detail.event_name ?? '—'}{detail.team_name ? ` · ${detail.team_name}` : ''}</p>
             </div>
 
             <div className="grid grid-cols-1 gap-2 mb-5">
               <div className="bg-base border border-line rounded-lg px-3 py-2.5">
-                <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-0.5">Contact email</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-0.5">Contact email</p>
                 {detail.email
                   ? <a href={`mailto:${detail.email}`} className="text-sm text-brand hover:underline break-all">{detail.email}</a>
-                  : <p className="text-sm text-[#e5e5e5]/40">—</p>}
+                  : <p className="text-sm text-[#e5e5e5]/60">—</p>}
               </div>
               <div className="bg-base border border-line rounded-lg px-3 py-2.5">
-                <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-0.5">Phone</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-0.5">Phone</p>
                 <p className="text-sm text-white">{detail.phone ?? '—'}</p>
               </div>
             </div>
 
             <div className="mb-5">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider">Roles offered</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider">Roles offered</p>
                 {detail.roles.some(r => r.status === 'pending') && (
                   <div className="flex items-center gap-2">
                     <button
@@ -801,7 +801,7 @@ function SignupsTab() {
                       className="text-[10px] font-bold text-green-400 hover:text-green-300 transition-colors">
                       Approve all pending
                     </button>
-                    <span className="text-[#e5e5e5]/20">·</span>
+                    <span className="text-[#e5e5e5]/60">·</span>
                     <button
                       onClick={() => applyDecisions(detail.id, detail.roles.filter(r => r.status === 'pending').map(r => ({ role_id: r.id, status: 'declined' })))}
                       className="text-[10px] font-bold text-red-400 hover:text-red-300 transition-colors">
@@ -812,14 +812,14 @@ function SignupsTab() {
               </div>
 
               {detail.roles.length === 0 ? (
-                <p className="text-sm text-[#e5e5e5]/30">No roles offered</p>
+                <p className="text-sm text-[#e5e5e5]/60">No roles offered</p>
               ) : (
                 <div className="space-y-2">
                   {detail.roles.map(r => (
                     <div key={r.id} className="bg-base border border-line rounded-lg px-3 py-2.5">
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <p className="text-sm text-white font-semibold min-w-0">
-                          {r.name} <span className="text-[#e5e5e5]/30 font-mono text-[10px]">{r.code}</span>
+                          {r.name} <span className="text-[#e5e5e5]/60 font-mono text-[10px]">{r.code}</span>
                         </p>
                         <Pill color={statusColor(r.status)}>{r.status}</Pill>
                       </div>
@@ -862,13 +862,13 @@ function SignupsTab() {
             </div>
 
             <div className="mb-5">
-              <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-2">Notes</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Notes</p>
               {detail.notes?.trim()
                 ? <p className="text-sm text-[#e5e5e5]/80 whitespace-pre-wrap bg-base border border-line rounded-lg p-3">{detail.notes}</p>
-                : <p className="text-sm text-[#e5e5e5]/30">No notes</p>}
+                : <p className="text-sm text-[#e5e5e5]/60">No notes</p>}
             </div>
 
-            <p className="text-xs text-[#e5e5e5]/30">Signed up {formatDate(detail.created_at) || '—'}</p>
+            <p className="text-xs text-[#e5e5e5]/60">Signed up {formatDate(detail.created_at) || '—'}</p>
         </Dialog>
       )}
 
@@ -971,7 +971,7 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
     <Dialog open onClose={onClose} variant="center" size="md" closeOnBackdrop className="p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <Dialog.Title className="text-lg font-black text-white">Add manual signup</Dialog.Title>
-          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-xl leading-none">✕</button>
         </div>
 
         {conflict ? (
@@ -1005,9 +1005,9 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
             <div>
               <label className={LABEL_CLS}>Player</label>
               {loadingPlayers ? (
-                <p className="text-[#e5e5e5]/40 text-xs">Loading players…</p>
+                <p className="text-[#e5e5e5]/60 text-xs">Loading players…</p>
               ) : candidates.length === 0 ? (
-                <p className="text-[#e5e5e5]/40 text-xs">No registered players without a signup for this event.</p>
+                <p className="text-[#e5e5e5]/60 text-xs">No registered players without a signup for this event.</p>
               ) : (
                 <select value={registrationId} onChange={e => setRegistrationId(e.target.value)}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand">
@@ -1027,14 +1027,14 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
                 {activeRoles.map(r => (
                   <label key={r.id} className="flex items-center gap-2.5 bg-base border border-line rounded-lg px-3 py-2 cursor-pointer">
                     <input type="checkbox" checked={selectedRoleIds.includes(r.id)} onChange={() => toggleRole(r.id)} className="accent-brand w-3.5 h-3.5" />
-                    <span className="text-sm text-white">{r.name} <span className="text-[#e5e5e5]/30 font-mono text-[10px]">{r.code}</span></span>
+                    <span className="text-sm text-white">{r.name} <span className="text-[#e5e5e5]/60 font-mono text-[10px]">{r.code}</span></span>
                   </label>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className={LABEL_CLS}>Notes <span className="text-[#e5e5e5]/25 normal-case font-normal">(optional)</span></label>
+              <label className={LABEL_CLS}>Notes <span className="text-[#e5e5e5]/60 normal-case font-normal">(optional)</span></label>
               <textarea rows={2} value={notes} maxLength={1000} onChange={e => setNotes(e.target.value)}
                 className={`${INPUT_CLS} resize-y`} />
             </div>
@@ -1065,14 +1065,14 @@ export default function AdminVolunteers() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-black text-white">Volunteers</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">Manage volunteer roles, per-event settings, and signups</p>
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">Manage volunteer roles, per-event settings, and signups</p>
       </div>
 
       <div className="flex gap-0 border-b border-line mb-6">
         {TABS.map((t, i) => (
           <button key={t} onClick={() => setActiveTab(i)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
-              activeTab === i ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/40 hover:text-white'
+              activeTab === i ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/60 hover:text-white'
             }`}>
             {t}
           </button>

@@ -65,15 +65,15 @@ function TeamCard({ team, players }) {
           </div>
         </div>
 
-        <p className="text-[#e5e5e5]/50 text-sm mb-4">
-          <span className="text-[#e5e5e5]/30 text-xs font-bold uppercase tracking-wider">Captain </span>
+        <p className="text-[#e5e5e5]/60 text-sm mb-4">
+          <span className="text-[#e5e5e5]/60 text-xs font-bold uppercase tracking-wider">Captain </span>
           {captainName}
         </p>
       </div>
 
       {players.length > 0 && (
         <div className="border-t border-line px-6 py-4 space-y-1">
-          <p className="text-[#e5e5e5]/30 text-xs font-bold uppercase tracking-wider mb-3">
+          <p className="text-[#e5e5e5]/60 text-xs font-bold uppercase tracking-wider mb-3">
             Roster · {players.length} Player{players.length !== 1 ? 's' : ''}
           </p>
           {players.map(p => {
@@ -134,12 +134,12 @@ function SideEventPanel({ sideEvent, entries }) {
       >
         <div className="flex items-center gap-3">
           <h3 className="text-white font-bold text-sm">{sideEvent.name}</h3>
-          <span className="text-xs text-[#e5e5e5]/40 font-semibold bg-line/40 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-[#e5e5e5]/60 font-semibold bg-line/40 px-2 py-0.5 rounded-full">
             {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
           </span>
         </div>
         <svg
-          className={`w-4 h-4 text-[#e5e5e5]/30 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -149,7 +149,7 @@ function SideEventPanel({ sideEvent, entries }) {
       {open && (
         <div className="border-t border-line px-5 py-4">
           {entries.length === 0 ? (
-            <p className="text-[#e5e5e5]/30 text-sm">No entries yet</p>
+            <p className="text-[#e5e5e5]/60 text-sm">No entries yet</p>
           ) : (
             <div className="space-y-1">
               {entries.map(reg => {
@@ -194,7 +194,7 @@ function RegisteredTeamsSection({ teams, regs }) {
       <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Teams</p>
       <h2 className="text-3xl font-black text-white text-center mb-10">Registered Teams</h2>
       {teamsWithRegs.length === 0 ? (
-        <p className="text-center text-[#e5e5e5]/40 text-sm">
+        <p className="text-center text-[#e5e5e5]/60 text-sm">
           No teams registered yet — registrations open soon.
         </p>
       ) : (
@@ -239,9 +239,9 @@ function DoublesEntriesSection({ pairs, profileMap }) {
       <div className="max-w-5xl mx-auto px-6 py-16">
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Side Events</p>
         <h2 className="text-3xl font-black text-white text-center mb-2">Doubles Entries</h2>
-        <p className="text-[#e5e5e5]/40 text-sm text-center mb-10">{confirmed.length} pair{confirmed.length !== 1 ? 's' : ''} entered</p>
+        <p className="text-[#e5e5e5]/60 text-sm text-center mb-10">{confirmed.length} pair{confirmed.length !== 1 ? 's' : ''} entered</p>
         {confirmed.length === 0 ? (
-          <p className="text-center text-[#e5e5e5]/40 text-sm">No doubles pairs registered yet.</p>
+          <p className="text-center text-[#e5e5e5]/60 text-sm">No doubles pairs registered yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {confirmed.map(pair => (
@@ -293,9 +293,9 @@ function TriplesEntriesSection({ teams, profileMap }) {
       <div className="max-w-5xl mx-auto px-6 py-16">
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Side Events</p>
         <h2 className="text-3xl font-black text-white text-center mb-2">Triples Entries</h2>
-        <p className="text-[#e5e5e5]/40 text-sm text-center mb-10">{confirmed.length} team{confirmed.length !== 1 ? 's' : ''} entered</p>
+        <p className="text-[#e5e5e5]/60 text-sm text-center mb-10">{confirmed.length} team{confirmed.length !== 1 ? 's' : ''} entered</p>
         {confirmed.length === 0 ? (
-          <p className="text-center text-[#e5e5e5]/40 text-sm">No triples teams registered yet.</p>
+          <p className="text-center text-[#e5e5e5]/60 text-sm">No triples teams registered yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {confirmed.map(team => (
@@ -555,7 +555,7 @@ export default function EventPage() {
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <p className="text-6xl mb-4">🎯</p>
         <h1 className="text-2xl font-black text-white mb-2">Event Not Found</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">No event found for {year}.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">No event found for {year}.</p>
         <Link to="/zltac" className="text-brand hover:text-brand-hover text-sm font-semibold transition-colors">
           ← Back to ZLTAC
         </Link>
@@ -579,7 +579,7 @@ export default function EventPage() {
               ? <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-16 mx-auto mb-5 object-contain opacity-70" />
               : <div className="text-4xl mb-4 opacity-50">🏆</div>
             }
-            <span className="inline-block text-xs bg-[#2D2D2D] text-[#e5e5e5]/40 px-3 py-1 rounded-full font-bold uppercase tracking-widest mb-4">Archived</span>
+            <span className="inline-block text-xs bg-[#2D2D2D] text-[#e5e5e5]/60 px-3 py-1 rounded-full font-bold uppercase tracking-widest mb-4">Archived</span>
             <h1 className="text-4xl md:text-5xl font-black text-white mb-4">{event.name}</h1>
             {event.location && (
               <p className="text-[#e5e5e5]/70 font-semibold mb-2" style={{ fontSize: '20px' }}>
@@ -587,7 +587,7 @@ export default function EventPage() {
               </p>
             )}
             {(event.reg_open_date || event.reg_close_date) && (
-              <p className="text-[#e5e5e5]/45" style={{ fontSize: '18px' }}>
+              <p className="text-[#e5e5e5]/60" style={{ fontSize: '18px' }}>
                 {event.reg_open_date && formatInEventTz(event.reg_open_date, event.timezone)}
                 {event.reg_open_date && event.reg_close_date && ' — '}
                 {event.reg_close_date && formatInEventTz(event.reg_close_date, event.timezone)}
@@ -598,9 +598,9 @@ export default function EventPage() {
 
         <section className="max-w-3xl mx-auto px-6 py-12">
           <div className="bg-surface border border-line rounded-xl p-6 text-center mb-8">
-            <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1">Champion</p>
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Champion</p>
             <p className="text-2xl font-black text-brand">TBC</p>
-            <p className="text-xs text-[#e5e5e5]/30 mt-1">Results will be published here after the event</p>
+            <p className="text-xs text-[#e5e5e5]/60 mt-1">Results will be published here after the event</p>
           </div>
         </section>
 
@@ -630,13 +630,13 @@ export default function EventPage() {
           <div className="text-5xl mb-4">🚧</div>
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">{event.name}</p>
           <h1 className="text-4xl md:text-5xl font-black text-white mb-4">Coming Soon</h1>
-          <p className="text-[#e5e5e5]/40 text-base max-w-md mx-auto">
+          <p className="text-[#e5e5e5]/60 text-base max-w-md mx-auto">
             Registration for {event.name} is not yet open. Check back soon.
           </p>
           {event.reg_open_date && (
             <p className="mt-4 text-sm text-brand/70">Opens {formatInEventTz(event.reg_open_date, event.timezone)}</p>
           )}
-          <Link to="/zltac" className="mt-8 text-sm text-[#e5e5e5]/40 hover:text-white transition-colors">
+          <Link to="/zltac" className="mt-8 text-sm text-[#e5e5e5]/60 hover:text-white transition-colors">
             ← Back to ZLTAC
           </Link>
         </section>
@@ -708,7 +708,7 @@ export default function EventPage() {
             </p>
           )}
           {(event.reg_open_date || event.reg_close_date) && (
-            <p className="text-[#e5e5e5]/55 font-medium" style={{ fontSize: '18px' }}>
+            <p className="text-[#e5e5e5]/60 font-medium" style={{ fontSize: '18px' }}>
               {event.reg_open_date && `Registration opens ${formatInEventTz(event.reg_open_date, event.timezone)}`}
               {event.reg_open_date && event.reg_close_date && ' · '}
               {event.reg_close_date && `locks ${formatInEventTz(event.reg_close_date, event.timezone)}`}

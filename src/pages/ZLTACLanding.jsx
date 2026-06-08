@@ -152,11 +152,11 @@ export default function ZLTACLanding() {
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Governance</p>
           <h2 className="text-3xl font-black text-white text-center mb-2">ZLTAC Committee</h2>
           <p className="text-brand text-sm uppercase tracking-widest text-center mb-2">ALSA Sub-Committee</p>
-          <p className="text-[#e5e5e5]/40 text-sm text-center mb-14 max-w-md mx-auto">
+          <p className="text-[#e5e5e5]/60 text-sm text-center mb-14 max-w-md mx-auto">
             The ZLTAC committee runs the championship year-round under the ALSA umbrella — formats, scheduling, host coordination, and the rules of play.
           </p>
           {committee.length === 0 ? (
-            <p className="text-center text-[#e5e5e5]/30 text-sm">Committee details will appear here soon.</p>
+            <p className="text-center text-[#e5e5e5]/60 text-sm">Committee details will appear here soon.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
               {committee.map(p => (

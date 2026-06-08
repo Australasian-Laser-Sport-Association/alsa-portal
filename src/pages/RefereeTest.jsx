@@ -111,11 +111,11 @@ export default function RefereeTest() {
             {hasBreakdown && (
               <div className="grid grid-cols-2 gap-3 mb-5 text-left">
                 <div className="rounded-xl border border-line bg-base p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/50 mb-1">Safety</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-1">Safety</p>
                   <p className="text-white font-black text-lg">{r.safety_correct ?? 0}/{r.safety_total}</p>
                 </div>
                 <div className="rounded-xl border border-line bg-base p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/50 mb-1">General</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-1">General</p>
                   <p className="text-white font-black text-lg">{r.general_correct ?? 0}/{r.general_total}</p>
                 </div>
               </div>

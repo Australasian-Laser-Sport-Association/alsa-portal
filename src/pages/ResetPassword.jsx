@@ -92,7 +92,7 @@ export default function ResetPassword() {
             <Link to="/forgot-password" className="block text-center text-brand hover:underline text-sm">
               Request a new reset link →
             </Link>
-            <Link to="/login" className="block text-center text-[#e5e5e5]/50 hover:text-white text-sm">
+            <Link to="/login" className="block text-center text-[#e5e5e5]/60 hover:text-white text-sm">
               ← Back to sign in
             </Link>
           </div>

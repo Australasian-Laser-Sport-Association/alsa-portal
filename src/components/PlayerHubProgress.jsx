@@ -173,7 +173,7 @@ export default function PlayerHubProgress({
                   {step.label}
                 </p>
                 {step.description && (
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5 leading-snug">
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5 leading-snug">
                     {step.description}
                   </p>
                 )}

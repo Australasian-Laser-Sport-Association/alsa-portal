@@ -110,7 +110,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
       <div className="text-center mb-10">
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Year Explorer</p>
         <h2 className="text-3xl md:text-4xl font-black text-white mb-3">Every Championship, 1999-2026</h2>
-        <p className="text-[#e5e5e5]/45 text-sm max-w-xl mx-auto">
+        <p className="text-[#e5e5e5]/60 text-sm max-w-xl mx-auto">
           Filter by decade or state, search across team names and player aliases, and click any year to see the full format results.
         </p>
       </div>
@@ -122,11 +122,11 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
 
         {/* Search */}
         <div>
-          <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2">
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2">
             Search players or teams
           </label>
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e5e5]/30 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e5e5]/60 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -141,7 +141,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
 
         {/* Decade chips */}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2 text-center">Decade</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center">Decade</p>
           <div className="flex flex-wrap justify-center gap-2">
             {DECADES.map(d => (
               <Chip key={d.key} active={decadeFilter === d.key} onClick={() => setDecadeFilter(d.key)}>
@@ -153,7 +153,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
 
         {/* State chips */}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-2 text-center">Host region</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center">Host region</p>
           <div className="flex flex-wrap justify-center gap-2">
             {STATES.map(s => (
               <Chip key={s} active={stateFilter === s} onClick={() => onStateFilterChange(s)}>
@@ -165,7 +165,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
 
         {/* Status row */}
         <div className="flex items-center justify-between gap-3 pt-1">
-          <p className="text-xs text-[#e5e5e5]/40">
+          <p className="text-xs text-[#e5e5e5]/60">
             {isSearching
               ? `${matchCount} year${matchCount === 1 ? '' : 's'} match "${search.trim()}"`
               : `${historicEvents.length} year${historicEvents.length === 1 ? '' : 's'} shown`}
@@ -185,8 +185,8 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
       {/* Year grid */}
       {historicEvents.length === 0 ? (
         <div className="bg-surface border border-line rounded-2xl py-16 px-6 text-center">
-          <p className="text-[#e5e5e5]/40 text-sm font-medium">No years match your filters.</p>
-          <p className="text-[#e5e5e5]/25 text-xs mt-1">Try removing a chip or clearing the search.</p>
+          <p className="text-[#e5e5e5]/60 text-sm font-medium">No years match your filters.</p>
+          <p className="text-[#e5e5e5]/60 text-xs mt-1">Try removing a chip or clearing the search.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -206,7 +206,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
       {upcomingEvent && (
         <>
           <div className="flex items-center gap-3 mt-12 mb-4">
-            <p className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/40 font-bold">On the horizon</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/60 font-bold">On the horizon</p>
             <div className="flex-1 h-px bg-line" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -6,7 +6,7 @@ import { maskStorageUrl } from '../../lib/assetUrl'
 import Dialog from '../../components/Dialog'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
-const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
+const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
 
 // Icons reuse the existing inline-SVG (heroicons-outline) set already used across
 // the admin panel — no new icon library.
@@ -108,13 +108,13 @@ export default function AdminRequiredDocuments() {
 
       <div className="mb-6">
         <h1 className="text-lg font-black text-white">Required Documents</h1>
-        <p className="text-xs text-[#e5e5e5]/40 mt-1">PDF versions of the three player-acknowledged documents.</p>
+        <p className="text-xs text-[#e5e5e5]/60 mt-1">PDF versions of the three player-acknowledged documents.</p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 md:items-start">
         {/* Left rail — document selectors */}
         <div className="md:w-[300px] md:flex-shrink-0">
-          <p className="text-xs text-[#e5e5e5]/40 mb-3 leading-relaxed">
+          <p className="text-xs text-[#e5e5e5]/60 mb-3 leading-relaxed">
             Select a document to upload the master file players will download and sign.
           </p>
           <div className="space-y-3">
@@ -162,7 +162,7 @@ function SelectorCard({ docType, active, doc, onSelect }) {
       }`}
     >
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${
-        active ? 'bg-brand/15 border-brand/30 text-brand' : 'bg-[#191919] border-line text-[#e5e5e5]/50'
+        active ? 'bg-brand/15 border-brand/30 text-brand' : 'bg-[#191919] border-line text-[#e5e5e5]/60'
       }`}>
         {docType.icon}
       </div>
@@ -171,7 +171,7 @@ function SelectorCard({ docType, active, doc, onSelect }) {
         {doc ? (
           <div className="mt-1">
             <p className="text-xs text-[#e5e5e5]/60 truncate">Uploaded — {doc.original_filename}</p>
-            <p className="text-[11px] text-[#e5e5e5]/40 mt-0.5">{formatDate(doc.uploaded_at)}</p>
+            <p className="text-[11px] text-[#e5e5e5]/60 mt-0.5">{formatDate(doc.uploaded_at)}</p>
           </div>
         ) : (
           <p className="text-xs text-amber-400/80 mt-1">No file uploaded yet</p>
@@ -258,7 +258,7 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
       {/* Panel heading */}
       <div>
         <h2 className="text-base font-bold text-white">{label} — Master File</h2>
-        <p className="text-xs text-[#e5e5e5]/40 mt-1 leading-relaxed">
+        <p className="text-xs text-[#e5e5e5]/60 mt-1 leading-relaxed">
           This is the file players will download from their player hub. Replacing it does not invalidate existing player signatures.
         </p>
       </div>
@@ -276,7 +276,7 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
             onDeactivate={() => setConfirmAction({ type: 'deactivate', id: active.id, label: active.original_filename })}
           />
         ) : (
-          <div className="bg-surface border border-line rounded-2xl p-6 text-center text-sm text-[#e5e5e5]/40">
+          <div className="bg-surface border border-line rounded-2xl p-6 text-center text-sm text-[#e5e5e5]/60">
             No active version. Upload one below.
           </div>
         )}
@@ -301,9 +301,9 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
           className="flex items-center justify-between w-full mb-3 group"
         >
           <h2 className="text-xs font-bold text-brand uppercase tracking-widest group-hover:text-brand-hover">
-            Historical versions {history.length > 0 && <span className="text-[#e5e5e5]/40 font-medium normal-case tracking-normal">({history.length})</span>}
+            Historical versions {history.length > 0 && <span className="text-[#e5e5e5]/60 font-medium normal-case tracking-normal">({history.length})</span>}
           </h2>
-          <svg className={`w-4 h-4 text-[#e5e5e5]/40 transition-transform ${historyOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform ${historyOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
@@ -311,7 +311,7 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
         {historyOpen && (
           loading ? null
           : history.length === 0 ? (
-            <p className="text-sm text-[#e5e5e5]/30 text-center py-6 bg-surface border border-line rounded-2xl">No older versions yet.</p>
+            <p className="text-sm text-[#e5e5e5]/60 text-center py-6 bg-surface border border-line rounded-2xl">No older versions yet.</p>
           ) : (
             <div className="space-y-2">
               {history.map(r => (
@@ -356,14 +356,14 @@ function ActiveVersionCard({ row, onDeactivate }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-white font-bold truncate">{row.original_filename}</p>
-          <p className="text-xs text-[#e5e5e5]/50 mt-0.5">
+          <p className="text-xs text-[#e5e5e5]/60 mt-0.5">
             v{row.version} · Effective {formatDate(row.effective_date)} · Uploaded {formatDate(row.uploaded_at)}
             {row.uploader && ` by ${uploaderName(row.uploader)}`}
           </p>
           {row.requires_reacceptance && (
             <p className="text-[10px] uppercase tracking-wider text-amber-400/80 mt-1.5 font-bold">Requires re-acceptance</p>
           )}
-          {row.notes && <p className="text-xs text-[#e5e5e5]/50 mt-2 italic">{row.notes}</p>}
+          {row.notes && <p className="text-xs text-[#e5e5e5]/60 mt-2 italic">{row.notes}</p>}
         </div>
       </div>
       <div className="flex gap-2 flex-shrink-0">
@@ -396,11 +396,11 @@ function HistoryRow({ row, onReactivate }) {
           <span className="text-white font-bold text-sm">v{row.version}</span>
           <span className="text-sm text-[#e5e5e5]/70 truncate">{row.original_filename}</span>
         </div>
-        <p className="text-xs text-[#e5e5e5]/40 mt-0.5">
+        <p className="text-xs text-[#e5e5e5]/60 mt-0.5">
           Effective {formatDate(row.effective_date)} · Uploaded {formatDate(row.uploaded_at)}
           {row.uploader && ` by ${uploaderName(row.uploader)}`}
         </p>
-        {row.notes && <p className="text-xs text-[#e5e5e5]/40 mt-1.5 italic">{row.notes}</p>}
+        {row.notes && <p className="text-xs text-[#e5e5e5]/60 mt-1.5 italic">{row.notes}</p>}
       </div>
       <div className="flex gap-2 flex-shrink-0">
         <a
@@ -541,7 +541,7 @@ function UploadForm({ documentType, highestVersion, onUploaded, showToast }) {
             className="block w-full text-sm text-[#e5e5e5]/70 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border file:border-line file:bg-[#191919] file:text-[#e5e5e5]/80 file:text-xs file:font-medium hover:file:bg-line file:cursor-pointer"
           />
           {file && (
-            <p className="text-xs text-[#e5e5e5]/50 mt-1.5">
+            <p className="text-xs text-[#e5e5e5]/60 mt-1.5">
               {file.name} · {humanSize(file.size)} · will save as <code className="text-brand/70">{`${documentType}/v${(highestVersion ?? 0) + 1}/${slugifyPdf(file.name)}`}</code>
             </p>
           )}
@@ -588,7 +588,7 @@ function UploadForm({ documentType, highestVersion, onUploaded, showToast }) {
               <div className="w-32 h-1.5 bg-[#191919] rounded-full overflow-hidden">
                 <div className="h-full bg-brand transition-all duration-200" style={{ width: `${progress}%` }} />
               </div>
-              <span className="text-xs text-[#e5e5e5]/50 tabular-nums">{progress}%</span>
+              <span className="text-xs text-[#e5e5e5]/60 tabular-nums">{progress}%</span>
             </div>
           )}
           <button

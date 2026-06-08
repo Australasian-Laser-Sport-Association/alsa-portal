@@ -55,7 +55,7 @@ function Stat({ label, value, tone = 'neutral', prefix = '' }) {
 function Field({ label, value, className = '' }) {
   return (
     <div className={className}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60">{label}</p>
       <p className="text-white font-mono text-sm mt-0.5 break-all select-all">{value}</p>
     </div>
   )
@@ -77,7 +77,7 @@ function CopyableReference({ value }) {
     >
       <div className="flex items-center justify-between gap-3">
         <span className="text-brand font-mono font-black text-base tracking-wide select-all">{value}</span>
-        <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${copied ? 'text-brand' : 'text-[#e5e5e5]/40 group-hover:text-brand'}`}>
+        <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${copied ? 'text-brand' : 'text-[#e5e5e5]/60 group-hover:text-brand'}`}>
           {copied ? 'Copied!' : 'Click to copy'}
         </span>
       </div>
@@ -92,7 +92,7 @@ function ChecklistItem({ status, label, children }) {
   const colors = {
     done: 'bg-brand text-black',
     error: 'bg-red-500/20 border border-red-500/40 text-red-400',
-    pending: 'bg-[#374056] text-[#e5e5e5]/40',
+    pending: 'bg-[#374056] text-[#e5e5e5]/60',
   }
   const icons = { done: '✓', error: '✗', pending: '·' }
 
@@ -110,7 +110,7 @@ function ChecklistItem({ status, label, children }) {
           <p className={`text-sm font-semibold ${status === 'done' ? 'text-white' : 'text-[#e5e5e5]/70'}`}>{label}</p>
         </div>
         {children && (
-          <svg className={`w-4 h-4 text-[#e5e5e5]/30 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         )}
@@ -159,7 +159,7 @@ function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
 
   if (!activeDoc) {
     return (
-      <p className="text-[#e5e5e5]/50 italic text-xs">
+      <p className="text-[#e5e5e5]/60 italic text-xs">
         Code of Conduct is not yet available — contact the committee.
       </p>
     )
@@ -258,12 +258,12 @@ function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
           <PdfLink doc={activeDoc} label="Download form" />
         </div>
       ) : (
-        <p className="text-[#e5e5e5]/50 italic text-xs">
+        <p className="text-[#e5e5e5]/60 italic text-xs">
           Under 18 form is not yet available — contact the committee.
         </p>
       )}
 
-      <div className="text-xs text-[#e5e5e5]/55 leading-relaxed bg-base border border-line rounded-xl px-4 py-3">
+      <div className="text-xs text-[#e5e5e5]/60 leading-relaxed bg-base border border-line rounded-xl px-4 py-3">
         <p className="font-bold text-white/80 mb-1">How to submit</p>
         <ol className="list-decimal list-inside space-y-0.5">
           <li>Download the form above and have your parent/guardian complete it.</li>
@@ -278,10 +278,10 @@ function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
             {meta.label}
           </span>
           {approval?.submitted_at && (
-            <span className="text-[#e5e5e5]/40">flagged {formatDate(approval.submitted_at)}</span>
+            <span className="text-[#e5e5e5]/60">flagged {formatDate(approval.submitted_at)}</span>
           )}
           {approval?.approved_at && status === 'approved' && (
-            <span className="text-[#e5e5e5]/40">approved {formatDate(approval.approved_at)}</span>
+            <span className="text-[#e5e5e5]/60">approved {formatDate(approval.approved_at)}</span>
           )}
         </div>
       )}
@@ -309,7 +309,7 @@ function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) 
 
   if (!activeDoc) {
     return (
-      <p className="text-[#e5e5e5]/50 italic text-xs">
+      <p className="text-[#e5e5e5]/60 italic text-xs">
         Media Release is not yet available — contact the committee.
       </p>
     )
@@ -419,7 +419,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   if (record) {
     return (
       <div className="mt-3 bg-base border border-line rounded-xl p-4">
-        <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">Your Doubles Partner</p>
+        <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Your Doubles Partner</p>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand font-black text-xs flex-shrink-0">
             {partnerProfile ? ((partnerProfile.first_name?.[0] ?? '') + (partnerProfile.last_name?.[0] ?? '')).toUpperCase() : '?'}
@@ -442,7 +442,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         {error && <p role="alert" className="text-red-400 text-xs mb-2">{error}</p>}
         {isInitiator && (
           <button onClick={changePartner} disabled={saving}
-            className="text-xs text-[#e5e5e5]/40 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
+            className="text-xs text-[#e5e5e5]/60 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
             {saving ? 'Removing…' : 'Change partner'}
           </button>
         )}
@@ -452,12 +452,12 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 
   return (
     <div className="mt-3 bg-base border border-line rounded-xl p-4">
-      <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">Select your Doubles partner</p>
+      <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Select your Doubles partner</p>
       <input type="text" value={search} onChange={e => runSearch(e.target.value)}
         placeholder="Search by name or alias…"
         className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand mb-2"
       />
-      {searching && <p className="text-[#e5e5e5]/30 text-xs">Searching…</p>}
+      {searching && <p className="text-[#e5e5e5]/60 text-xs">Searching…</p>}
       {results.length > 0 && (
         <div className="space-y-1 mt-1">
           {results.map(p => {
@@ -474,9 +474,9 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
                   <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
-                  {ineligible && <span className="text-[#e5e5e5]/40 font-normal ml-1.5">(not in Doubles)</span>}
+                  {ineligible && <span className="text-[#e5e5e5]/60 font-normal ml-1.5">(not in Doubles)</span>}
                 </p>
-                <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
+                <p className="text-[#e5e5e5]/60 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
                   {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
                 </p>
@@ -491,7 +491,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         </div>
       )}
       {search.trim().length >= 2 && !searching && results.length === 0 && (
-        <p className="text-[#e5e5e5]/30 text-xs">No available doubles players found for "{search}"</p>
+        <p className="text-[#e5e5e5]/60 text-xs">No available doubles players found for "{search}"</p>
       )}
       {error && <p role="alert" className="text-red-400 text-xs mt-2">{error}</p>}
     </div>
@@ -593,9 +593,9 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       if (!isCreator) return (
         <div key={slot} className="flex items-center gap-3 py-2.5">
           <div className="w-7 h-7 rounded-full border border-dashed border-line flex items-center justify-center flex-shrink-0">
-            <span className="text-[#e5e5e5]/20 text-[10px]">{slot}</span>
+            <span className="text-[#e5e5e5]/60 text-[10px]">{slot}</span>
           </div>
-          <span className="text-[#e5e5e5]/30 text-xs italic">Empty slot</span>
+          <span className="text-[#e5e5e5]/60 text-xs italic">Empty slot</span>
         </div>
       )
       if (searchSlot === slot) return (
@@ -609,7 +609,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           />
           <button onClick={() => { setSearchSlot(null); setSearch(''); setResults([]) }}
             aria-label="Clear search"
-            className="text-[#e5e5e5]/30 hover:text-white text-xs">✕</button>
+            className="text-[#e5e5e5]/60 hover:text-white text-xs">✕</button>
         </div>
       )
       return (
@@ -648,7 +648,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         {!isMe && isCreator && (
           <button onClick={() => clearSlot(slot)} disabled={saving}
             aria-label="Remove"
-            className="text-[#e5e5e5]/25 hover:text-red-400 text-xs transition-colors px-1">✕</button>
+            className="text-[#e5e5e5]/60 hover:text-red-400 text-xs transition-colors px-1">✕</button>
         )}
       </div>
     )
@@ -657,11 +657,11 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   return (
     <div className="mt-3 bg-base border border-line rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider">Triples Team</p>
+        <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">Triples Team</p>
         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
           allConfirmed ? 'bg-green-500/15 text-green-400 border-green-500/30'
             : filledSlots > 0 ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
-            : 'bg-[#374056] text-[#e5e5e5]/40 border-line'
+            : 'bg-[#374056] text-[#e5e5e5]/60 border-line'
         }`}>{overallStatus}</span>
       </div>
       <div className="divide-y divide-line/50">
@@ -685,9 +685,9 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
                   {p.first_name} {p.last_name}
                   {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
                   <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
-                  {ineligible && <span className="text-[#e5e5e5]/40 font-normal ml-1.5">(not in Triples)</span>}
+                  {ineligible && <span className="text-[#e5e5e5]/60 font-normal ml-1.5">(not in Triples)</span>}
                 </p>
-                <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">
+                <p className="text-[#e5e5e5]/60 text-[10px] mt-0.5">
                   {p.teamName ?? 'No team'}
                   {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
                 </p>
@@ -701,14 +701,14 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           })}
         </div>
       )}
-      {searching && <p className="text-[#e5e5e5]/30 text-xs mt-2">Searching…</p>}
+      {searching && <p className="text-[#e5e5e5]/60 text-xs mt-2">Searching…</p>}
       {searchSlot && search.trim().length >= 2 && !searching && results.length === 0 && (
-        <p className="text-[#e5e5e5]/30 text-xs mt-2">No available triples players found</p>
+        <p className="text-[#e5e5e5]/60 text-xs mt-2">No available triples players found</p>
       )}
       {error && <p role="alert" className="text-red-400 text-xs mt-2">{error}</p>}
       {record && isCreator && (
         <button onClick={disbandTeam} disabled={saving}
-          className="mt-3 text-xs text-[#e5e5e5]/25 hover:text-red-400 transition-colors">
+          className="mt-3 text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors">
           Disband triples team
         </button>
       )}
@@ -1060,7 +1060,7 @@ export default function PlayerHub() {
     return (
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <h1 className="text-2xl font-black text-white mb-2">No Active Event</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">There is no active ZLTAC event at this time. Check back soon.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">There is no active ZLTAC event at this time. Check back soon.</p>
         <Link to="/" className="text-brand text-sm font-semibold hover:underline">← Back to home</Link>
       </div>
     )
@@ -1211,7 +1211,7 @@ export default function PlayerHub() {
       {cancelOpen && (
         <Dialog open onClose={() => { setCancelOpen(false); setCancelError(null) }} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Cancel your registration?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
               This permanently deletes your registration for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${eventYear}`}</span>.
               You'll lose your team membership and side event selections. Continue?
             </p>
@@ -1259,7 +1259,7 @@ export default function PlayerHub() {
                 </span>
                 <CommitteeBadge roles={profile?.roles} size="sm" />
               </h1>
-              <p className="text-[#e5e5e5]/40 text-xs mt-1">
+              <p className="text-[#e5e5e5]/60 text-xs mt-1">
                 ALSA ID: {memberId} · {team ? team.name : isRegistered ? 'Side events only' : 'Not yet registered'}
               </p>
             </div>
@@ -1274,7 +1274,7 @@ export default function PlayerHub() {
         </div>
 
         {/* Back */}
-        <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-5 inline-block">
+        <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/60 hover:text-brand text-xs transition-colors mb-5 inline-block">
           ← {event.name}
         </Link>
 
@@ -1285,7 +1285,7 @@ export default function PlayerHub() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Player Hub</h1>
-            <p className="text-[#e5e5e5]/40 text-sm mt-1">
+            <p className="text-[#e5e5e5]/60 text-sm mt-1">
               Your hub for {event.name} registration, team status, and event-day prep.
             </p>
           </div>
@@ -1451,7 +1451,7 @@ export default function PlayerHub() {
           <div className="bg-surface border border-line rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-line">
               <h2 className="text-white font-bold">Registration Checklist</h2>
-              <p className="text-[#e5e5e5]/40 text-xs mt-0.5">Complete all items to confirm your registration.</p>
+              <p className="text-[#e5e5e5]/60 text-xs mt-0.5">Complete all items to confirm your registration.</p>
             </div>
 
             <ChecklistItem
@@ -1667,8 +1667,8 @@ export default function PlayerHub() {
                     )}
                   </div>
                   {team.state && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand/10 text-brand/80 border border-brand/20">{team.state}</span>}
-                  {team.home_venue && <p className="text-[#e5e5e5]/40 text-xs mt-1">{team.home_venue}</p>}
-                  <p className="text-[#e5e5e5]/40 text-xs mt-0.5">
+                  {team.home_venue && <p className="text-[#e5e5e5]/60 text-xs mt-1">{team.home_venue}</p>}
+                  <p className="text-[#e5e5e5]/60 text-xs mt-0.5">
                     {isTeamCaptain ? '👑 You are the captain' : `Captain: ${team.profiles ? `${team.profiles.first_name} ${team.profiles.last_name}` : '—'}`}
                   </p>
                 </div>
@@ -1676,7 +1676,7 @@ export default function PlayerHub() {
               {/* Roster */}
               {teamRoster.length > 0 && (
                 <div className="border-t border-line px-5 py-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-3">Team roster — {teamRoster.length} player{teamRoster.length !== 1 ? 's' : ''}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-3">Team roster — {teamRoster.length} player{teamRoster.length !== 1 ? 's' : ''}</p>
                   <div className="space-y-2">
                     {teamRoster.map(p => (
                       <div key={p.id} className="flex items-center gap-3">
@@ -1689,11 +1689,11 @@ export default function PlayerHub() {
                           <p className="text-white text-sm font-semibold leading-tight">
                             {p.first_name} {p.last_name}
                             {p.alias && <span className="text-brand ml-1.5 font-normal">"{p.alias}"</span>}
-                            {p.id === user.id && <span className="text-[#e5e5e5]/30 ml-1.5 text-xs">(You)</span>}
+                            {p.id === user.id && <span className="text-[#e5e5e5]/60 ml-1.5 text-xs">(You)</span>}
                             {p.id === team.captain_id && <span className="ml-1.5 text-xs">👑</span>}
                             <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
                           </p>
-                          {p.state && <p className="text-[#e5e5e5]/35 text-[10px]">{p.state}</p>}
+                          {p.state && <p className="text-[#e5e5e5]/60 text-[10px]">{p.state}</p>}
                         </div>
                       </div>
                     ))}
@@ -1712,12 +1712,12 @@ export default function PlayerHub() {
               open={openSections['side-events']}
               onToggle={() => toggleSection('side-events')}
             >
-              <p className="text-[#e5e5e5]/40 text-xs mb-5">Register for individual and team side events for ZLTAC {eventYear}</p>
+              <p className="text-[#e5e5e5]/60 text-xs mb-5">Register for individual and team side events for ZLTAC {eventYear}</p>
 
               {/* Individual entries */}
               {individualSideEvents.length > 0 && (
                 <div className="mb-6">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-3">Individual entries</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-3">Individual entries</p>
                   <div className="space-y-3">
                     {individualSideEvents.map(se => {
                       const active = selectedSlugs.has(se.slug)
@@ -1725,13 +1725,13 @@ export default function PlayerHub() {
                         <div key={se.slug} className={`rounded-xl border p-4 flex items-center justify-between gap-4 transition-all ${active ? 'border-brand/40 bg-brand/5' : 'border-line bg-base'}`}>
                           <div className="flex-1 min-w-0">
                             <p className="text-white font-semibold text-sm">{se.name}</p>
-                            {se.description && <p className="text-[#e5e5e5]/40 text-xs mt-0.5">{se.description}</p>}
+                            {se.description && <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{se.description}</p>}
                             <p className="text-brand font-black text-sm mt-1">{se.price > 0 ? dollars(se.price) : 'Included'}</p>
                           </div>
                           <button
                             onClick={() => toggleSideEvent(se.slug)}
                             disabled={locked}
-                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
+                            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/60'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
                           >
                             {active ? 'Selected ✓' : 'Select'}
                           </button>
@@ -1746,7 +1746,7 @@ export default function PlayerHub() {
               {individualSideEvents.length > 0 && teamSideEvents.length > 0 && <div className="border-t border-line my-5" />}
               {teamSideEvents.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-3">Team entries — partner required</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-3">Team entries — partner required</p>
                   <div className="space-y-3">
                     {teamSideEvents.map(se => {
                       const active = selectedSlugs.has(se.slug)
@@ -1756,13 +1756,13 @@ export default function PlayerHub() {
                           <div className="p-4 flex items-center justify-between gap-4">
                             <div className="flex-1 min-w-0">
                               <p className="text-white font-semibold text-sm">{se.name}</p>
-                              {se.description && <p className="text-[#e5e5e5]/40 text-xs mt-0.5">{se.description}</p>}
+                              {se.description && <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{se.description}</p>}
                               <p className="text-brand font-black text-sm mt-1">{se.price > 0 ? dollars(se.price) : 'Included'}</p>
                             </div>
                             <button
                               onClick={() => toggleSideEvent(se.slug)}
                               disabled={locked}
-                              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/50'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
+                              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold transition-all ${active ? 'bg-brand/15 border border-brand/40 text-brand' : 'bg-base border border-line text-[#e5e5e5]/60'} ${locked ? 'cursor-default' : (active ? '' : 'hover:border-brand/30 hover:text-white')}`}
                             >
                               {active ? 'Selected ✓' : 'Select'}
                             </button>
@@ -1811,7 +1811,7 @@ export default function PlayerHub() {
                   <button
                     onClick={confirmSideEvents}
                     disabled={sideConfirmDisabled || savingConfirm}
-                    className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${sideConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                    className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${sideConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/60 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
                   >
                     {savingConfirm ? 'Saving…' : sideConfirmDisabled ? 'Selections confirmed ✓' : sideEventsConfirmed ? 'Update Side Event Selections' : 'Confirm Side Event Selections'}
                   </button>
@@ -1830,19 +1830,19 @@ export default function PlayerHub() {
               open={openSections.extras}
               onToggle={() => toggleSection('extras')}
             >
-              <p className="text-[#e5e5e5]/40 text-xs mb-5">Optional additions to your ZLTAC experience</p>
+              <p className="text-[#e5e5e5]/60 text-xs mb-5">Optional additions to your ZLTAC experience</p>
 
               {/* Presentation Dinner Guests */}
               <div className="rounded-xl border border-line bg-base p-4 mb-5">
                 <p className="text-white font-semibold text-sm mb-0.5">Presentation Dinner Guests</p>
-                <p className="text-[#e5e5e5]/40 text-xs mb-1">All registered players are included in the presentation dinner. Add extra guests below.</p>
+                <p className="text-[#e5e5e5]/60 text-xs mb-1">All registered players are included in the presentation dinner. Add extra guests below.</p>
                 {dinnerPrice > 0 && <p className="text-brand font-black text-sm mb-3">{dollars(dinnerPrice)} per guest</p>}
                 <div className="flex items-center gap-3">
                   <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.max(0, d - 1))} disabled={locked} className={`w-8 h-8 rounded-lg bg-line text-white font-bold transition-colors ${locked ? 'cursor-default opacity-50' : 'hover:bg-[#374056]'}`}>−</button>
                   <span className="text-white font-bold w-6 text-center">{dinnerGuestsDraft}</span>
                   <button type="button" onClick={() => setDinnerGuestsDraft(d => Math.min(10, d + 1))} disabled={locked} className={`w-8 h-8 rounded-lg bg-line text-white font-bold transition-colors ${locked ? 'cursor-default opacity-50' : 'hover:bg-[#374056]'}`}>+</button>
                   {dinnerGuestsDraft > 0 && dinnerPrice > 0 && (
-                    <span className="text-[#e5e5e5]/40 text-xs ml-1">{dinnerGuestsDraft} × {dollars(dinnerPrice)} = {dollars(dinnerGuestsDraft * dinnerPrice)}</span>
+                    <span className="text-[#e5e5e5]/60 text-xs ml-1">{dinnerGuestsDraft} × {dollars(dinnerPrice)} = {dollars(dinnerGuestsDraft * dinnerPrice)}</span>
                   )}
                 </div>
               </div>
@@ -1854,7 +1854,7 @@ export default function PlayerHub() {
                 <button
                   onClick={confirmExtras}
                   disabled={extrasConfirmDisabled || savingExtrasConfirm}
-                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${extrasConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/30 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
+                  className={`w-full font-bold py-2.5 rounded-xl text-sm transition-all ${extrasConfirmDisabled ? 'bg-[#2D2D2D] border border-line text-[#e5e5e5]/60 cursor-default' : 'bg-brand hover:bg-brand-hover text-black'}`}
                 >
                   {savingExtrasConfirm ? 'Saving…' : extrasConfirmDisabled ? 'Extras confirmed ✓' : extrasConfirmed ? 'Update Extras' : 'Confirm Extras'}
                 </button>
@@ -1897,43 +1897,43 @@ export default function PlayerHub() {
               open={openSections['payment-details']}
               onToggle={() => toggleSection('payment-details')}
             >
-              <p className="text-[#e5e5e5]/40 text-xs mb-5">Your event fees and how to pay</p>
+              <p className="text-[#e5e5e5]/60 text-xs mb-5">Your event fees and how to pay</p>
 
               {/* Itemised breakdown — informational, computed live from event pricing */}
               <div className="bg-base border border-line rounded-xl p-4 mb-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Cost breakdown</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-3">Cost breakdown</p>
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-[#e5e5e5]/50">Player registration fee</span>
-                    <span className="text-[#e5e5e5]/50">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
+                    <span className="text-[#e5e5e5]/60">Player registration fee</span>
+                    <span className="text-[#e5e5e5]/60">{mainFee > 0 ? dollars(mainFee) : 'TBC'}</span>
                   </div>
                   {hasTeam && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">Team registration fee (per player)</span>
-                      <span className="text-[#e5e5e5]/50">{dollars(teamFee)}</span>
+                      <span className="text-[#e5e5e5]/60">Team registration fee (per player)</span>
+                      <span className="text-[#e5e5e5]/60">{dollars(teamFee)}</span>
                     </div>
                   )}
                   {billedSideEvents.map(se => (
                     <div key={se.slug} className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">
+                      <span className="text-[#e5e5e5]/60">
                         {se.name}
                         {sideEventAnnotations[se.slug] && (
-                          <span className="text-[#e5e5e5]/30"> ({sideEventAnnotations[se.slug]})</span>
+                          <span className="text-[#e5e5e5]/60"> ({sideEventAnnotations[se.slug]})</span>
                         )}
                       </span>
-                      <span className="text-[#e5e5e5]/50">{dollars(se.price ?? 0)}</span>
+                      <span className="text-[#e5e5e5]/60">{dollars(se.price ?? 0)}</span>
                     </div>
                   ))}
                   {dinnerGuests > 0 && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/50">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
-                      <span className="text-[#e5e5e5]/50">{dollars(dinnerGuests * dinnerPrice)}</span>
+                      <span className="text-[#e5e5e5]/60">{dinnerGuests} dinner guest{dinnerGuests > 1 ? 's' : ''} × {dollars(dinnerPrice)}</span>
+                      <span className="text-[#e5e5e5]/60">{dollars(dinnerGuests * dinnerPrice)}</span>
                     </div>
                   )}
                   {processingFee > 0 && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-[#e5e5e5]/40">Processing fee ({event.processing_fee_pct}%)</span>
-                      <span className="text-[#e5e5e5]/40">{dollars(processingFee)}</span>
+                      <span className="text-[#e5e5e5]/60">Processing fee ({event.processing_fee_pct}%)</span>
+                      <span className="text-[#e5e5e5]/60">{dollars(processingFee)}</span>
                     </div>
                   )}
                 </div>
@@ -1951,21 +1951,21 @@ export default function PlayerHub() {
 
               {paymentRecords.length > 0 && (
                 <div className="bg-base border border-line rounded-xl p-4 mb-4">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-3">Payment History</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-3">Payment History</p>
                   <div className="divide-y divide-line">
                     {paymentRecords.map(rec => (
                       <div key={rec.id} className="py-2 first:pt-0 last:pb-0">
                         <div className="flex justify-between items-baseline gap-3">
-                          <span className="text-[#e5e5e5]/50 text-xs">{formatDate(rec.recorded_at, 'long')}</span>
+                          <span className="text-[#e5e5e5]/60 text-xs">{formatDate(rec.recorded_at, 'long')}</span>
                           <span className={`text-xs font-semibold ${rec.amount < 0 ? 'text-red-400' : 'text-brand'}`}>
                             {dollars(rec.amount)}
                           </span>
                         </div>
                         {rec.bank_reference && (
-                          <p className="text-[#e5e5e5]/30 text-[11px] mt-0.5">Ref: {rec.bank_reference}</p>
+                          <p className="text-[#e5e5e5]/60 text-[11px] mt-0.5">Ref: {rec.bank_reference}</p>
                         )}
                         {rec.notes && (
-                          <p className="text-[#e5e5e5]/30 text-[11px] mt-0.5 break-words">{rec.notes}</p>
+                          <p className="text-[#e5e5e5]/60 text-[11px] mt-0.5 break-words">{rec.notes}</p>
                         )}
                       </div>
                     ))}
@@ -2009,9 +2009,9 @@ export default function PlayerHub() {
 
                   {paymentRef && (
                     <div className="bg-base border border-line rounded-xl p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/40 mb-1.5">Reference</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-1.5">Reference</p>
                       <CopyableReference value={paymentRef} />
-                      <p className="text-[#e5e5e5]/40 text-xs mt-2">Include this exact reference so we can match your payment.</p>
+                      <p className="text-[#e5e5e5]/60 text-xs mt-2">Include this exact reference so we can match your payment.</p>
                     </div>
                   )}
                 </div>

@@ -72,7 +72,7 @@ export default function ForgotPassword() {
               {loading ? 'Sending…' : 'Send reset link'}
             </button>
 
-            <p className="text-[#e5e5e5]/50 text-sm text-center">
+            <p className="text-[#e5e5e5]/60 text-sm text-center">
               Remembered it?{' '}
               <Link to="/login" className="text-brand hover:underline">Back to sign in</Link>
             </p>

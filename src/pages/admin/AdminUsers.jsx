@@ -13,7 +13,7 @@ const ROLE_META = {
   zltac_committee: { label: 'ZLTAC Committee', cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
   advisor:         { label: 'Advisor',         cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
   captain:         { label: 'Captain',         cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
-  player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/50 border-transparent' },
+  player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/60 border-transparent' },
 }
 
 const AVATAR_COLORS = {
@@ -91,11 +91,11 @@ const UserRow = memo(function UserRow({ u, onView }) {
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.state ?? '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{u.state ?? '—'}</td>
       <td className="px-4 py-3"><RolePills roles={displayRoles(u)} /></td>
-      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
-      <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{u.team_name ?? '—'}</td>
-      <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{u.events_entered > 0 ? `${u.events_entered} event${u.events_entered !== 1 ? 's' : ''}` : '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{u.team_name ?? '—'}</td>
+      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{formatDate(u.created_at, 'numeric') || '—'}</td>
       <td className="px-4 py-3">
         <button onClick={() => onView(u)} className="text-xs text-brand/70 hover:text-brand transition-colors font-semibold">
           View →
@@ -288,7 +288,7 @@ export default function AdminUsers() {
     <div>
       <div className="mb-5">
         <h1 className="text-2xl font-black text-white">Users</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">
           <span className="text-brand font-bold">{users.length}</span> members registered
         </p>
       </div>
@@ -313,7 +313,7 @@ export default function AdminUsers() {
           <option value="all">All states</option>
           {allStates.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <span className="ml-auto text-xs text-[#e5e5e5]/40 self-center">{filtered.length} member{filtered.length !== 1 ? 's' : ''}</span>
+        <span className="ml-auto text-xs text-[#e5e5e5]/60 self-center">{filtered.length} member{filtered.length !== 1 ? 's' : ''}</span>
       </div>
 
       {error && (
@@ -332,13 +332,13 @@ export default function AdminUsers() {
             <thead>
               <tr className="border-b border-line">
                 {['Name', 'State', 'Roles', 'Events', 'Team', 'Joined', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-12 text-[#e5e5e5]/30 text-sm">No users found</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-[#e5e5e5]/60 text-sm">No users found</td></tr>
               ) : filtered.map(u => (
                 <UserRow key={u.id} u={u} onView={openUser} />
               ))}
@@ -352,7 +352,7 @@ export default function AdminUsers() {
         <Dialog open onClose={() => { setSelected(null); setMsg(null) }} variant="drawer" closeOnBackdrop className="p-6">
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-black text-white">User Profile</Dialog.Title>
-              <button onClick={() => { setSelected(null); setMsg(null) }} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => { setSelected(null); setMsg(null) }} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-xl leading-none">✕</button>
             </div>
 
             {/* Avatar + name */}
@@ -363,7 +363,7 @@ export default function AdminUsers() {
                   {selected.first_name || selected.last_name ? `${selected.first_name ?? ''} ${selected.last_name ?? ''}`.trim() : 'Unknown'}
                 </p>
                 {selected.alias && <p className="text-brand text-sm">"{selected.alias}"</p>}
-                <p className="text-[#e5e5e5]/40 text-xs mt-0.5">
+                <p className="text-[#e5e5e5]/60 text-xs mt-0.5">
                   Joined {formatDate(selected.created_at) || '—'}
                 </p>
               </div>
@@ -373,7 +373,7 @@ export default function AdminUsers() {
             <div className="grid grid-cols-2 gap-2 mb-5">
               {[['State', selected.state ?? '—'], ['Home Arena', selected.home_arena ?? '—']].map(([label, val]) => (
                 <div key={label} className="bg-base border border-line rounded-lg px-3 py-2.5">
-                  <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-0.5">{label}</p>
+                  <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-0.5">{label}</p>
                   <p className="text-sm text-white">{val}</p>
                 </div>
               ))}
@@ -382,7 +382,7 @@ export default function AdminUsers() {
             {/* Alias (in-game name) — committee-editable identity field */}
             <div className="bg-base border border-line rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Alias</p>
+                <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider">Alias</p>
                 {!editingAlias && (
                   <button onClick={() => { setEditingAlias(true); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
                     className="text-[10px] text-brand/70 hover:text-brand font-semibold transition-colors">
@@ -401,14 +401,14 @@ export default function AdminUsers() {
                     maxLength={30}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white opacity-100 placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors mb-1.5"
                   />
-                  <p className="text-[10px] text-white/30 mb-3">Leave blank to clear. Max 30 characters.</p>
+                  <p className="text-[10px] text-white/60 mb-3">Leave blank to clear. Max 30 characters.</p>
                   <div className="flex gap-2">
                     <button onClick={() => saveAlias(selected.id)} disabled={savingAlias}
                       className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black text-xs font-bold px-4 py-2 rounded-lg transition-all">
                       {savingAlias ? 'Saving…' : 'Save Alias'}
                     </button>
                     <button onClick={() => { setEditingAlias(false); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
-                      className="border border-line text-white/50 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
+                      className="border border-line text-white/60 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
                       Cancel
                     </button>
                   </div>
@@ -416,7 +416,7 @@ export default function AdminUsers() {
               ) : (
                 selected.alias
                   ? <p className="text-sm text-brand opacity-100">"{selected.alias}"</p>
-                  : <p className="text-sm text-white/30">No alias set</p>
+                  : <p className="text-sm text-white/60">No alias set</p>
               )}
 
               {aliasMsg && <p className={`text-xs mt-3 ${aliasMsg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{aliasMsg.text}</p>}
@@ -425,7 +425,7 @@ export default function AdminUsers() {
             {/* Role management */}
             <div className="bg-base border border-line rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider">Roles</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider">Roles</p>
                 {!editingRoles && (
                   <button onClick={() => { setEditingRoles(true); setDraftRoles(selected._roles); setDraftAlsaPosition(selected.alsa_position ?? ''); setMsg(null) }}
                     className="text-[10px] text-brand/70 hover:text-brand font-semibold transition-colors">
@@ -454,21 +454,21 @@ export default function AdminUsers() {
                             className="accent-brand w-3.5 h-3.5 flex-shrink-0"
                           />
                           <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${m.cls}`}>{m.label}</span>
-                          {isPlayer && <span className="text-[10px] text-[#e5e5e5]/30 ml-auto">always assigned</span>}
+                          {isPlayer && <span className="text-[10px] text-[#e5e5e5]/60 ml-auto">always assigned</span>}
                         </label>
                       )
                     })}
                   </div>
                   {!isSuperAdmin && (
-                    <p className="text-[10px] text-[#e5e5e5]/30 mb-3">Elevated roles require Superadmin access to assign.</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mb-3">Elevated roles require Superadmin access to assign.</p>
                   )}
 
                   {/* ALSA position — only meaningful when alsa_committee is selected */}
                   <div className="mb-4 pt-3 border-t border-line">
-                    <label htmlFor={`${uid}-alsa-position`} className="block text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-1.5">
+                    <label htmlFor={`${uid}-alsa-position`} className="block text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">
                       ALSA Position
                       {!draftRoles.includes('alsa_committee') && (
-                        <span className="ml-1 text-[#e5e5e5]/30 normal-case font-normal">(requires ALSA Committee role)</span>
+                        <span className="ml-1 text-[#e5e5e5]/60 normal-case font-normal">(requires ALSA Committee role)</span>
                       )}
                     </label>
                     <input
@@ -489,7 +489,7 @@ export default function AdminUsers() {
                       {savingRoles ? 'Saving…' : 'Save Roles'}
                     </button>
                     <button onClick={() => { setEditingRoles(false); setDraftRoles(selected._roles); setDraftAlsaPosition(selected.alsa_position ?? '') }}
-                      className="border border-line text-[#e5e5e5]/50 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
+                      className="border border-line text-[#e5e5e5]/60 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
                       Cancel
                     </button>
                   </div>
@@ -506,7 +506,7 @@ export default function AdminUsers() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white">Account Suspended</p>
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5">Prevents login and access</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">Prevents login and access</p>
                 </div>
                 <button onClick={() => toggleSuspend(selected.id, selected.suspended)}
                   className={`w-10 h-5 rounded-full transition-colors relative ${selected.suspended ? 'bg-red-500' : 'bg-line'}`}>
@@ -517,37 +517,37 @@ export default function AdminUsers() {
 
             {/* Registration history */}
             <div className="mb-4">
-              <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">Registration History</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Registration History</p>
               {loadingDetail ? (
                 <div className="h-12 flex items-center justify-center">
                   <div className="w-5 h-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : selectedRegs.length === 0 ? (
-                <p className="text-sm text-[#e5e5e5]/30">No registrations</p>
+                <p className="text-sm text-[#e5e5e5]/60">No registrations</p>
               ) : selectedRegs.map(r => (
                 <div key={r.id} className="bg-base border border-line rounded-lg px-4 py-3 mb-2">
                   <div className="flex items-center justify-between mb-0.5">
                     <p className="text-sm text-white font-semibold">ZLTAC {r.year}</p>
-                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${r.status === 'confirmed' ? 'bg-brand/10 text-brand border-brand/20' : 'bg-line text-[#e5e5e5]/40 border-transparent'}`}>
+                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${r.status === 'confirmed' ? 'bg-brand/10 text-brand border-brand/20' : 'bg-line text-[#e5e5e5]/60 border-transparent'}`}>
                       {r.status ?? 'pending'}
                     </span>
                   </div>
-                  {r.teams?.name && <p className="text-xs text-[#e5e5e5]/40">{r.teams.name}</p>}
-                  <p className="text-xs text-[#e5e5e5]/30 mt-0.5">{(r.side_events ?? []).join(', ') || 'Main event only'}</p>
+                  {r.teams?.name && <p className="text-xs text-[#e5e5e5]/60">{r.teams.name}</p>}
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{(r.side_events ?? []).join(', ') || 'Main event only'}</p>
                 </div>
               ))}
             </div>
 
             {/* Payment history */}
             <div className="mb-4">
-              <p className="text-[10px] text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">Payment History</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Payment History</p>
               {selectedPayments.length === 0 ? (
-                <p className="text-sm text-[#e5e5e5]/30">No payments</p>
+                <p className="text-sm text-[#e5e5e5]/60">No payments</p>
               ) : selectedPayments.map(p => (
                 <div key={p.id} className="bg-base border border-line rounded-lg px-4 py-3 mb-2 flex justify-between items-center">
                   <div>
                     <p className="text-sm text-white font-semibold">${((p.amount ?? 0) / 100).toFixed(2)}</p>
-                    <p className="text-xs text-[#e5e5e5]/40">{formatDate(p.created_at, 'numeric')}</p>
+                    <p className="text-xs text-[#e5e5e5]/60">{formatDate(p.created_at, 'numeric')}</p>
                   </div>
                   <span className={`text-xs font-bold uppercase ${p.status === 'paid' ? 'text-brand' : 'text-yellow-400'}`}>{p.status}</span>
                 </div>
@@ -566,7 +566,7 @@ export default function AdminUsers() {
                         {[selected.first_name, selected.last_name].filter(Boolean).join(' ') || 'this user'}
                       </span>?
                     </p>
-                    <p className="text-[11px] text-[#e5e5e5]/40 leading-relaxed mb-3">
+                    <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed mb-3">
                       This clears their profile fields and resets their role to player. Their login account remains active. To permanently remove the account, use Delete account (coming soon).
                     </p>
                     <div className="flex gap-2">
@@ -581,7 +581,7 @@ export default function AdminUsers() {
                       }} className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">
                         Yes, Reset
                       </button>
-                      <button onClick={() => setConfirmDelete(null)} className="border border-line text-[#e5e5e5]/50 text-xs font-semibold px-4 py-2 rounded-lg hover:text-white transition-colors">
+                      <button onClick={() => setConfirmDelete(null)} className="border border-line text-[#e5e5e5]/60 text-xs font-semibold px-4 py-2 rounded-lg hover:text-white transition-colors">
                         Cancel
                       </button>
                     </div>

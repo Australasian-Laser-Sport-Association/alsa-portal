@@ -307,7 +307,7 @@ export default function NavBar() {
           {user && (
             <button
               onClick={() => { setMobileOpen(false); handleSignOut() }}
-              className="mt-2 text-left py-2.5 px-3 text-sm text-[#e5e5e5]/40 hover:text-white rounded-lg hover:bg-line transition-colors"
+              className="mt-2 text-left py-2.5 px-3 text-sm text-[#e5e5e5]/60 hover:text-white rounded-lg hover:bg-line transition-colors"
             >
               Sign Out
             </button>

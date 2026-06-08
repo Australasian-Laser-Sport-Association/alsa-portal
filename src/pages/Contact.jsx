@@ -69,7 +69,7 @@ export default function Contact() {
         <div className="relative text-center px-6">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-4">Get in Touch</p>
           <h1 className="text-5xl md:text-6xl font-black text-white">Contact ALSA</h1>
-          <p className="text-[#e5e5e5]/50 mt-4 text-lg">We'd love to hear from you</p>
+          <p className="text-[#e5e5e5]/60 mt-4 text-lg">We'd love to hear from you</p>
         </div>
       </section>
 
@@ -80,7 +80,7 @@ export default function Contact() {
           {/* Form */}
           <div className="lg:col-span-3">
             <h2 className="text-2xl font-black text-white mb-2">Send a Message</h2>
-            <p className="text-[#e5e5e5]/40 text-sm mb-8">Fill in the form and we'll get back to you as soon as possible.</p>
+            <p className="text-[#e5e5e5]/60 text-sm mb-8">Fill in the form and we'll get back to you as soon as possible.</p>
 
             {status === 'success' ? (
               <div className="bg-brand/10 border border-brand/30 rounded-2xl p-10 text-center">
@@ -91,7 +91,7 @@ export default function Contact() {
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
-                    <label htmlFor={`${uid}-name`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Name</label>
+                    <label htmlFor={`${uid}-name`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/60 mb-2">Name</label>
                     <input
                       id={`${uid}-name`}
                       type="text"
@@ -103,7 +103,7 @@ export default function Contact() {
                     />
                   </div>
                   <div>
-                    <label htmlFor={`${uid}-email`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Email</label>
+                    <label htmlFor={`${uid}-email`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/60 mb-2">Email</label>
                     <input
                       id={`${uid}-email`}
                       type="email"
@@ -116,7 +116,7 @@ export default function Contact() {
                   </div>
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-subject`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Subject</label>
+                  <label htmlFor={`${uid}-subject`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/60 mb-2">Subject</label>
                   <select
                     id={`${uid}-subject`}
                     value={form.subject}
@@ -129,7 +129,7 @@ export default function Contact() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-message`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/40 mb-2">Message</label>
+                  <label htmlFor={`${uid}-message`} className="block text-xs font-semibold uppercase tracking-wider text-[#e5e5e5]/60 mb-2">Message</label>
                   <textarea
                     id={`${uid}-message`}
                     value={form.message}
@@ -189,7 +189,7 @@ export default function Contact() {
           <div className="lg:col-span-2 flex flex-col gap-6">
             <div>
               <h2 className="text-2xl font-black text-white mb-2">Contact Details</h2>
-              <p className="text-[#e5e5e5]/40 text-sm mb-8">You can also reach us through the following channels.</p>
+              <p className="text-[#e5e5e5]/60 text-sm mb-8">You can also reach us through the following channels.</p>
             </div>
 
             {[
@@ -205,19 +205,19 @@ export default function Contact() {
               },
             ].map(({ label, value, sub }) => (
               <div key={label} className="bg-surface border border-line rounded-xl p-5">
-                <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider font-semibold mb-1">{label}</p>
+                <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider font-semibold mb-1">{label}</p>
                 <p className="text-white font-semibold text-sm">{value}</p>
-                <p className="text-[#e5e5e5]/35 text-xs mt-0.5">{sub}</p>
+                <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{sub}</p>
               </div>
             ))}
 
             <div className="bg-surface border border-line rounded-xl p-5">
-              <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider font-semibold mb-3">Follow us on Facebook</p>
+              <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider font-semibold mb-3">Follow us on Facebook</p>
               <a
                 href="https://www.facebook.com/AustralasianLaserSport"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center w-10 h-10 bg-line hover:bg-[#374056] hover:text-brand text-[#e5e5e5]/50 rounded-lg transition-colors"
+                className="inline-flex items-center justify-center w-10 h-10 bg-line hover:bg-[#374056] hover:text-brand text-[#e5e5e5]/60 rounded-lg transition-colors"
                 aria-label="ALSA on Facebook"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

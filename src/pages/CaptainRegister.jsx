@@ -192,7 +192,7 @@ export default function CaptainRegister() {
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <p className="text-3xl mb-4">🚫</p>
         <h1 className="text-2xl font-black text-white mb-2">Registration Closed</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">Captain registration for {event?.name ?? `ZLTAC ${year}`} is not currently open.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">Captain registration for {event?.name ?? `ZLTAC ${year}`} is not currently open.</p>
         <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
       </div>
     )
@@ -206,7 +206,7 @@ export default function CaptainRegister() {
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <p className="text-3xl mb-4">🔒</p>
         <h1 className="text-2xl font-black text-white mb-2">Registrations Locked</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">Team creation for {event?.name ?? `ZLTAC ${year}`} is locked. Contact the committee if you need to register a team.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">Team creation for {event?.name ?? `ZLTAC ${year}`} is locked. Contact the committee if you need to register a team.</p>
         <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
       </div>
     )
@@ -224,13 +224,13 @@ export default function CaptainRegister() {
                 style={{ background: '#00FF41' }}
               >✓</div>
               <h1 className="text-3xl font-black text-white mb-2">Team Submitted!</h1>
-              <p className="text-[#e5e5e5]/50 max-w-sm mx-auto">
+              <p className="text-[#e5e5e5]/60 max-w-sm mx-auto">
                 Your team registration has been submitted for ZLTAC {year} approval.
               </p>
             </div>
 
             <div className="bg-surface border border-brand/20 rounded-2xl p-6 mb-5">
-              <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-3">What's next</p>
+              <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">What's next</p>
               <p className="text-white text-sm leading-relaxed">
                 Head to your Team Hub to build your roster. Use the search tool to find players who have signed up to the ALSA portal and registered for ZLTAC {year}, then add them to your team.
               </p>
@@ -238,7 +238,7 @@ export default function CaptainRegister() {
 
             <div className="bg-surface border border-yellow-500/20 rounded-xl px-4 py-3 mb-6">
               <p className="text-yellow-400 text-sm font-semibold">⏳ Awaiting ZLTAC committee approval</p>
-              <p className="text-[#e5e5e5]/40 text-xs mt-1">You will be notified once your team has been approved.</p>
+              <p className="text-[#e5e5e5]/60 text-xs mt-1">You will be notified once your team has been approved.</p>
             </div>
 
             <Link
@@ -266,7 +266,7 @@ export default function CaptainRegister() {
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">ZLTAC {year}</p>
           <div className="text-4xl mb-3">👑</div>
           <h1 className="text-4xl md:text-5xl font-black text-white mb-2">Captain Registration</h1>
-          <p className="text-[#e5e5e5]/50 text-lg max-w-md mx-auto">Register your team for ZLTAC {year}</p>
+          <p className="text-[#e5e5e5]/60 text-lg max-w-md mx-auto">Register your team for ZLTAC {year}</p>
         </div>
       </section>
 
@@ -275,7 +275,7 @@ export default function CaptainRegister() {
 
           {/* Team name */}
           <div>
-            <label htmlFor={`${uid}-team-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team Name *</label>
+            <label htmlFor={`${uid}-team-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Team Name *</label>
             <input
               id={`${uid}-team-name`}
               type="text"
@@ -288,7 +288,7 @@ export default function CaptainRegister() {
 
           {/* State */}
           <div>
-            <label htmlFor={`${uid}-home-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home State / Territory *</label>
+            <label htmlFor={`${uid}-home-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Home State / Territory *</label>
             <select
               id={`${uid}-home-state`}
               value={teamState}
@@ -302,7 +302,7 @@ export default function CaptainRegister() {
 
           {/* Home venue */}
           <div>
-            <label htmlFor={`${uid}-home-venue`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home Venue / Arena</label>
+            <label htmlFor={`${uid}-home-venue`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Home Venue / Arena</label>
             <input
               id={`${uid}-home-venue`}
               type="text"
@@ -315,7 +315,7 @@ export default function CaptainRegister() {
 
           {/* Team colour */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Team Colour</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Team Colour</label>
             <div className="flex flex-wrap items-center gap-2">
               {TEAM_COLOURS.map(c => (
                 <button
@@ -333,14 +333,14 @@ export default function CaptainRegister() {
                 className="w-8 h-8 rounded-full border border-line bg-surface cursor-pointer p-0.5"
                 title="Custom colour"
               />
-              <span className="text-xs text-[#e5e5e5]/40 font-mono ml-1">{colour}</span>
+              <span className="text-xs text-[#e5e5e5]/60 font-mono ml-1">{colour}</span>
             </div>
           </div>
 
           {/* Logo upload */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">
-              Team Logo <span className="text-[#e5e5e5]/30 font-normal normal-case">(PNG or JPG, max 2MB)</span>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">
+              Team Logo <span className="text-[#e5e5e5]/60 font-normal normal-case">(PNG or JPG, max 2MB)</span>
             </label>
             <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
             {logoPreview ? (
@@ -353,7 +353,7 @@ export default function CaptainRegister() {
               </div>
             ) : (
               <button type="button" onClick={() => logoRef.current.click()} className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group">
-                <p className="text-[#e5e5e5]/30 group-hover:text-brand text-sm transition-colors">Click to upload team logo</p>
+                <p className="text-[#e5e5e5]/60 group-hover:text-brand text-sm transition-colors">Click to upload team logo</p>
               </button>
             )}
           </div>
@@ -378,7 +378,7 @@ export default function CaptainRegister() {
             {saving ? 'Submitting…' : `Submit Team for ZLTAC ${year}`}
           </button>
 
-          <Link to={`/events/${year}`} className="block text-center text-[#e5e5e5]/40 hover:text-white text-sm transition-colors">
+          <Link to={`/events/${year}`} className="block text-center text-[#e5e5e5]/60 hover:text-white text-sm transition-colors">
             ← Back to event
           </Link>
         </form>

@@ -154,12 +154,12 @@ export default function EventLifecycleCountdown({ event, className = '' }) {
 
         return (
           <div key={tile.title} className={`relative rounded-2xl border p-4 sm:p-5 backdrop-blur-sm transition-colors ${chrome}`}>
-            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#e5e5e5]/45 mb-1.5">
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#e5e5e5]/60 mb-1.5">
               {tile.title}
             </p>
 
             {isNull ? (
-              <p className="text-sm text-[#e5e5e5]/40 italic mt-1">Not set</p>
+              <p className="text-sm text-[#e5e5e5]/60 italic mt-1">Not set</p>
             ) : (
               <>
                 <p className="text-xs sm:text-sm text-[#e5e5e5]/70 mb-3 leading-snug">
@@ -170,8 +170,8 @@ export default function EventLifecycleCountdown({ event, className = '' }) {
                 </p>
                 <ul className="mt-3 space-y-0.5">
                   {tile.bullets.map(b => (
-                    <li key={b} className="flex items-start gap-1.5 text-[11px] text-[#e5e5e5]/55 leading-snug">
-                      <span className="text-[#e5e5e5]/30 flex-shrink-0">•</span>
+                    <li key={b} className="flex items-start gap-1.5 text-[11px] text-[#e5e5e5]/60 leading-snug">
+                      <span className="text-[#e5e5e5]/60 flex-shrink-0">•</span>
                       <span>{b}</span>
                     </li>
                   ))}

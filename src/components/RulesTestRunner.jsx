@@ -197,7 +197,7 @@ export default function RulesTestRunner({
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <p className="text-4xl mb-4">📋</p>
         <h1 className="text-2xl font-black text-white mb-2">{isPreview ? 'No Active Questions' : 'No Questions Available'}</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">
           {isPreview ? 'Add active questions before previewing the test.' : "The Rules Test hasn't been set up yet. Check back soon."}
         </p>
         {isPreview
@@ -238,7 +238,7 @@ export default function RulesTestRunner({
       <div className="min-h-screen bg-base text-white">
         <div className="max-w-2xl mx-auto px-6 py-16">
           {!isPreview && (
-            <Link to="/player-hub" className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-8 inline-block">
+            <Link to="/player-hub" className="text-[#e5e5e5]/60 hover:text-brand text-xs transition-colors mb-8 inline-block">
               ← Back to Player Hub
             </Link>
           )}
@@ -270,7 +270,7 @@ export default function RulesTestRunner({
               { label: 'Total questions', value: introTotal },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between text-sm">
-                <span className="text-[#e5e5e5]/40">{label}</span>
+                <span className="text-[#e5e5e5]/60">{label}</span>
                 <span className="text-white font-semibold">{value}</span>
               </div>
             ))}
@@ -337,7 +337,7 @@ export default function RulesTestRunner({
                   ? `Safety Section — ${cfg.safetyPass}% pass required`
                   : `General Rules & Regulations — ${cfg.generalPass}% pass required`}
               </p>
-              <p className="text-[#e5e5e5]/50 text-[11px] sm:text-xs mt-0.5">Question {sectionPosition} of {sectionTotal}</p>
+              <p className="text-[#e5e5e5]/60 text-[11px] sm:text-xs mt-0.5">Question {sectionPosition} of {sectionTotal}</p>
             </div>
           </div>
 
@@ -347,7 +347,7 @@ export default function RulesTestRunner({
           </div>
 
           {/* Category (contextual tag) */}
-          <p className="text-[10px] text-[#e5e5e5]/30 font-bold uppercase tracking-widest mb-4">{currentQ.category}</p>
+          <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-widest mb-4">{currentQ.category}</p>
 
           {/* Question media — image and/or video, shown above the text.
               Aspect preserved (no crop), capped width, no autoplay. */}
@@ -393,7 +393,7 @@ export default function RulesTestRunner({
 
           {/* Answered indicator — within the current section. Helps the
               player see what is left before they cross the boundary. */}
-          <p className="text-[#e5e5e5]/40 text-xs text-center mb-3">
+          <p className="text-[#e5e5e5]/60 text-xs text-center mb-3">
             Answered {sectionAnswered} of {sectionTotal} in this section
           </p>
 
@@ -467,9 +467,9 @@ export default function RulesTestRunner({
             }`}>
               {finalPassed ? '✓ PASSED' : '✗ FAILED'}
             </span>
-            {!isPreview && saving && <p className="text-[#e5e5e5]/40 text-xs mt-2">Saving result…</p>}
+            {!isPreview && saving && <p className="text-[#e5e5e5]/60 text-xs mt-2">Saving result…</p>}
             {!isPreview && saveErr && <p className="text-red-400 text-xs mt-2">Error saving: {saveErr}</p>}
-            {isPreview && <p className="text-[#e5e5e5]/30 text-xs mt-3">Preview only — this result is not saved.</p>}
+            {isPreview && <p className="text-[#e5e5e5]/60 text-xs mt-3">Preview only — this result is not saved.</p>}
           </div>
 
           {/* Section breakdown — each section uses its own configured pass rate. */}
@@ -480,13 +480,13 @@ export default function RulesTestRunner({
             ].map(s => (
               <div key={s.label} className={`rounded-xl border p-4 ${s.passed ? 'border-brand/30 bg-brand/5' : 'border-red-400/30 bg-red-400/5'}`}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#e5e5e5]/50">{s.label}</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#e5e5e5]/60">{s.label}</span>
                   <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${s.passed ? 'bg-brand/20 text-brand' : 'bg-red-400/20 text-red-400'}`}>
                     {s.passed ? 'Pass' : 'Fail'}
                   </span>
                 </div>
                 <p className="text-white font-black text-lg">{s.correct}/{s.total}</p>
-                <p className="text-[#e5e5e5]/35 text-[10px] mt-0.5">{s.rule}</p>
+                <p className="text-[#e5e5e5]/60 text-[10px] mt-0.5">{s.rule}</p>
               </div>
             ))}
           </div>
@@ -560,7 +560,7 @@ export default function RulesTestRunner({
                     </span>
                     <div>
                       <p className="text-white text-sm font-medium leading-snug">{q.question}</p>
-                      <span className="text-[10px] text-[#e5e5e5]/30 font-bold uppercase tracking-wider">
+                      <span className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider">
                         {p.section === 'safety' ? 'Safety' : 'General'}
                       </span>
                     </div>

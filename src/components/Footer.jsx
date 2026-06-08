@@ -43,14 +43,14 @@ export default function Footer() {
               <img src="/alsa-logo.png" alt="ALSA" style={{ height: 44 }} />
               <div>
                 <p className="font-black text-base tracking-wider text-brand uppercase leading-none">ALSA</p>
-                <p className="text-[#e5e5e5]/30 text-xs mt-0.5 leading-none">Australasian Laser Sport Association</p>
+                <p className="text-[#e5e5e5]/60 text-xs mt-0.5 leading-none">Australasian Laser Sport Association</p>
               </div>
             </div>
-            <p className="text-[#e5e5e5]/40 text-sm leading-relaxed max-w-xs mb-6">
+            <p className="text-[#e5e5e5]/60 text-sm leading-relaxed max-w-xs mb-6">
               The governing body for competitive laser sport across Australasia.
               Hosting the ZLTAC championship since 1999.
             </p>
-            <div className="text-[#e5e5e5]/30 text-xs space-y-1">
+            <div className="text-[#e5e5e5]/60 text-xs space-y-1">
               <p>Australasian Laser Sport Association Inc.</p>
               <p>ABN 82 796 875 094</p>
               <p>Reg. A0127794G (Vic.)</p>
@@ -59,10 +59,10 @@ export default function Footer() {
 
           {/* Quick Links */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#e5e5e5]/25 mb-4">Quick Links</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#e5e5e5]/60 mb-4">Quick Links</p>
             <div className="flex flex-col gap-2.5">
               {QUICK_LINKS.map(({ label, to }) => (
-                <Link key={to} to={to} className="text-[#e5e5e5]/45 hover:text-brand text-sm transition-colors">
+                <Link key={to} to={to} className="text-[#e5e5e5]/60 hover:text-brand text-sm transition-colors">
                   {label}
                 </Link>
               ))}
@@ -72,12 +72,12 @@ export default function Footer() {
           {/* Connect + Countdown */}
           <div className="flex flex-col gap-8">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#e5e5e5]/25 mb-4">Connect</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#e5e5e5]/60 mb-4">Connect</p>
               <a
                 href="https://www.facebook.com/AustralasianLaserSport"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-[#e5e5e5]/45 hover:text-brand text-sm transition-colors"
+                className="inline-flex items-center gap-2 text-[#e5e5e5]/60 hover:text-brand text-sm transition-colors"
                 aria-label="ALSA on Facebook"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -103,14 +103,14 @@ export default function Footer() {
 
         {/* Acknowledgement of Country */}
         <div className="mt-12 pt-8 border-t border-line">
-          <p className="text-[#e5e5e5]/35 text-xs leading-relaxed max-w-3xl">
+          <p className="text-[#e5e5e5]/60 text-xs leading-relaxed max-w-3xl">
             {ACKNOWLEDGEMENT}
           </p>
         </div>
 
         {/* Copyright */}
         <div className="mt-8 pt-6 border-t border-line">
-          <p className="text-[#e5e5e5]/25 text-xs">
+          <p className="text-[#e5e5e5]/60 text-xs">
             © {currentYear} Australasian Laser Sport Association Inc. All rights reserved.
           </p>
         </div>

@@ -91,7 +91,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-[#e5e5e5]/50 text-sm mt-4 text-center">
+        <p className="text-[#e5e5e5]/60 text-sm mt-4 text-center">
           No account?{' '}
           <Link to="/register" className="text-brand hover:underline">Register here</Link>
         </p>

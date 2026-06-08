@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
-const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
+const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
 
 const CURRENT_YEAR = new Date().getFullYear()
 const MIN_YEAR = 1999
@@ -182,7 +182,7 @@ export default function AdminZLTACHallOfFame() {
             + Add inductee
           </button>
         </div>
-        <p className="text-xs text-[#e5e5e5]/30">
+        <p className="text-xs text-[#e5e5e5]/60">
           {rows.length} {rows.length === 1 ? 'inductee' : 'inductees'} ·{' '}
           {rows.filter(r => !r.is_visible).length} hidden
         </p>
@@ -194,7 +194,7 @@ export default function AdminZLTACHallOfFame() {
             </div>
           )}
           {!loadingList && rows.length === 0 && (
-            <p className="text-[#e5e5e5]/30 text-sm text-center py-10">No inductees yet.</p>
+            <p className="text-[#e5e5e5]/60 text-sm text-center py-10">No inductees yet.</p>
           )}
           {rows.map(r => (
             <button
@@ -209,16 +209,16 @@ export default function AdminZLTACHallOfFame() {
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <span className="font-bold text-white text-sm truncate">{r.real_name}</span>
                 {!r.is_visible && (
-                  <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/40 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide flex-shrink-0">
+                  <span className="text-[10px] bg-[#191919] border border-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide flex-shrink-0">
                     Hidden
                   </span>
                 )}
               </div>
               <p className="text-xs text-amber-400/80 truncate">
-                {r.alias || <span className="text-[#e5e5e5]/30 italic">no alias</span>} · Inducted {r.induction_year}
+                {r.alias || <span className="text-[#e5e5e5]/60 italic">no alias</span>} · Inducted {r.induction_year}
               </p>
               {r.contribution && (
-                <p className="text-[11px] text-[#e5e5e5]/35 mt-1 line-clamp-2">{preview(r.contribution)}</p>
+                <p className="text-[11px] text-[#e5e5e5]/60 mt-1 line-clamp-2">{preview(r.contribution)}</p>
               )}
             </button>
           ))}
@@ -230,7 +230,7 @@ export default function AdminZLTACHallOfFame() {
         <div className="flex-1 bg-surface border border-line rounded-2xl flex flex-col overflow-hidden">
           <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3 flex-shrink-0">
             <div className="min-w-0">
-              <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider">
+              <p className="text-xs text-[#e5e5e5]/60 uppercase tracking-wider">
                 {selected === 'new' ? 'New inductee' : 'Editing'}
               </p>
               <p className="text-white font-bold text-sm truncate">
@@ -239,7 +239,7 @@ export default function AdminZLTACHallOfFame() {
             </div>
             <button
               onClick={cancelEdit}
-              className="text-xs text-[#e5e5e5]/40 hover:text-white transition-colors"
+              className="text-xs text-[#e5e5e5]/60 hover:text-white transition-colors"
             >
               ✕ Close
             </button>
@@ -290,7 +290,7 @@ export default function AdminZLTACHallOfFame() {
                     value={form.display_order}
                     onChange={e => setField('display_order', e.target.value)}
                   />
-                  <p className="text-xs text-[#e5e5e5]/30 mt-1">Lower numbers sort first (within the same year).</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-1">Lower numbers sort first (within the same year).</p>
                 </div>
               </div>
 
@@ -303,7 +303,7 @@ export default function AdminZLTACHallOfFame() {
                   onChange={e => setField('contribution', e.target.value)}
                   placeholder="What did this person contribute? Shown on the public Hall of Fame card."
                 />
-                <p className="text-xs text-[#e5e5e5]/30 mt-1">Leave blank to render &ldquo;Citation to be added&rdquo; on the public page.</p>
+                <p className="text-xs text-[#e5e5e5]/60 mt-1">Leave blank to render &ldquo;Citation to be added&rdquo; on the public page.</p>
               </div>
 
               <div>
@@ -352,7 +352,7 @@ export default function AdminZLTACHallOfFame() {
                   </button>
                   <button
                     onClick={() => setConfirmDelete(false)}
-                    className="text-xs text-[#e5e5e5]/40 hover:text-white"
+                    className="text-xs text-[#e5e5e5]/60 hover:text-white"
                   >
                     Cancel
                   </button>
@@ -374,7 +374,7 @@ export default function AdminZLTACHallOfFame() {
             <div className="w-14 h-14 bg-[#191919] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl">★</span>
             </div>
-            <p className="text-[#e5e5e5]/30 text-sm leading-relaxed">
+            <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">
               Select an inductee from the list<br />
               or click <span className="text-brand/60">+ Add inductee</span> to create one.
             </p>

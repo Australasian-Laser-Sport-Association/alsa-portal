@@ -26,7 +26,7 @@ function StatusBadge({ status }) {
     return <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border bg-red-500/15 text-red-400 border-red-500/30 whitespace-nowrap">✗ Declined</span>
   }
   if (status === 'pending') {
-    return <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/50 border-line whitespace-nowrap">Pending</span>
+    return <span className="inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line whitespace-nowrap">Pending</span>
   }
   return null
 }
@@ -205,7 +205,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
 
   const body = (
     <>
-      <p className="text-[#e5e5e5]/40 text-xs mb-4">
+      <p className="text-[#e5e5e5]/60 text-xs mb-4">
         ZLTAC runs on volunteers. Opt in and tell us which roles you'd help with. Selection is at the committee's discretion.
       </p>
 
@@ -225,7 +225,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
 
       {/* Caveat — always visible */}
       <div className="bg-base border border-line rounded-xl px-4 py-3 mb-4">
-        <p className="text-[#e5e5e5]/55 text-xs leading-relaxed">{caveat}</p>
+        <p className="text-[#e5e5e5]/60 text-xs leading-relaxed">{caveat}</p>
       </div>
 
       {/* Per-team requirement note (informational; live tally lands in phase 5) */}
@@ -271,7 +271,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
         </button>
         <div>
           <p className="text-sm font-semibold text-white">I want to volunteer at this event.</p>
-          <p className="text-xs text-[#e5e5e5]/40 mt-0.5">You can pick one or more roles below.</p>
+          <p className="text-xs text-[#e5e5e5]/60 mt-0.5">You can pick one or more roles below.</p>
         </div>
       </label>
 
@@ -287,9 +287,9 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
       {showRoles && (
         <div className="mt-4 space-y-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-3">Roles you'd help with</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-3">Roles you'd help with</p>
             {displayRoles.length === 0 ? (
-              <p className="text-[#e5e5e5]/40 text-xs">No volunteer roles are available for this event yet.</p>
+              <p className="text-[#e5e5e5]/60 text-xs">No volunteer roles are available for this event yet.</p>
             ) : (
               <div className="space-y-2">
                 {displayRoles.map(r => {
@@ -311,18 +311,18 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm font-semibold ${declined ? 'text-[#e5e5e5]/40 line-through' : 'text-white'}`}>
+                          <p className={`text-sm font-semibold ${declined ? 'text-[#e5e5e5]/60 line-through' : 'text-white'}`}>
                             {r.name}
-                            <span className="text-[#e5e5e5]/30 font-mono text-[10px] ml-2 no-underline">{r.code}</span>
+                            <span className="text-[#e5e5e5]/60 font-mono text-[10px] ml-2 no-underline">{r.code}</span>
                           </p>
                           {status && <StatusBadge status={status} />}
                         </div>
-                        {r.short_description && <p className="text-xs text-[#e5e5e5]/45 mt-0.5">{r.short_description}</p>}
+                        {r.short_description && <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{r.short_description}</p>}
                         {r.requires_experience && r.experience_notes && (
-                          <p className="text-[11px] text-[#e5e5e5]/30 italic mt-1">Experience: {r.experience_notes}</p>
+                          <p className="text-[11px] text-[#e5e5e5]/60 italic mt-1">Experience: {r.experience_notes}</p>
                         )}
                         {decided && (
-                          <p className="text-[10px] text-[#e5e5e5]/30 mt-1">Decision made — contact committee to change.</p>
+                          <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Decision made — contact committee to change.</p>
                         )}
                       </div>
                     </label>
@@ -333,8 +333,8 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
           </div>
 
           <div>
-            <label htmlFor={`${uid}-notes`} className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/30 mb-1.5">
-              Notes <span className="text-[#e5e5e5]/25 normal-case font-normal">(optional)</span>
+            <label htmlFor={`${uid}-notes`} className="block text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-1.5">
+              Notes <span className="text-[#e5e5e5]/60 normal-case font-normal">(optional)</span>
             </label>
             <textarea
               id={`${uid}-notes`}
@@ -346,7 +346,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
               placeholder="Anything the committee should know — availability, preferences, relevant experience…"
               className="w-full bg-base border border-line rounded-xl px-3 py-2.5 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors resize-y disabled:opacity-50"
             />
-            {!readOnly && <p className="text-[10px] text-[#e5e5e5]/25 mt-1 text-right">{notes.length}/{MAX_NOTES}</p>}
+            {!readOnly && <p className="text-[10px] text-[#e5e5e5]/60 mt-1 text-right">{notes.length}/{MAX_NOTES}</p>}
           </div>
         </div>
       )}
@@ -369,14 +369,14 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
       {/* Errors/notes in registration mode (no save button here) */}
       {!showSave && error && <p role="alert" className="text-red-400 text-sm mt-3">{error}</p>}
       {mode === 'registration' && isVolunteering && !readOnly && (
-        <p className="text-[11px] text-[#e5e5e5]/35 mt-3">Your volunteer choices are saved when you complete registration.</p>
+        <p className="text-[11px] text-[#e5e5e5]/60 mt-3">Your volunteer choices are saved when you complete registration.</p>
       )}
 
       {/* Opt-out confirmation (only when no approved roles) */}
       {confirmOptOut && (
         <Dialog open onClose={() => { setConfirmOptOut(false); setError('') }} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Remove your volunteer application?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">This will remove your volunteer application. Continue?</p>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">This will remove your volunteer application. Continue?</p>
             {error && <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4"><p className="text-red-400 text-xs">{error}</p></div>}
             <div className="flex gap-3">
               <button onClick={optOut} disabled={saving}

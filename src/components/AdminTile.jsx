@@ -29,7 +29,7 @@ export function Tile({ label, to, description, Icon, tone = 'brand' }) {
         </div>
         <div className="min-w-0">
           <p className="text-white font-bold text-sm">{label}</p>
-          <p className="text-[#e5e5e5]/50 text-xs mt-1 leading-snug">{description}</p>
+          <p className="text-[#e5e5e5]/60 text-xs mt-1 leading-snug">{description}</p>
         </div>
       </div>
     </Link>
@@ -39,7 +39,7 @@ export function Tile({ label, to, description, Icon, tone = 'brand' }) {
 export function TileSection({ title, children, tone = 'default' }) {
   const headerCls = tone === 'purple'
     ? 'text-[10px] font-bold uppercase tracking-widest text-purple-400 mb-3'
-    : 'text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/40 mb-3'
+    : 'text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-3'
   return (
     <div className="mb-8">
       <p className={headerCls}>{title}</p>

@@ -6,9 +6,9 @@ import { formatDate } from '../../lib/dateFormat'
 function StatCard({ label, value, sub, color }) {
   return (
     <div className="bg-surface border border-line rounded-xl p-5">
-      <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider font-bold mb-1">{label}</p>
+      <p className="text-xs text-[#e5e5e5]/60 uppercase tracking-wider font-bold mb-1">{label}</p>
       <p className={`text-3xl font-black ${color ?? 'text-white'}`}>{value ?? '—'}</p>
-      {sub && <p className="text-xs text-[#e5e5e5]/40 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-[#e5e5e5]/60 mt-1">{sub}</p>}
     </div>
   )
 }
@@ -19,7 +19,7 @@ function ActivityRow({ icon, text, time }) {
       <span className="text-base flex-shrink-0 mt-0.5">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-[#e5e5e5]/80">{text}</p>
-        <p className="text-xs text-[#e5e5e5]/30 mt-0.5">{time}</p>
+        <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{time}</p>
       </div>
     </div>
   )
@@ -82,7 +82,7 @@ export default function AdminZltacDashboard() {
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-black text-white">ZLTAC Dashboard</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">Overview of the active ZLTAC event.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">Overview of the active ZLTAC event.</p>
       </div>
 
       {/* Stats + activity feed — ZLTAC-scoped, committee-only. Hidden
@@ -141,7 +141,7 @@ export default function AdminZltacDashboard() {
             </div>
             <div className="px-5">
               {activity.length === 0 ? (
-                <p className="text-sm text-[#e5e5e5]/30 py-8 text-center">No activity yet</p>
+                <p className="text-sm text-[#e5e5e5]/60 py-8 text-center">No activity yet</p>
               ) : (
                 activity.map((a, i) => (
                   <ActivityRow key={i} icon={a.icon} text={a.text} time={fmt(a.ts)} />

@@ -224,7 +224,7 @@ export default function AdminRefereeTest() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-black text-white">Rules Test</h1>
-            <p className="text-[#e5e5e5]/40 text-sm mt-1">Manage questions and test settings</p>
+            <p className="text-[#e5e5e5]/60 text-sm mt-1">Manage questions and test settings</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -257,7 +257,7 @@ export default function AdminRefereeTest() {
             { label: 'Pass Rates', value: `Safety ${settings.safety_pass_score}% / General ${settings.general_pass_score}%` },
           ].map(s => (
             <div key={s.label} className="bg-surface border border-line rounded-xl p-4">
-              <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider font-bold mb-1">{s.label}</p>
+              <p className="text-xs text-[#e5e5e5]/60 uppercase tracking-wider font-bold mb-1">{s.label}</p>
               <p className="text-2xl font-black text-brand">{s.value}</p>
             </div>
           ))}
@@ -290,19 +290,19 @@ export default function AdminRefereeTest() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 mb-1">Questions per test</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Questions per test</label>
                   <input type="number" min={1} value={settings.safety_questions_per_test}
                     onChange={e => setSettings(s => ({ ...s, safety_questions_per_test: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500/60" />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 mb-1">Pass rate (%)</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Pass rate (%)</label>
                   <input type="number" min={1} max={100} value={settings.safety_pass_score}
                     onChange={e => setSettings(s => ({ ...s, safety_pass_score: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-500/60" />
                 </div>
               </div>
-              <p className="text-[10px] text-[#e5e5e5]/40 mt-2">Recommended 100% for safety knowledge</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-2">Recommended 100% for safety knowledge</p>
             </div>
 
             {/* General block (green / brand accent) */}
@@ -313,19 +313,19 @@ export default function AdminRefereeTest() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 mb-1">Questions per test</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Questions per test</label>
                   <input type="number" min={1} value={settings.general_questions_per_test}
                     onChange={e => setSettings(s => ({ ...s, general_questions_per_test: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand" />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 mb-1">Pass rate (%)</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Pass rate (%)</label>
                   <input type="number" min={1} max={100} value={settings.general_pass_score}
                     onChange={e => setSettings(s => ({ ...s, general_pass_score: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand" />
                 </div>
               </div>
-              <p className="text-[10px] text-[#e5e5e5]/40 mt-2">Typical range 60-80%</p>
+              <p className="text-[10px] text-[#e5e5e5]/60 mt-2">Typical range 60-80%</p>
             </div>
           </div>
 
@@ -341,14 +341,14 @@ export default function AdminRefereeTest() {
             <h2 className="text-sm font-bold text-white mb-4">{editing ? 'Edit Question' : 'Add Question'}</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-[#e5e5e5]/40 mb-1">Question</label>
+                <label className="block text-xs text-[#e5e5e5]/60 mb-1">Question</label>
                 <textarea rows={3} value={form.question} onChange={e => setForm(f => ({ ...f, question: e.target.value }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {OPTS.map(opt => (
                   <div key={opt}>
-                    <label className="block text-xs text-[#e5e5e5]/40 mb-1">Option {opt.toUpperCase()}</label>
+                    <label className="block text-xs text-[#e5e5e5]/60 mb-1">Option {opt.toUpperCase()}</label>
                     <input type="text" value={form[`option_${opt}`]}
                       onChange={e => setForm(f => ({ ...f, [`option_${opt}`]: e.target.value }))}
                       className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand" />
@@ -357,34 +357,34 @@ export default function AdminRefereeTest() {
               </div>
               <div className="bg-base/50 border border-line rounded-lg p-3">
                 <label className="block text-xs font-bold text-white mb-1">
-                  Test Section <span className="text-[#e5e5e5]/40 font-normal">— determines pass logic</span>
+                  Test Section <span className="text-[#e5e5e5]/60 font-normal">— determines pass logic</span>
                 </label>
                 <select value={form.section ?? 'general'} onChange={e => setForm(f => ({ ...f, section: e.target.value }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand">
                   {SECTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
-                <p className="text-[10px] text-[#e5e5e5]/40 mt-1.5">
+                <p className="text-[10px] text-[#e5e5e5]/60 mt-1.5">
                   <span className="text-yellow-300/80">Safety</span> → must be answered 100% correctly to pass.
                   <span className="text-[#e5e5e5]/60"> General</span> → counts toward the configurable pass score.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Correct Answer</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Correct Answer</label>
                   <select value={form.correct_answer} onChange={e => setForm(f => ({ ...f, correct_answer: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand">
                     {OPTS.map(o => <option key={o} value={o}>{o.toUpperCase()}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Category <span className="text-[#e5e5e5]/25">(tag)</span></label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Category <span className="text-[#e5e5e5]/60">(tag)</span></label>
                   <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand">
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Difficulty</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Difficulty</label>
                   <select value={form.difficulty} onChange={e => setForm(f => ({ ...f, difficulty: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand">
                     {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
@@ -393,7 +393,7 @@ export default function AdminRefereeTest() {
               </div>
               {/* Media (optional) — image and/or video, both independent */}
               <div>
-                <label className="block text-xs text-[#e5e5e5]/40 mb-2">Media <span className="text-[#e5e5e5]/25">(optional — image and/or video)</span></label>
+                <label className="block text-xs text-[#e5e5e5]/60 mb-2">Media <span className="text-[#e5e5e5]/60">(optional — image and/or video)</span></label>
                 <div className="grid grid-cols-2 gap-3">
                   {/* Image */}
                   <div className="bg-base border border-line rounded-lg p-3">
@@ -411,7 +411,7 @@ export default function AdminRefereeTest() {
                       onChange={e => { const fl = e.target.files?.[0]; if (fl) uploadMedia(fl, 'image'); e.target.value = '' }}
                       className="block w-full text-xs text-[#e5e5e5]/60 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-line file:text-[#e5e5e5]/70 file:text-xs hover:file:bg-[#374056] disabled:opacity-50" />
                     {imageUploading && <p className="text-brand text-[11px] mt-1">Uploading image…</p>}
-                    <p className="text-[10px] text-[#e5e5e5]/30 mt-1">PNG, JPEG, WebP or SVG · max 25 MB</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mt-1">PNG, JPEG, WebP or SVG · max 25 MB</p>
                   </div>
                   {/* Video */}
                   <div className="bg-base border border-line rounded-lg p-3">
@@ -427,7 +427,7 @@ export default function AdminRefereeTest() {
                       onChange={e => { const fl = e.target.files?.[0]; if (fl) uploadMedia(fl, 'video'); e.target.value = '' }}
                       className="block w-full text-xs text-[#e5e5e5]/60 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-line file:text-[#e5e5e5]/70 file:text-xs hover:file:bg-[#374056] disabled:opacity-50" />
                     {videoUploading && <p className="text-brand text-[11px] mt-1">Uploading video…</p>}
-                    <p className="text-[10px] text-[#e5e5e5]/30 mt-1">MP4 or WebM · max 25 MB · no autoplay for players</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mt-1">MP4 or WebM · max 25 MB · no autoplay for players</p>
                   </div>
                 </div>
                 {mediaErr && <p className="text-red-400 text-xs mt-2">{mediaErr}</p>}
@@ -456,7 +456,7 @@ export default function AdminRefereeTest() {
             { key: 'general', label: `General (${generalCount})` },
           ].map(t => (
             <button key={t.key} onClick={() => setFilterSection(t.key)}
-              className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${filterSection === t.key ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/50 hover:text-white'}`}>
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${filterSection === t.key ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/60 hover:text-white'}`}>
               {t.label}
             </button>
           ))}
@@ -489,22 +489,22 @@ export default function AdminRefereeTest() {
               <thead>
                 <tr className="border-b border-line">
                   {['Question', 'Section', 'Category', 'Difficulty', 'Answer', 'Active', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-12 text-[#e5e5e5]/30 text-sm">No questions found</td></tr>
+                  <tr><td colSpan={7} className="text-center py-12 text-[#e5e5e5]/60 text-sm">No questions found</td></tr>
                 ) : filtered.map(q => (
                   <tr key={q.id} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
                     <td className="px-4 py-3 text-[#e5e5e5]/80 max-w-xs"><span className="line-clamp-2">{q.question}</span></td>
                     <td className="px-4 py-3">
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${(q.section ?? 'general') === 'safety' ? 'bg-yellow-500/15 text-yellow-300' : 'bg-line text-[#e5e5e5]/50'}`}>
+                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${(q.section ?? 'general') === 'safety' ? 'bg-yellow-500/15 text-yellow-300' : 'bg-line text-[#e5e5e5]/60'}`}>
                         {(q.section ?? 'general') === 'safety' ? 'Safety' : 'General'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{q.category}</td>
+                    <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{q.category}</td>
                     <td className="px-4 py-3"><DifficultyBadge d={q.difficulty} /></td>
                     <td className="px-4 py-3 text-brand font-bold text-xs">{(q.correct_answer ?? '').toUpperCase()}</td>
                     <td className="px-4 py-3">
@@ -515,8 +515,8 @@ export default function AdminRefereeTest() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => startEdit(q)} className="text-xs text-[#e5e5e5]/50 hover:text-brand transition-colors">Edit</button>
-                        <button onClick={() => deleteQ(q.id)} className="text-xs text-[#e5e5e5]/50 hover:text-red-400 transition-colors">Delete</button>
+                        <button onClick={() => startEdit(q)} className="text-xs text-[#e5e5e5]/60 hover:text-brand transition-colors">Edit</button>
+                        <button onClick={() => deleteQ(q.id)} className="text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors">Delete</button>
                       </div>
                     </td>
                   </tr>

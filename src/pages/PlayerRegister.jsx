@@ -206,7 +206,7 @@ export default function PlayerRegister() {
     return (
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <h1 className="text-2xl font-black text-white mb-2">Registration Closed</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">Player registration for {event?.name ?? `ZLTAC ${year}`} is not currently open.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">Player registration for {event?.name ?? `ZLTAC ${year}`} is not currently open.</p>
         <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
       </div>
     )
@@ -217,7 +217,7 @@ export default function PlayerRegister() {
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <div className="text-4xl mb-4">✓</div>
         <h1 className="text-2xl font-black text-white mb-2">Already Registered</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">You are already registered for ZLTAC {year}.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">You are already registered for ZLTAC {year}.</p>
         <Link to="/player-hub" className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
           Go to Player Hub →
         </Link>
@@ -234,7 +234,7 @@ export default function PlayerRegister() {
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
         <div className="text-4xl mb-4">🔒</div>
         <h1 className="text-2xl font-black text-white mb-2">Registrations Locked</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6">Registrations for {event?.name ?? `ZLTAC ${year}`} are locked. Contact the committee if you need to register.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">Registrations for {event?.name ?? `ZLTAC ${year}`} are locked. Contact the committee if you need to register.</p>
         <Link to={`/events/${year}`} className="text-brand text-sm font-semibold hover:underline">← Back to event</Link>
       </div>
     )
@@ -251,7 +251,7 @@ export default function PlayerRegister() {
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">ZLTAC {year}</p>
           <div className="text-4xl mb-3">🎯</div>
           <h1 className="text-4xl md:text-5xl font-black text-white mb-2">Player Registration</h1>
-          <p className="text-[#e5e5e5]/50 text-lg">Register for ZLTAC {year}</p>
+          <p className="text-[#e5e5e5]/60 text-lg">Register for ZLTAC {year}</p>
         </div>
       </section>
 
@@ -275,7 +275,7 @@ export default function PlayerRegister() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor={`${uid}-first-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">First Name *</label>
+                  <label htmlFor={`${uid}-first-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">First Name *</label>
                   <input
                     id={`${uid}-first-name`}
                     type="text"
@@ -285,7 +285,7 @@ export default function PlayerRegister() {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-last-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Last Name *</label>
+                  <label htmlFor={`${uid}-last-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Last Name *</label>
                   <input
                     id={`${uid}-last-name`}
                     type="text"
@@ -297,7 +297,7 @@ export default function PlayerRegister() {
               </div>
 
               <div>
-                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1">
+                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">
                   Alias <span className="text-brand normal-case font-normal">— your in-game name</span>
                 </label>
                 <input
@@ -308,16 +308,16 @@ export default function PlayerRegister() {
                   placeholder="e.g. DarkShot"
                   disabled={aliasLocked}
                   readOnly={aliasLocked}
-                  className={`w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors ${aliasLocked ? 'text-white/40 cursor-not-allowed' : 'text-white'}`}
+                  className={`w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors ${aliasLocked ? 'text-white/60 cursor-not-allowed' : 'text-white'}`}
                 />
                 {aliasLocked && (
-                  <p className="text-xs text-white/40 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
+                  <p className="text-xs text-white/60 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor={`${uid}-dob`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Date of Birth *</label>
+                  <label htmlFor={`${uid}-dob`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Date of Birth *</label>
                   <input
                     id={`${uid}-dob`}
                     type="date"
@@ -327,7 +327,7 @@ export default function PlayerRegister() {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
                   <select
                     id={`${uid}-state`}
                     value={state}
@@ -344,10 +344,10 @@ export default function PlayerRegister() {
 
           {/* Emergency contact */}
           <div>
-            <p className="text-brand text-xs font-bold uppercase tracking-wider mb-4">Emergency Contact <span className="text-[#e5e5e5]/30 font-normal normal-case">(optional)</span></p>
+            <p className="text-brand text-xs font-bold uppercase tracking-wider mb-4">Emergency Contact <span className="text-[#e5e5e5]/60 font-normal normal-case">(optional)</span></p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor={`${uid}-ec-name`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Name</label>
+                <label htmlFor={`${uid}-ec-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Name</label>
                 <input
                   id={`${uid}-ec-name`}
                   type="text"
@@ -358,7 +358,7 @@ export default function PlayerRegister() {
                 />
               </div>
               <div>
-                <label htmlFor={`${uid}-ec-phone`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Phone</label>
+                <label htmlFor={`${uid}-ec-phone`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Phone</label>
                 <input
                   id={`${uid}-ec-phone`}
                   type="tel"
@@ -378,7 +378,7 @@ export default function PlayerRegister() {
               className="rounded-xl px-4 py-3 bg-surface border border-line"
               style={{ borderLeftColor: '#00FF41', borderLeftWidth: '3px' }}
             >
-              <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">
+              <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">
                 Once you have completed your player registration your captain will be able to add you to their team.
               </p>
             </div>
@@ -406,11 +406,11 @@ export default function PlayerRegister() {
             {submitting ? 'Registering…' : `Register for ZLTAC ${year}`}
           </button>
 
-          <p className="text-center text-[#e5e5e5]/35 text-xs leading-relaxed">
+          <p className="text-center text-[#e5e5e5]/60 text-xs leading-relaxed">
             After registering you will complete side event selection, forms and payment in your Player Hub.
           </p>
 
-          <Link to={`/events/${year}`} className="block text-center text-[#e5e5e5]/40 hover:text-white text-sm transition-colors">
+          <Link to={`/events/${year}`} className="block text-center text-[#e5e5e5]/60 hover:text-white text-sm transition-colors">
             ← Back to event
           </Link>
         </form>

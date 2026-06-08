@@ -23,8 +23,8 @@ const STATUS_BADGE = {
 function Field({ label, value, green }) {
   return (
     <div>
-      <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider mb-0.5">{label}</p>
-      <p className={`text-sm font-medium ${green ? 'text-brand' : 'text-white'}`}>{value || <span className="text-[#e5e5e5]/25 font-normal">Not set</span>}</p>
+      <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider mb-0.5">{label}</p>
+      <p className={`text-sm font-medium ${green ? 'text-brand' : 'text-white'}`}>{value || <span className="text-[#e5e5e5]/60 font-normal">Not set</span>}</p>
     </div>
   )
 }
@@ -33,7 +33,7 @@ function Input({ label, type = 'text', value, onChange, placeholder }) {
   const id = useId()
   return (
     <div>
-      <label htmlFor={id} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+      <label htmlFor={id} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
       <input
         id={id}
         type={type}
@@ -145,7 +145,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
       <div className="px-6 py-4 border-b border-line flex items-center justify-between">
         <h2 className="text-white font-bold text-base">My Profile</h2>
         {!editing && (
-          <button onClick={startEdit} className="text-xs text-[#e5e5e5]/50 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
+          <button onClick={startEdit} className="text-xs text-[#e5e5e5]/60 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
             Edit Profile
           </button>
         )}
@@ -187,7 +187,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
               </div>
             )}
             {membership !== undefined && (
-              <p className="text-[#e5e5e5]/40 text-xs mt-1.5">
+              <p className="text-[#e5e5e5]/60 text-xs mt-1.5">
                 {membershipStatusText(membership)}
               </p>
             )}
@@ -202,16 +202,16 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
             </div>
             {aliasLocked ? (
               <div>
-                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Alias (in-game name)</label>
+                <label htmlFor={`${uid}-alias`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Alias (in-game name)</label>
                 <input
                   id={`${uid}-alias`}
                   type="text"
                   value={alias}
                   disabled
                   readOnly
-                  className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/40 cursor-not-allowed focus:outline-none"
+                  className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/60 cursor-not-allowed focus:outline-none"
                 />
-                <p className="text-xs text-white/40 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
+                <p className="text-xs text-white/60 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
               </div>
             ) : (
               <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
@@ -219,7 +219,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
             <div className="grid grid-cols-2 gap-4">
               <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
               <div>
-                <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
                 <select id={`${uid}-state`} value={state} onChange={e => setState(e.target.value)} className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors">
                   <option value="">Select…</option>
                   {STATES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -312,7 +312,7 @@ function PasswordCard({ userEmail }) {
       <div className="bg-surface border border-line rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-white font-bold text-base mb-1">Password</h2>
-          <p className="text-[#e5e5e5]/50 text-sm">Change your account password.</p>
+          <p className="text-[#e5e5e5]/60 text-sm">Change your account password.</p>
         </div>
         <button
           onClick={() => { reset(); setOpen(true) }}
@@ -327,7 +327,7 @@ function PasswordCard({ userEmail }) {
   return (
     <div className="bg-surface border border-line rounded-2xl p-6">
       <h2 className="text-white font-bold text-base mb-1">Change password</h2>
-      <p className="text-[#e5e5e5]/50 text-sm mb-5">Re-enter your current password to confirm the change.</p>
+      <p className="text-[#e5e5e5]/60 text-sm mb-5">Re-enter your current password to confirm the change.</p>
 
       <form onSubmit={submit} className="space-y-4">
         <Input label="Current Password" type="password" value={currentPw} onChange={setCurrentPw} placeholder="••••••••" />
@@ -377,15 +377,15 @@ function RegistrationCard({ registration, openEvent }) {
         </div>
         <div className="px-6 py-5 flex flex-wrap items-center gap-6">
           <div>
-            <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider mb-0.5">Event</p>
+            <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider mb-0.5">Event</p>
             <p className="text-white font-semibold">ZLTAC {registration.year}</p>
           </div>
           <div>
-            <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider mb-0.5">Team</p>
+            <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider mb-0.5">Team</p>
             <p className="text-white font-semibold">{teamName}</p>
           </div>
           <div>
-            <p className="text-[#e5e5e5]/40 text-xs uppercase tracking-wider mb-0.5">Status</p>
+            <p className="text-[#e5e5e5]/60 text-xs uppercase tracking-wider mb-0.5">Status</p>
             <span className={`inline-block text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border ${statusClass}`}>
               {registration.status ?? 'Pending'}
             </span>
@@ -404,7 +404,7 @@ function RegistrationCard({ registration, openEvent }) {
         <h2 className="text-white font-bold text-base">My ZLTAC Registration</h2>
       </div>
       <div className="px-6 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <p className="text-[#e5e5e5]/50 text-sm">You are not registered for any upcoming ZLTAC event.</p>
+        <p className="text-[#e5e5e5]/60 text-sm">You are not registered for any upcoming ZLTAC event.</p>
         {openEvent && (
           <Link
             to={`/events/${openEvent.year}/player-register`}
@@ -427,7 +427,7 @@ function HubCard({ color, title, description, buttonLabel, to }) {
       </div>
       <div className="flex-1">
         <p className="text-white font-bold text-base mb-1">{title}</p>
-        <p className="text-[#e5e5e5]/50 text-sm leading-relaxed">{description}</p>
+        <p className="text-[#e5e5e5]/60 text-sm leading-relaxed">{description}</p>
       </div>
       <Link
         to={to}
@@ -446,7 +446,7 @@ const ROLE_PILL_META = {
   zltac_committee: { label: 'ZLTAC Committee', cls: 'bg-red-500/15 text-red-400 border-red-500/30' },
   advisor:         { label: 'Advisor',         cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
   captain:         { label: 'Captain',         cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
-  player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/40 border-transparent' },
+  player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/60 border-transparent' },
 }
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function PlayerDashboard() {
@@ -537,7 +537,7 @@ export default function PlayerDashboard() {
             <CommitteeBadge roles={profile?.roles} size="md" />
             <MemberBadge isMember={!!membership?.current} size="md" />
           </h1>
-          <p className="text-[#e5e5e5]/35 text-sm mt-1">{alsaId}</p>
+          <p className="text-[#e5e5e5]/60 text-sm mt-1">{alsaId}</p>
         </div>
 
         {/* Admin Hub — full-width, committee only */}
@@ -594,7 +594,7 @@ export default function PlayerDashboard() {
             <div className="bg-surface border border-line rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <p className="text-white font-bold text-base mb-1">Get Started with ZLTAC</p>
-                <p className="text-[#e5e5e5]/50 text-sm">Register for the current ZLTAC event to get started.</p>
+                <p className="text-[#e5e5e5]/60 text-sm">Register for the current ZLTAC event to get started.</p>
               </div>
               <Link
                 to={openEvent ? `/events/${openEvent.year}` : '/zltac'}

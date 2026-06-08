@@ -297,7 +297,7 @@ export default function AdminLayout() {
               </span>
             )}
           </div>
-          <p className="text-[11px] text-[#e5e5e5]/30 mt-0.5">ALSA Committee</p>
+          <p className="text-[11px] text-[#e5e5e5]/60 mt-0.5">ALSA Committee</p>
         </div>
 
         {/* Nav */}
@@ -306,7 +306,7 @@ export default function AdminLayout() {
             item.sectionLabel ? (
               <div key={`section-${i}`} className="mt-4 mb-1 px-2 flex items-center gap-2">
                 <p className={`text-[10px] font-bold uppercase tracking-widest ${
-                  item.tone === 'purple' ? 'text-purple-400' : 'text-[#e5e5e5]/25'
+                  item.tone === 'purple' ? 'text-purple-400' : 'text-[#e5e5e5]/60'
                 }`}>{item.sectionLabel}</p>
                 <div className={`flex-1 h-px ${
                   item.tone === 'purple' ? 'bg-purple-500/30' : 'bg-line'
@@ -322,7 +322,7 @@ export default function AdminLayout() {
         <div className="px-3 py-4 border-t border-line">
           <Link
             to="/"
-            className="flex items-center gap-2 px-3 py-2 text-xs text-[#e5e5e5]/40 hover:text-white rounded-lg hover:bg-line transition-colors"
+            className="flex items-center gap-2 px-3 py-2 text-xs text-[#e5e5e5]/60 hover:text-white rounded-lg hover:bg-line transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />

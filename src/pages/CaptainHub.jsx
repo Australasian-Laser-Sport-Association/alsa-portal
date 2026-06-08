@@ -84,7 +84,7 @@ function StatusChip({ state, label, title }) {
   const meta = state === 'complete'
     ? { cls: 'bg-brand/10 text-brand border-brand/30', icon: '✓' }
     : state === 'na'
-      ? { cls: 'bg-line/40 text-[#e5e5e5]/35 border-line', icon: '—' }
+      ? { cls: 'bg-line/40 text-[#e5e5e5]/60 border-line', icon: '—' }
       : { cls: 'bg-red-500/10 text-red-400 border-red-500/30', icon: '✗' }
   return (
     <span
@@ -104,7 +104,7 @@ const PAYMENT_META = {
   partial:  { cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: '◐', label: 'Partial' },
   paid:     { cls: 'bg-brand/10 text-brand border-brand/30',           icon: '✓', label: 'Paid' },
   overpaid: { cls: 'bg-blue-500/10 text-blue-400 border-blue-500/30',  icon: '+', label: 'Overpaid' },
-  na:       { cls: 'bg-line/40 text-[#e5e5e5]/35 border-line',         icon: '—', label: 'N/A' },
+  na:       { cls: 'bg-line/40 text-[#e5e5e5]/60 border-line',         icon: '—', label: 'N/A' },
 }
 function PaymentChip({ status }) {
   const meta = PAYMENT_META[status] ?? PAYMENT_META.unpaid
@@ -121,7 +121,7 @@ function PaymentChip({ status }) {
 
 function StatusBadge({ status }) {
   const map = {
-    draft:    'bg-line text-[#e5e5e5]/50 border-line',
+    draft:    'bg-line text-[#e5e5e5]/60 border-line',
     pending:  'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     approved: 'bg-brand/10 text-brand border-brand/20',
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
@@ -596,7 +596,7 @@ export default function CaptainHub() {
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
-              <p className="text-[#e5e5e5]/40 text-sm mt-1">
+              <p className="text-[#e5e5e5]/60 text-sm mt-1">
                 Your hub for managing roster, tracking team readiness, and approving players.
               </p>
             </div>
@@ -606,7 +606,7 @@ export default function CaptainHub() {
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
           <div className="text-4xl mb-4">👑</div>
           <h2 className="text-2xl font-black text-white mb-2">No Team Found</h2>
-          <p className="text-[#e5e5e5]/40 text-sm mb-6">You haven't registered a team yet.</p>
+          <p className="text-[#e5e5e5]/60 text-sm mb-6">You haven't registered a team yet.</p>
           <Link to={event ? `/events/${event.year}/captain-register` : '/'} className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
             Register a Team →
           </Link>
@@ -651,7 +651,7 @@ export default function CaptainHub() {
       {removeConfirm && (
         <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Remove player?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">Remove <span className="text-white font-semibold">{removeConfirm.alias}</span> from your team? Their registration will remain but they'll be unassigned.</p>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">Remove <span className="text-white font-semibold">{removeConfirm.alias}</span> from your team? Their registration will remain but they'll be unassigned.</p>
             <div className="flex gap-3">
               <button onClick={confirmRemove} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove</button>
               <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
@@ -670,7 +670,7 @@ export default function CaptainHub() {
           className="p-6"
         >
           <Dialog.Title as="p" className="text-white font-bold mb-2">Disband team?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
               This permanently deletes <span className="text-white font-semibold">{team?.name}</span> and removes all <span className="text-white font-semibold">{roster.length}</span> member{roster.length !== 1 ? 's' : ''} from the team.
               They will remain registered for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${event?.year ?? ''}`}</span> but will need to create or join another team. This cannot be undone. Continue?
             </p>
@@ -699,7 +699,7 @@ export default function CaptainHub() {
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         {event && (
-          <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/40 hover:text-brand text-xs transition-colors mb-5 inline-block">
+          <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/60 hover:text-brand text-xs transition-colors mb-5 inline-block">
             ← {event.name}
           </Link>
         )}
@@ -711,7 +711,7 @@ export default function CaptainHub() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
-            <p className="text-[#e5e5e5]/40 text-sm mt-1">
+            <p className="text-[#e5e5e5]/60 text-sm mt-1">
               Your hub for managing roster, tracking team readiness, and approving players.
             </p>
           </div>
@@ -736,7 +736,7 @@ export default function CaptainHub() {
               <h1 className="text-2xl font-black text-white">{team.name}</h1>
               <StatusBadge status={team.status} />
             </div>
-            <p className="text-[#e5e5e5]/40 text-xs">
+            <p className="text-[#e5e5e5]/60 text-xs">
               {team.state && <span>{team.state} · </span>}
               {team.home_venue && <span>{team.home_venue} · </span>}
               <span>ZLTAC {eventYear ?? '—'} · Team Hub</span>
@@ -765,8 +765,8 @@ export default function CaptainHub() {
         {team.status === 'rejected' && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
             <p className="text-red-400 text-sm font-semibold">✗ Team registration was not approved</p>
-            {team.rejection_reason && <p className="text-[#e5e5e5]/50 text-xs mt-1">Reason: {team.rejection_reason}</p>}
-            <p className="text-[#e5e5e5]/40 text-xs mt-1">Adjust your team or roster below, then re-submit for approval.</p>
+            {team.rejection_reason && <p className="text-[#e5e5e5]/60 text-xs mt-1">Reason: {team.rejection_reason}</p>}
+            <p className="text-[#e5e5e5]/60 text-xs mt-1">Adjust your team or roster below, then re-submit for approval.</p>
           </div>
         )}
 
@@ -775,7 +775,7 @@ export default function CaptainHub() {
         {canSubmit && (
           <div className="bg-surface border border-line rounded-2xl p-5 mb-5">
             <h2 className="text-white font-bold mb-1">Submit Team for Approval</h2>
-            <p className="text-[#e5e5e5]/50 text-xs leading-relaxed mb-3">
+            <p className="text-[#e5e5e5]/60 text-xs leading-relaxed mb-3">
               Your team and roster will be reviewed by the committee and approved if it meets the ZLTAC rules &amp; regulations. Once approved, all team and roster changes must be made via the committee by email.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
@@ -787,7 +787,7 @@ export default function CaptainHub() {
                 {submitting ? 'Submitting…' : 'Submit Team for Approval'}
               </button>
               {roster.length < MIN_PLAYERS && (
-                <span className="text-[#e5e5e5]/40 text-xs">
+                <span className="text-[#e5e5e5]/60 text-xs">
                   {roster.length} / {MIN_PLAYERS} players — add {MIN_PLAYERS - roster.length} more to submit
                 </span>
               )}
@@ -804,7 +804,7 @@ export default function CaptainHub() {
           {/* ── Add Players ───────────────────────────────────────────────── */}
           <div className="bg-surface border border-line rounded-2xl p-5">
             <h2 className="text-white font-bold mb-1">Add Players to Team</h2>
-            <p className="text-[#e5e5e5]/40 text-xs mb-4">Search for players who have registered for ZLTAC {eventYear} but are not yet on a team.</p>
+            <p className="text-[#e5e5e5]/60 text-xs mb-4">Search for players who have registered for ZLTAC {eventYear} but are not yet on a team.</p>
 
             {/* How players get onto a team now that invite codes are gone. */}
             <div className="bg-base border border-line rounded-xl px-4 py-3 mb-4">
@@ -834,11 +834,11 @@ export default function CaptainHub() {
 
                 {/* Search feedback */}
                 {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
-                  <p className="text-[#e5e5e5]/35 text-xs mt-3">Type at least 3 characters to search</p>
+                  <p className="text-[#e5e5e5]/60 text-xs mt-3">Type at least 3 characters to search</p>
                 )}
 
                 {searchDone && !searching && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
-                  <p className="text-[#e5e5e5]/35 text-xs mt-3">
+                  <p className="text-[#e5e5e5]/60 text-xs mt-3">
                     No registered ZLTAC {eventYear} players found matching that search. They may not have signed up to the ALSA portal and registered for ZLTAC {eventYear} yet. Players must do both before they can be added here.
                   </p>
                 )}
@@ -856,7 +856,7 @@ export default function CaptainHub() {
                             <span className="text-white text-sm font-semibold">{name}</span>
                             {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
                             <CommitteeBadge roles={p.roles} size="xs" />
-                            {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/50 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
+                            {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
                           </div>
                           <button
                             onClick={() => addPlayer(p)}
@@ -878,16 +878,16 @@ export default function CaptainHub() {
             <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="text-white font-bold">Team Roster</h2>
-                <p className="text-[#e5e5e5]/40 text-xs mt-0.5">{roster.length} player{roster.length !== 1 ? 's' : ''} on your team</p>
+                <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{roster.length} player{roster.length !== 1 ? 's' : ''} on your team</p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {['all', 'ready', 'incomplete', 'unpaid'].map(f => (
                   <button key={f} onClick={() => setFilter(f)}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/50 hover:text-white'}`}>
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/60 hover:text-white'}`}>
                     {f}
                   </button>
                 ))}
-                <button onClick={exportRosterCSV} className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/50 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                <button onClick={exportRosterCSV} className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/60 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
                   CSV
                 </button>
               </div>
@@ -895,7 +895,7 @@ export default function CaptainHub() {
 
             {filteredRoster.length === 0 ? (
               <div className="px-5 py-10 text-center">
-                <p className="text-[#e5e5e5]/30 text-sm">
+                <p className="text-[#e5e5e5]/60 text-sm">
                   {roster.length === 0
                     ? (locked
                         ? 'Registrations are locked. Players can no longer be added.'
@@ -933,7 +933,7 @@ export default function CaptainHub() {
                             <CommitteeBadge roles={r.profiles?.roles} size="xs" />
                             {pState && <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">{pState}</span>}
                             {u18 && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full font-bold">U18</span>}
-                            {isMe && <span className="text-[10px] text-[#e5e5e5]/30 font-semibold">(You)</span>}
+                            {isMe && <span className="text-[10px] text-[#e5e5e5]/60 font-semibold">(You)</span>}
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ready ? 'bg-brand/10 text-brand' : 'bg-yellow-500/10 text-yellow-400'}`}>
                               {ready ? 'Ready' : 'Incomplete'}
                             </span>
@@ -1045,8 +1045,8 @@ export default function CaptainHub() {
                 }
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1">Team Logo</p>
-                <p className="text-xs text-[#e5e5e5]/35 mb-2 leading-relaxed">
+                <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Team Logo</p>
+                <p className="text-xs text-[#e5e5e5]/60 mb-2 leading-relaxed">
                   PNG, JPEG, WebP, or SVG · max 2 MB
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1069,7 +1069,7 @@ export default function CaptainHub() {
                         : 'Upload logo'}
                   </button>
                   {logoUploading && (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/45">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/60">
                       <span className="w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin" />
                       Uploading…
                     </span>
@@ -1089,13 +1089,13 @@ export default function CaptainHub() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Team Name</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Team Name</label>
                   <input type="text" value={settingsForm.name} onChange={e => setSettingsForm(f => ({ ...f, name: e.target.value }))}
                     disabled={statusLocked}
                     className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed" />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
                   <select value={settingsForm.state} onChange={e => setSettingsForm(f => ({ ...f, state: e.target.value }))}
                     disabled={statusLocked}
                     className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed">
@@ -1104,7 +1104,7 @@ export default function CaptainHub() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Home Venue</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Home Venue</label>
                   <input type="text" value={settingsForm.home_venue} onChange={e => setSettingsForm(f => ({ ...f, home_venue: e.target.value }))}
                     placeholder="e.g. Zone300 Sydney"
                     disabled={statusLocked}
@@ -1112,7 +1112,7 @@ export default function CaptainHub() {
                 </div>
                 {/* Team colour — mirrors CaptainRegister.jsx picker exactly. */}
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Team Colour</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Team Colour</label>
                   <div className="flex flex-wrap items-center gap-2">
                     {TEAM_COLOURS.map(c => (
                       <button
@@ -1130,7 +1130,7 @@ export default function CaptainHub() {
                       className="w-8 h-8 rounded-full border border-line bg-surface cursor-pointer p-0.5"
                       title="Custom colour"
                     />
-                    <span className="text-xs text-[#e5e5e5]/40 font-mono ml-1">{settingsForm.colour}</span>
+                    <span className="text-xs text-[#e5e5e5]/60 font-mono ml-1">{settingsForm.colour}</span>
                   </div>
                 </div>
                 {settingsErr && <p className="text-red-400 text-xs">{settingsErr}</p>}
@@ -1140,16 +1140,16 @@ export default function CaptainHub() {
                     {savingSettings ? 'Saving…' : 'Save Changes'}
                   </button>
                   <button onClick={() => { setEditingSettings(false); setSettingsErr('') }}
-                    className="border border-line text-[#e5e5e5]/50 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">
+                    className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">
                     Cancel
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-[#e5e5e5]/40">Team Name</span><span className="text-white font-semibold">{team.name}</span></div>
-                <div className="flex justify-between"><span className="text-[#e5e5e5]/40">State</span><span className="text-white">{team.state ?? '—'}</span></div>
-                <div className="flex justify-between"><span className="text-[#e5e5e5]/40">Home Venue</span><span className="text-white">{team.home_venue ?? '—'}</span></div>
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">Team Name</span><span className="text-white font-semibold">{team.name}</span></div>
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">State</span><span className="text-white">{team.state ?? '—'}</span></div>
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">Home Venue</span><span className="text-white">{team.home_venue ?? '—'}</span></div>
               </div>
             )}
 

@@ -60,7 +60,7 @@ export default function AdminHub() {
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-black text-white">Admin Hub</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">
           {isCommittee
             ? 'Manage events, players, and the portal.'
             : 'Manage your competitions.'}

@@ -52,10 +52,10 @@ function Toggle({ value, onChange, disabled }) {
 function DollarInput({ label, hint, value, onChange, disabled }) {
   return (
     <div>
-      <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
-      {hint && <p className="text-xs text-[#e5e5e5]/30 mb-1.5">{hint}</p>}
+      <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+      {hint && <p className="text-xs text-[#e5e5e5]/60 mb-1.5">{hint}</p>}
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/40 text-sm font-semibold">$</span>
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm font-semibold">$</span>
         <input
           type="number" min="0" step="0.01"
           value={value} disabled={disabled}
@@ -69,10 +69,10 @@ function DollarInput({ label, hint, value, onChange, disabled }) {
 
 function StatusBanner({ status, onChangeStatus, saving, archived }) {
   const map = {
-    draft:    { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/50', msg: 'Event is in draft — not visible to the public' },
+    draft:    { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/60', msg: 'Event is in draft — not visible to the public' },
     open:     { bg: 'bg-brand/10', text: 'text-brand', msg: 'Registration is open' },
     closed:   { bg: 'bg-yellow-500/10', text: 'text-yellow-400', msg: 'Registration is closed' },
-    archived: { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/30', msg: 'Event archived — read only' },
+    archived: { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/60', msg: 'Event archived — read only' },
   }
   const s = map[status] ?? map.draft
 
@@ -500,7 +500,7 @@ export default function AdminEvent() {
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="text-5xl mb-4">🎯</div>
         <h1 className="text-2xl font-black text-white mb-2">No Active Event</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mb-6 max-w-xs">No current or upcoming event found. Create one to get started.</p>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6 max-w-xs">No current or upcoming event found. Create one to get started.</p>
         <button
           onClick={async () => {
             const year = new Date().getFullYear() + 1
@@ -525,7 +525,7 @@ export default function AdminEvent() {
       {archiveOpen && (
         <Dialog open onClose={() => { setArchiveOpen(false); setArchiveError('') }} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Archive {event?.name} {event?.year}?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
               This event will be moved to history and no longer appear on the current event page.
               All registrations and team data are preserved for the record.
               A history record will be created on the public ZLTAC page where you can later add champion, MVP, and photos.
@@ -557,7 +557,7 @@ export default function AdminEvent() {
       {deleteOpen && (
         <Dialog open onClose={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-3">
+            <p className="text-[#e5e5e5]/60 text-sm mb-3">
               This permanently deletes the event and ALL associated data:{' '}
               <span className="text-white font-semibold">
                 {deleteCounts.regs ?? '…'} registration{deleteCounts.regs === 1 ? '' : 's'}
@@ -602,7 +602,7 @@ export default function AdminEvent() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-black text-white">{form.name} {form.year}</h1>
-          <p className="text-[#e5e5e5]/40 text-sm mt-1">Current event configuration</p>
+          <p className="text-[#e5e5e5]/60 text-sm mt-1">Current event configuration</p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <button
@@ -638,7 +638,7 @@ export default function AdminEvent() {
         {TABS.map((t, i) => (
           <button key={t} onClick={() => handleTabClick(i)}
             className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
-              activeTab === i ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/40 hover:text-white'
+              activeTab === i ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/60 hover:text-white'
             }`}
           >
             {t}
@@ -656,7 +656,7 @@ export default function AdminEvent() {
             { label: 'Venue', key: 'venue', type: 'text' },
           ].map(({ label, key, type }) => (
             <div key={key}>
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
               <input type={type} value={form[key] ?? ''} disabled={isArchived}
                 onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                 className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors disabled:opacity-40"
@@ -667,7 +667,7 @@ export default function AdminEvent() {
           <div className="grid grid-cols-2 gap-3">
             {[{ label: 'Start Date', key: 'start_date' }, { label: 'End Date', key: 'end_date' }].map(({ label, key }) => (
               <div key={key}>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
                 <input type="date" value={form[key] ?? ''} disabled={isArchived}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
@@ -677,7 +677,7 @@ export default function AdminEvent() {
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Status</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Status</label>
             <select value={form.status ?? 'draft'} disabled={isArchived}
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
@@ -687,8 +687,8 @@ export default function AdminEvent() {
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Description</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-2">Short summary (1-2 sentences). Used in event history records when archived.</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Description</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">Short summary (1-2 sentences). Used in event history records when archived.</p>
             <textarea rows={3} value={form.description ?? ''} disabled={isArchived}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors resize-none disabled:opacity-40"
@@ -697,8 +697,8 @@ export default function AdminEvent() {
 
           {/* Logo upload */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Event Logo</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-2">PNG or JPG, max 2MB.</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Event Logo</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">PNG or JPG, max 2MB.</p>
             <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
             {logoPreview ? (
               <div className="flex items-center gap-4">
@@ -719,18 +719,18 @@ export default function AdminEvent() {
             ) : !isArchived ? (
               <button type="button" onClick={() => logoRef.current.click()}
                 className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group">
-                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/20 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/60 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-xs text-[#e5e5e5]/30 group-hover:text-brand transition-colors">Click to upload logo</span>
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">Click to upload logo</span>
               </button>
-            ) : <p className="text-xs text-[#e5e5e5]/30">No logo uploaded</p>}
+            ) : <p className="text-xs text-[#e5e5e5]/60">No logo uploaded</p>}
           </div>
 
           {/* Cover photo upload — immediate save, shown as a banner on the public event page */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Cover Photo</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-2">PNG, JPG or WebP, max 5MB (recommended: 4096 x 1716px). Shown as a banner on the public event page.</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Cover Photo</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">PNG, JPG or WebP, max 5MB (recommended: 4096 x 1716px). Shown as a banner on the public event page.</p>
             <input ref={coverRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCoverSelect} className="hidden" />
             {form.cover_photo_url ? (
               <div className="space-y-2">
@@ -751,14 +751,14 @@ export default function AdminEvent() {
             ) : !isArchived ? (
               <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
                 className="w-full border border-dashed border-line hover:border-brand disabled:opacity-50 rounded-xl py-6 text-center transition-colors group">
-                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/20 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/60 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <span className="text-xs text-[#e5e5e5]/30 group-hover:text-brand transition-colors">
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">
                   {coverUploading ? 'Uploading…' : 'Click to upload cover photo'}
                 </span>
               </button>
-            ) : <p className="text-xs text-[#e5e5e5]/30">No cover photo uploaded</p>}
+            ) : <p className="text-xs text-[#e5e5e5]/60">No cover photo uploaded</p>}
           </div>
         </div>
       )}
@@ -780,14 +780,14 @@ export default function AdminEvent() {
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <label className="block text-xs text-[#e5e5e5]/30 mb-1">Description</label>
+                      <label className="block text-xs text-[#e5e5e5]/60 mb-1">Description</label>
                       <input type="text" value={se.description ?? ''} disabled={isArchived}
                         onChange={e => setSideEvents(ev => ev.map((s, j) => j === i ? { ...s, description: e.target.value } : s))}
                         className="w-full bg-base border border-line rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand disabled:opacity-40"
                       />
                     </div>
                     <div className="w-40">
-                      <label className="block text-xs text-[#e5e5e5]/30 mb-1">Max Participants</label>
+                      <label className="block text-xs text-[#e5e5e5]/60 mb-1">Max Participants</label>
                       <input type="number" value={se.max_participants ?? ''} placeholder="Unlimited" disabled={isArchived}
                         onChange={e => setSideEvents(ev => ev.map((s, j) => j === i ? { ...s, max_participants: e.target.value } : s))}
                         className="w-full bg-base border border-line rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
@@ -805,7 +805,7 @@ export default function AdminEvent() {
                 <p className="text-xs font-bold text-white uppercase tracking-wider">New Side Event</p>
                 {[{ label: 'Event Name', key: 'name', type: 'text' }, { label: 'Description', key: 'description', type: 'text' }, { label: 'Max Participants', key: 'max_participants', type: 'number' }].map(({ label, key, type }) => (
                   <div key={key}>
-                    <label className="block text-xs text-[#e5e5e5]/40 mb-1">{label}</label>
+                    <label className="block text-xs text-[#e5e5e5]/60 mb-1">{label}</label>
                     <input type={type} value={customForm[key]} placeholder={key === 'max_participants' ? 'Unlimited' : ''}
                       onChange={e => setCustomForm(f => ({ ...f, [key]: e.target.value }))}
                       className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20"
@@ -816,12 +816,12 @@ export default function AdminEvent() {
                   <button onClick={addCustomSideEvent} disabled={!customForm.name.trim()}
                     className="text-sm bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-4 py-2 rounded-xl transition-all">Add</button>
                   <button onClick={() => { setShowAddCustom(false); setCustomForm(EMPTY_CUSTOM) }}
-                    className="text-sm border border-line text-[#e5e5e5]/50 hover:text-white px-4 py-2 rounded-xl transition-colors">Cancel</button>
+                    className="text-sm border border-line text-[#e5e5e5]/60 hover:text-white px-4 py-2 rounded-xl transition-colors">Cancel</button>
                 </div>
               </div>
             ) : (
               <button onClick={() => setShowAddCustom(true)}
-                className="w-full border border-dashed border-line hover:border-brand text-[#e5e5e5]/40 hover:text-brand text-sm font-semibold py-3 rounded-xl transition-colors">
+                className="w-full border border-dashed border-line hover:border-brand text-[#e5e5e5]/60 hover:text-brand text-sm font-semibold py-3 rounded-xl transition-colors">
                 + Add custom side event
               </button>
             )
@@ -838,28 +838,28 @@ export default function AdminEvent() {
             <DollarInput label="Dinner Guest Fee (AUD)" hint="Per additional dinner guest" value={pricing.dinner_guest_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, dinner_guest_fee: v }))} />
 
             <div>
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Processing Fee (%)</label>
-              <p className="text-xs text-[#e5e5e5]/30 mb-1.5">Added to total at checkout</p>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Processing Fee (%)</label>
+              <p className="text-xs text-[#e5e5e5]/60 mb-1.5">Added to total at checkout</p>
               <div className="relative">
                 <input type="number" min="0" step="0.1" value={pricing.processing_fee_pct} disabled={isArchived}
                   onChange={e => setPricing(p => ({ ...p, processing_fee_pct: e.target.value }))}
                   className="w-full bg-base border border-line rounded-lg px-3 pr-8 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/40 text-sm">%</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm">%</span>
               </div>
             </div>
 
             {enabledSides.length > 0 && (
               <div>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-3">Side Event Prices (AUD per participant)</label>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Side Event Prices (AUD per participant)</label>
                 <div className="space-y-3">
                   {enabledSides.map(se => {
                     const idx = sideEvents.findIndex(s => s.slug === se.slug)
                     return (
                       <div key={se.slug}>
-                        <label className="block text-xs text-[#e5e5e5]/40 mb-1">{se.name}</label>
+                        <label className="block text-xs text-[#e5e5e5]/60 mb-1">{se.name}</label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/40 text-sm font-semibold">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm font-semibold">$</span>
                           <input type="number" min="0" step="0.01" value={sideEvents[idx]?.price ?? '0.00'} disabled={isArchived}
                             onChange={e => setSideEvents(ev => ev.map((s, j) => j === idx ? { ...s, price: e.target.value } : s))}
                             className="w-full bg-base border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
@@ -874,7 +874,7 @@ export default function AdminEvent() {
 
             {/* ── Payments availability gate ── */}
             <div className="pt-4 border-t border-line">
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Payments</label>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Payments</label>
               {(() => {
                 // settings.reg_close_date is an event-local input string; convert
                 // to a UTC instant so the payment gate and the displayed times are
@@ -898,7 +898,7 @@ export default function AdminEvent() {
                 }
                 return <p className={`text-sm font-semibold ${ps.open ? 'text-brand' : 'text-white'}`}>{status}</p>
               })()}
-              <p className="text-xs text-[#e5e5e5]/30 mt-1 mb-3">The lock date is set on the Registration tab.</p>
+              <p className="text-xs text-[#e5e5e5]/60 mt-1 mb-3">The lock date is set on the Registration tab.</p>
 
               <div className="space-y-2">
                 {[
@@ -922,26 +922,26 @@ export default function AdminEvent() {
             </div>
 
             <div className="pt-4 border-t border-line">
-              <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-2">Bank Details</label>
-              <p className="text-xs text-[#e5e5e5]/30 mb-1">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
-              <p className="text-xs text-[#e5e5e5]/40 mb-3">Bank details below are only visible to players when payments are open.</p>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Bank Details</label>
+              <p className="text-xs text-[#e5e5e5]/60 mb-1">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/60 mb-3">Bank details below are only visible to players when payments are open.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">BSB</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">BSB</label>
                   <input type="text" value={bank.bsb} disabled={isArchived} placeholder="123-456"
                     onChange={e => setBank(b => ({ ...b, bsb: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Account Number</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Account Number</label>
                   <input type="text" value={bank.account_number} disabled={isArchived}
                     onChange={e => setBank(b => ({ ...b, account_number: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#e5e5e5]/40 mb-1">Account Name</label>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Account Name</label>
                   <input type="text" value={bank.account_name} disabled={isArchived}
                     onChange={e => setBank(b => ({ ...b, account_name: e.target.value }))}
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
@@ -953,7 +953,7 @@ export default function AdminEvent() {
 
           {/* Live preview */}
           <div className="bg-base border border-line rounded-xl p-5 h-fit">
-            <p className="text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider mb-4">Price Preview</p>
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-4">Price Preview</p>
             <div className="space-y-2.5">
               {[
                 { label: 'Player Entry', val: pricing.player_fee },
@@ -973,8 +973,8 @@ export default function AdminEvent() {
               ))}
               <div className="border-t border-line pt-2.5">
                 <div className="flex justify-between text-sm">
-                  <span className="text-[#e5e5e5]/40">Processing Fee</span>
-                  <span className="text-[#e5e5e5]/40">{pricing.processing_fee_pct}%</span>
+                  <span className="text-[#e5e5e5]/60">Processing Fee</span>
+                  <span className="text-[#e5e5e5]/60">{pricing.processing_fee_pct}%</span>
                 </div>
               </div>
             </div>
@@ -989,7 +989,7 @@ export default function AdminEvent() {
               status on the Pricing tab) is entered and displayed. Stored as the
               IANA name; the dates stay UTC timestamptz under the hood. */}
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Event Timezone</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Event Timezone</label>
             <select
               value={settings.timezone ?? 'Australia/Melbourne'}
               disabled={isArchived}
@@ -1000,7 +1000,7 @@ export default function AdminEvent() {
                 <option key={tz.value} value={tz.value} className="text-white bg-base">{tz.label}</option>
               ))}
             </select>
-            <p className="text-[10px] text-[#e5e5e5]/40 mt-1.5 leading-snug">
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1.5 leading-snug">
               All dates on this event use the timezone above. Times saved before this update may show differently now because they are interpreted in the event timezone. Please check each date and save once to confirm.
             </p>
           </div>
@@ -1024,23 +1024,23 @@ export default function AdminEvent() {
               )
               return (
               <div key={key}>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}{abbr ? ` (${abbr})` : ''}</label>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}{abbr ? ` (${abbr})` : ''}</label>
                 <input type="datetime-local" value={settings[key] ?? ''} disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
                 />
-                {hint && <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">{hint}</p>}
+                {hint && <p className="text-[10px] text-[#e5e5e5]/60 mt-1 leading-snug">{hint}</p>}
               </div>
             )})}
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Committee Email</label>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Committee Email</label>
             <input type="email" value={settings.committee_email ?? ''} disabled={isArchived} placeholder="committee@lasersport.org.au"
               onChange={e => setSettings(s => ({ ...s, committee_email: e.target.value || '' }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
             />
-            <p className="text-[10px] text-[#e5e5e5]/30 mt-1 leading-snug">Email shown to players for change requests after lock. Leave blank to use committee@lasersport.org.au.</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1 leading-snug">Email shown to players for change requests after lock. Leave blank to use committee@lasersport.org.au.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -1049,8 +1049,8 @@ export default function AdminEvent() {
               { label: 'Max players (leave blank for no cap)', key: 'max_players', hint: 'Event-wide cap on total players' },
             ].map(({ label, key, hint }) => (
               <div key={key}>
-                <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">{label}</label>
-                <p className="text-xs text-[#e5e5e5]/30 mb-1.5">{hint}</p>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <p className="text-xs text-[#e5e5e5]/60 mb-1.5">{hint}</p>
                 <input type="number" value={settings[key] ?? ''} placeholder="No cap" disabled={isArchived}
                   onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
                   className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
@@ -1060,8 +1060,8 @@ export default function AdminEvent() {
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Max players per team (leave blank for no cap)</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-1.5">Team composition limit — applies to each team individually</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Max players per team (leave blank for no cap)</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-1.5">Team composition limit — applies to each team individually</p>
             <input type="number" value={settings.max_players_per_team ?? ''} placeholder="No cap" disabled={isArchived}
               onChange={e => setSettings(s => ({ ...s, max_players_per_team: e.target.value || '' }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
@@ -1083,7 +1083,7 @@ export default function AdminEvent() {
                 <Toggle value={settings[key]} disabled={isArchived} onChange={v => setSettings(s => ({ ...s, [key]: v }))} />
                 <div>
                   <p className="text-sm font-semibold text-white">{label}</p>
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5">{sub}</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{sub}</p>
                 </div>
               </label>
             ))}
@@ -1095,8 +1095,8 @@ export default function AdminEvent() {
       {activeTab === 4 && (
         <div className="space-y-8 max-w-2xl">
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Hero Text</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-2">Longer marketing block shown on the public event page below the title.</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Hero Text</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">Longer marketing block shown on the public event page below the title.</p>
             <textarea rows={8} value={form.hero_text ?? ''} disabled={isArchived}
               onChange={e => setForm(f => ({ ...f, hero_text: e.target.value }))}
               placeholder="Tell players what makes this event special, what to expect, and why they should register…"
@@ -1105,8 +1105,8 @@ export default function AdminEvent() {
           </div>
 
           <div>
-            <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Photo Gallery</label>
-            <p className="text-xs text-[#e5e5e5]/30 mb-3">PNG, JPG, or WebP. Max 5MB per photo. Use ↑ / ↓ to reorder, × to remove.</p>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Photo Gallery</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-3">PNG, JPG, or WebP. Max 5MB per photo. Use ↑ / ↓ to reorder, × to remove.</p>
 
             <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
               onChange={e => { const file = e.target.files?.[0]; if (file) uploadPhoto(file); e.target.value = '' }}
@@ -1166,14 +1166,14 @@ export default function AdminEvent() {
                 disabled={!event?.id || photoUploading}
                 className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <span className="text-xs text-[#e5e5e5]/40 group-hover:text-brand transition-colors">
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">
                   {photoUploading ? 'Uploading…' : '+ Add Photo'}
                 </span>
               </button>
             )}
 
             {(form.photo_urls ?? []).length === 0 && !isArchived && (
-              <p className="text-xs text-[#e5e5e5]/30 mt-3">No photos yet. Add a few to bring your event page to life.</p>
+              <p className="text-xs text-[#e5e5e5]/60 mt-3">No photos yet. Add a few to bring your event page to life.</p>
             )}
           </div>
         </div>

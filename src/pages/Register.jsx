@@ -70,7 +70,7 @@ export default function Register() {
             <p className="text-[#e5e5e5]/80 text-sm mb-3">
               We've sent a confirmation email to <span className="font-semibold text-white">{submittedEmail}</span>. Click the link inside to activate your account.
             </p>
-            <p className="text-[#e5e5e5]/50 text-sm mb-6">
+            <p className="text-[#e5e5e5]/60 text-sm mb-6">
               Didn't get it? Check your spam folder, or try logging in to resend.
             </p>
             <Link
@@ -100,7 +100,7 @@ export default function Register() {
 
               {/* Alias */}
               <div>
-                <label htmlFor={`${uid}-alias`} className={labelClass}>Alias <span className="text-[#e5e5e5]/40 font-normal">(your in-game name — e.g. "DarkShot", "Viper")</span></label>
+                <label htmlFor={`${uid}-alias`} className={labelClass}>Alias <span className="text-[#e5e5e5]/60 font-normal">(your in-game name — e.g. "DarkShot", "Viper")</span></label>
                 <input id={`${uid}-alias`} type="text" value={form.alias} onChange={set('alias')} placeholder="DarkShot" className={inputClass} />
               </div>
 
@@ -155,7 +155,7 @@ export default function Register() {
               </button>
             </form>
 
-            <p className="text-[#e5e5e5]/50 text-sm mt-4 text-center">
+            <p className="text-[#e5e5e5]/60 text-sm mt-4 text-center">
               Already have an account?{' '}
               <Link to="/login" className="text-brand hover:underline">Sign in</Link>
             </p>

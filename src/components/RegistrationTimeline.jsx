@@ -72,7 +72,7 @@ export default function RegistrationTimeline({ eventName }) {
                 {step.label}
               </p>
               {step.description && (
-                <p className="mt-1 text-xs text-[#e5e5e5]/40 leading-snug">
+                <p className="mt-1 text-xs text-[#e5e5e5]/60 leading-snug">
                   {step.description}
                 </p>
               )}
@@ -98,7 +98,7 @@ export default function RegistrationTimeline({ eventName }) {
                   {step.label}
                 </p>
                 {step.description && (
-                  <p className="text-xs text-[#e5e5e5]/40 mt-0.5 leading-snug">
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5 leading-snug">
                     {step.description}
                   </p>
                 )}

@@ -109,7 +109,7 @@ export default function Home() {
           <h1 className="text-5xl md:text-7xl font-black uppercase leading-none tracking-tight mb-6">
             <span className="text-white block">Australasian Laser Sport Association</span>
           </h1>
-          <p className="text-[#e5e5e5]/55 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+          <p className="text-[#e5e5e5]/60 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
             The governing body behind ZLTAC.
           </p>
         </div>
@@ -180,7 +180,7 @@ export default function Home() {
                 className="bg-surface border-l-2 border-brand/40 rounded-r-md p-4"
               >
                 <p className="text-3xl font-black text-brand">{year}</p>
-                <p className="text-xs uppercase tracking-widest text-white/50 mt-1">{label}</p>
+                <p className="text-xs uppercase tracking-widest text-white/60 mt-1">{label}</p>
                 <p className="text-sm text-white/70 mt-2">{body}</p>
               </div>
             ))}
@@ -263,7 +263,7 @@ export default function Home() {
                       <p className="text-brand font-semibold mb-2">{activeEvent.location}</p>
                     )}
                     {(activeEvent.reg_open_date || activeEvent.reg_close_date) && (
-                      <p className="text-[#e5e5e5]/45 text-sm">
+                      <p className="text-[#e5e5e5]/60 text-sm">
                         {activeEvent.reg_open_date && (
                           <>Registration opens {formatInEventTz(activeEvent.reg_open_date, activeEvent.timezone)}</>
                         )}
@@ -294,7 +294,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 py-24">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">The Sport</p>
           <h2 className="text-3xl font-black text-white text-center mb-3">What Is Laser Sport?</h2>
-          <p className="text-[#e5e5e5]/45 text-center max-w-2xl mx-auto mb-14 text-sm leading-relaxed">
+          <p className="text-[#e5e5e5]/60 text-center max-w-2xl mx-auto mb-14 text-sm leading-relaxed">
             Laser Sport is the competitive evolution of the popular recreational activity Laser Tag. While using the same equipment and arenas, it is a vastly different experience to a casual game. Laser Sport is a fast-paced, strategic 15-player, 3-team format that embraces the current era of hybrid wearable technology — pushing players to coordinate, communicate and compete at the highest level.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -47,7 +47,7 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
             >
               ←
             </button>
-            <span className="text-white/50 text-sm">{current + 1} / {urls.length}</span>
+            <span className="text-white/60 text-sm">{current + 1} / {urls.length}</span>
             <button
               onClick={() => setCurrent(c => Math.min(c + 1, urls.length - 1))}
               disabled={current === urls.length - 1}
@@ -128,7 +128,7 @@ export default function ZLTACYearDetail() {
   if (!event) {
     return (
       <div className="min-h-screen bg-base text-white flex flex-col items-center justify-center gap-5 px-6">
-        <p className="text-[#e5e5e5]/30 text-lg">No records found for ZLTAC {year}.</p>
+        <p className="text-[#e5e5e5]/60 text-lg">No records found for ZLTAC {year}.</p>
         <Link to="/zltac" className="text-brand/60 hover:text-brand text-sm transition-colors">
           ← Back to ZLTAC history
         </Link>
@@ -165,7 +165,7 @@ export default function ZLTACYearDetail() {
           }}
         />
         <div className="relative max-w-5xl mx-auto px-6">
-          <Link to="/zltac" className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/40 hover:text-brand transition-colors mb-8">
+          <Link to="/zltac" className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/60 hover:text-brand transition-colors mb-8">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -183,7 +183,7 @@ export default function ZLTACYearDetail() {
             <div>
               <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-2">Championship Results</p>
               <h1 className="text-4xl md:text-5xl font-black text-white mb-3">{event.name || `ZLTAC ${event.year}`}</h1>
-              <div className="flex flex-wrap gap-4 text-sm text-[#e5e5e5]/50">
+              <div className="flex flex-wrap gap-4 text-sm text-[#e5e5e5]/60">
                 {location && (
                   <span className="flex items-center gap-1.5">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,7 +203,7 @@ export default function ZLTACYearDetail() {
                 )}
               </div>
               {event.description && (
-                <p className="text-[#e5e5e5]/50 text-sm leading-relaxed mt-4 max-w-xl">{event.description}</p>
+                <p className="text-[#e5e5e5]/60 text-sm leading-relaxed mt-4 max-w-xl">{event.description}</p>
               )}
             </div>
           </div>
@@ -222,7 +222,7 @@ export default function ZLTACYearDetail() {
                 <div className="flex-1 max-w-[220px]">
                   <div className="bg-surface border border-line rounded-2xl p-6 text-center">
                     <div className="text-3xl mb-3">🥈</div>
-                    <p className="text-[10px] text-[#e5e5e5]/30 uppercase tracking-wider mb-1">Runner Up</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 uppercase tracking-wider mb-1">Runner Up</p>
                     <p className="text-white font-bold text-lg leading-tight">{teamPodium[2].name}</p>
                   </div>
                 </div>
@@ -244,7 +244,7 @@ export default function ZLTACYearDetail() {
                 <div className="flex-1 max-w-[220px]">
                   <div className="bg-surface border border-line rounded-2xl p-6 text-center">
                     <div className="text-3xl mb-3">🥉</div>
-                    <p className="text-[10px] text-[#e5e5e5]/30 uppercase tracking-wider mb-1">Third Place</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 uppercase tracking-wider mb-1">Third Place</p>
                     <p className="text-white font-bold text-lg leading-tight">{teamPodium[3].name}</p>
                   </div>
                 </div>
@@ -254,7 +254,7 @@ export default function ZLTACYearDetail() {
             {/* MVP */}
             {event.mvp_name && (
               <div className="mt-8 bg-surface border border-line rounded-2xl p-5 max-w-sm mx-auto text-center">
-                <p className="text-[10px] text-[#e5e5e5]/30 uppercase tracking-wider mb-1">MVP / Player of the Tournament</p>
+                <p className="text-[10px] text-[#e5e5e5]/60 uppercase tracking-wider mb-1">MVP / Player of the Tournament</p>
                 <p className="text-white font-bold text-lg">{event.mvp_name}</p>
                 {event.mvp_alias && <p className="text-brand/60 text-sm mt-0.5">{event.mvp_alias}</p>}
               </div>
@@ -277,7 +277,7 @@ export default function ZLTACYearDetail() {
                         <div key={rank} className="flex items-center gap-3 text-sm">
                           <span className="text-base">{medal}</span>
                           <span className="text-[#e5e5e5]/70 font-medium">{name}</span>
-                          {subtitle && <span className="text-[#e5e5e5]/35 text-xs">({subtitle})</span>}
+                          {subtitle && <span className="text-[#e5e5e5]/60 text-xs">({subtitle})</span>}
                         </div>
                       )
                     })}
@@ -320,7 +320,7 @@ export default function ZLTACYearDetail() {
 
         {/* Back link */}
         <div className="pt-4 border-t border-line">
-          <Link to="/zltac" className="inline-flex items-center gap-1.5 text-sm text-[#e5e5e5]/40 hover:text-brand transition-colors">
+          <Link to="/zltac" className="inline-flex items-center gap-1.5 text-sm text-[#e5e5e5]/60 hover:text-brand transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>

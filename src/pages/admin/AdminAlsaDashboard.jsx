@@ -5,9 +5,9 @@ import { apiFetch } from '../../lib/apiFetch.js'
 function StatCard({ label, value, sub, color }) {
   return (
     <div className="bg-surface border border-line rounded-xl p-5">
-      <p className="text-xs text-[#e5e5e5]/40 uppercase tracking-wider font-bold mb-1">{label}</p>
+      <p className="text-xs text-[#e5e5e5]/60 uppercase tracking-wider font-bold mb-1">{label}</p>
       <p className={`text-3xl font-black ${color ?? 'text-white'}`}>{value ?? '—'}</p>
-      {sub && <p className="text-xs text-[#e5e5e5]/40 mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-[#e5e5e5]/60 mt-1">{sub}</p>}
     </div>
   )
 }
@@ -49,7 +49,7 @@ export default function AdminAlsaDashboard() {
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-black text-white">ALSA Portal Dashboard</h1>
-        <p className="text-[#e5e5e5]/40 text-sm mt-1">
+        <p className="text-[#e5e5e5]/60 text-sm mt-1">
           Portal-wide stats. Event-specific data lives on the ZLTAC dashboard.
         </p>
       </div>

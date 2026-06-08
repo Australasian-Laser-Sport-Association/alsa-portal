@@ -28,7 +28,7 @@ function Pill({ color, children }) {
     red:    'bg-red-500/15 text-red-400 border-red-500/30',
     amber:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
     blue:   'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    grey:   'bg-[#374056] text-[#e5e5e5]/40 border-line',
+    grey:   'bg-[#374056] text-[#e5e5e5]/60 border-line',
   }
   return (
     <span className={`inline-block text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border whitespace-nowrap ${styles[color]}`}>
@@ -209,7 +209,7 @@ const MIN_ROSTER = 5
 
 function StatusBadge({ status }) {
   const styles = {
-    draft:    'bg-line text-[#e5e5e5]/40 border-line',
+    draft:    'bg-line text-[#e5e5e5]/60 border-line',
     pending:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
     approved: 'bg-green-500/15 text-green-400 border-green-500/30',
     rejected: 'bg-red-500/15 text-red-400 border-red-500/30',
@@ -258,7 +258,7 @@ const PlayerRow = memo(function PlayerRow({ p, onEdit, onLink, onPayment, onRemo
         <span className="inline-flex items-center gap-2">
           {(p.profile?.first_name || p.profile?.last_name)
             ? <span className="font-semibold text-white">{name}</span>
-            : <span className="text-[#e5e5e5]/30 italic text-xs">Unknown</span>}
+            : <span className="text-[#e5e5e5]/60 italic text-xs">Unknown</span>}
           {p.profile?.is_placeholder && (
             <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-[#374056] text-[#e5e5e5]/60 border-line">Manual</span>
           )}
@@ -268,19 +268,19 @@ const PlayerRow = memo(function PlayerRow({ p, onEdit, onLink, onPayment, onRemo
       <td className="px-4 py-3 whitespace-nowrap">
         {p.profile?.alias
           ? <span className="text-brand text-xs font-medium">{p.profile.alias}</span>
-          : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+          : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
       </td>
       {/* State */}
       <td className="px-4 py-3">
         {p.profile?.state
           ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded font-bold">{p.profile.state}</span>
-          : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+          : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
       </td>
       {/* Team */}
       <td className="px-4 py-3 whitespace-nowrap">
         {p.team?.name
           ? <span className="text-[#e5e5e5]/60 text-xs">{p.team.name}</span>
-          : <span className="text-[#e5e5e5]/25 text-xs">No team</span>}
+          : <span className="text-[#e5e5e5]/60 text-xs">No team</span>}
       </td>
       {/* CoC */}
       <td className="px-4 py-3" title={p.cocTitle}>
@@ -686,7 +686,7 @@ export default function AdminRegistrations() {
       {removeConfirm && (
         <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Remove player?</Dialog.Title>
-            <p className="text-[#e5e5e5]/50 text-sm mb-5">
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
               Remove <span className="text-white font-semibold">{removeConfirm.name}</span>
               {removeConfirm.alias ? <span className="text-brand"> ({removeConfirm.alias})</span> : ''} from ZLTAC {eventYear}?
               This will delete their registration record. This cannot be undone.
@@ -765,7 +765,7 @@ export default function AdminRegistrations() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-black text-white">Registrations</h1>
-          <p className="text-[#e5e5e5]/40 text-sm mt-1">
+          <p className="text-[#e5e5e5]/60 text-sm mt-1">
             ZLTAC {eventYear} — {players.length} players · <span className="text-green-400">{completeCount} complete</span> · <span className="text-red-400">{incompleteCount} incomplete</span>
           </p>
         </div>
@@ -806,7 +806,7 @@ export default function AdminRegistrations() {
                 Copy reference
               </button>
             )}
-            <button onClick={() => setPlaceholderBanner(null)} aria-label="Dismiss" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">×</button>
+            <button onClick={() => setPlaceholderBanner(null)} aria-label="Dismiss" className="text-[#e5e5e5]/60 hover:text-white text-xl leading-none">×</button>
           </div>
         </div>
       )}
@@ -829,7 +829,7 @@ export default function AdminRegistrations() {
             key={key}
             onClick={() => setTab(key)}
             className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
-              tab === key ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/40 hover:text-white'
+              tab === key ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/60 hover:text-white'
             }`}
           >
             {label}
@@ -842,7 +842,7 @@ export default function AdminRegistrations() {
           <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
         </div>
       ) : eventYear === null ? (
-        <div className="text-center py-20 text-[#e5e5e5]/40 text-sm">
+        <div className="text-center py-20 text-[#e5e5e5]/60 text-sm">
           No active event. Set an event to "open" in the Admin Event panel.
         </div>
       ) : tab === 'players' ? (
@@ -880,23 +880,23 @@ export default function AdminRegistrations() {
               >
                 Needs follow-up
                 <span className={`tabular-nums px-1.5 py-0.5 rounded text-[10px] ${
-                  needsFollowUp ? 'bg-yellow-500/25 text-yellow-200' : 'bg-line/40 text-[#e5e5e5]/55'
+                  needsFollowUp ? 'bg-yellow-500/25 text-yellow-200' : 'bg-line/40 text-[#e5e5e5]/60'
                 }`}>{needsFollowUpCount}</span>
               </button>
             )}
-            <span className="text-[#e5e5e5]/30 text-xs self-center">{filtered.length} of {players.length} shown</span>
+            <span className="text-[#e5e5e5]/60 text-xs self-center">{filtered.length} of {players.length} shown</span>
           </div>
 
           <div className="bg-surface border border-line rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               {filtered.length === 0 ? (
-                <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No registrations found</p>
+                <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No registrations found</p>
               ) : (
                 <table className="w-full text-sm" style={{ minWidth: '1180px' }}>
                   <thead>
                     <tr className="border-b border-line">
                       {['Name', 'Alias', 'State', 'Team', 'CoC', 'Rules Test', 'Media', 'Owing', 'Paid', 'Balance', 'Payment', 'Status', 'Actions'].map(h => (
-                        <th key={h} className={`px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider whitespace-nowrap ${h === 'Actions' ? 'sticky right-0 bg-surface border-l border-line' : ''}`}>{h}</th>
+                        <th key={h} className={`px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider whitespace-nowrap ${h === 'Actions' ? 'sticky right-0 bg-surface border-l border-line' : ''}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -923,13 +923,13 @@ export default function AdminRegistrations() {
         /* ── Teams tab ── */
         <div className="bg-surface border border-line rounded-xl overflow-hidden">
           {teams.length === 0 ? (
-            <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No teams found</p>
+            <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No teams found</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line">
                   {['Team', 'State', 'Status', 'Captain', 'Players', 'Registered', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -953,21 +953,21 @@ export default function AdminRegistrations() {
                       >
                         <td className="px-4 py-3 font-semibold text-white">
                           <span className="inline-flex items-center gap-2">
-                            <span className={`text-[#e5e5e5]/40 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`} aria-hidden>▸</span>
+                            <span className={`text-[#e5e5e5]/60 transition-transform inline-block ${isExpanded ? 'rotate-90' : ''}`} aria-hidden>▸</span>
                             {t.name}
                           </span>
                         </td>
                         <td className="px-4 py-3">
                           {t.state
                             ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded font-medium">{t.state}</span>
-                            : <span className="text-[#e5e5e5]/30 text-xs">—</span>}
+                            : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                         <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">
                           {captain ? [captain.first_name, captain.last_name].filter(Boolean).join(' ') || captain.alias || '—' : '—'}
                         </td>
-                        <td className="px-4 py-3 text-[#e5e5e5]/50 text-xs">{playerCountByTeam[t.id] ?? 0}</td>
-                        <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{fmt(t.created_at)}</td>
+                        <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{playerCountByTeam[t.id] ?? 0}</td>
+                        <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(t.created_at)}</td>
                         <td className="px-4 py-3">
                           <button
                             onClick={e => { e.stopPropagation(); toggleExpand(t.id) }}
@@ -985,7 +985,7 @@ export default function AdminRegistrations() {
                             </p>
 
                             {orderedRoster.length === 0 ? (
-                              <p className="text-[#e5e5e5]/30 text-xs mb-3">No players on this team yet.</p>
+                              <p className="text-[#e5e5e5]/60 text-xs mb-3">No players on this team yet.</p>
                             ) : (
                               <div className="space-y-1.5 mb-3">
                                 {orderedRoster.map(p => {
@@ -1054,7 +1054,7 @@ export default function AdminRegistrations() {
                                 {reviewError && <p className="text-red-400 text-xs mt-2">{reviewError}</p>}
                               </div>
                             ) : (
-                              <p className="text-[#e5e5e5]/30 text-xs pt-2 border-t border-line">
+                              <p className="text-[#e5e5e5]/60 text-xs pt-2 border-t border-line">
                                 Draft team, not yet submitted for approval.
                               </p>
                             )}
@@ -1074,13 +1074,13 @@ export default function AdminRegistrations() {
         /* ── Doubles tab ── */
         <div className="bg-surface border border-line rounded-xl overflow-hidden">
           {doubles.length === 0 ? (
-            <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No doubles pairs found</p>
+            <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No doubles pairs found</p>
           ) : (
             <table className="w-full text-sm" style={{ minWidth: '700px' }}>
               <thead>
                 <tr className="border-b border-line">
                   {['Player 1', 'Player 2', 'Status', 'Created', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1089,7 +1089,7 @@ export default function AdminRegistrations() {
                   const p1 = profMap[d.player1_id]
                   const p2 = profMap[d.player2_id]
                   function pName(p) {
-                    if (!p) return <span className="text-[#e5e5e5]/30 text-xs italic">Unknown</span>
+                    if (!p) return <span className="text-[#e5e5e5]/60 text-xs italic">Unknown</span>
                     return (
                       <span>
                         <span className="font-semibold text-white">{[p.first_name, p.last_name].filter(Boolean).join(' ') || '—'}</span>
@@ -1106,7 +1106,7 @@ export default function AdminRegistrations() {
                           ? <Pill color="green">Confirmed</Pill>
                           : <Pill color="amber">Pending</Pill>}
                       </td>
-                      <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{fmt(d.created_at)}</td>
+                      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(d.created_at)}</td>
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {
@@ -1130,13 +1130,13 @@ export default function AdminRegistrations() {
         /* ── Triples tab ── */
         <div className="bg-surface border border-line rounded-xl overflow-hidden">
           {triples.length === 0 ? (
-            <p className="text-center py-12 text-[#e5e5e5]/30 text-sm">No triples teams found</p>
+            <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No triples teams found</p>
           ) : (
             <table className="w-full text-sm" style={{ minWidth: '800px' }}>
               <thead>
                 <tr className="border-b border-line">
                   {['Player 1', 'Player 2', 'Player 3', 'Status', 'Created', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/40 font-bold uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1146,7 +1146,7 @@ export default function AdminRegistrations() {
                   const p2 = profMap[t.player2_id]
                   const p3 = profMap[t.player3_id]
                   function pName(p) {
-                    if (!p) return <span className="text-[#e5e5e5]/30 text-xs">—</span>
+                    if (!p) return <span className="text-[#e5e5e5]/60 text-xs">—</span>
                     return (
                       <span>
                         <span className="font-semibold text-white">{[p.first_name, p.last_name].filter(Boolean).join(' ') || '—'}</span>
@@ -1164,7 +1164,7 @@ export default function AdminRegistrations() {
                           ? <Pill color="green">Confirmed</Pill>
                           : <Pill color="amber">Pending</Pill>}
                       </td>
-                      <td className="px-4 py-3 text-[#e5e5e5]/40 text-xs">{fmt(t.created_at)}</td>
+                      <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(t.created_at)}</td>
                       <td className="px-4 py-3">
                         <button
                           onClick={async () => {

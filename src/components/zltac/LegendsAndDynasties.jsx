@@ -20,7 +20,7 @@ function LegendCard({ alias, titles, summary }) {
         ))}
       </div>
       {summary && (
-        <p className="text-[#e5e5e5]/45 text-xs leading-relaxed">{summary}</p>
+        <p className="text-[#e5e5e5]/60 text-xs leading-relaxed">{summary}</p>
       )}
     </div>
   )
@@ -50,7 +50,7 @@ function DynastyCard({ team, years, note, tier }) {
           </span>
         ))}
       </div>
-      {note && <p className="text-white/40 text-xs italic mt-2">{note}</p>}
+      {note && <p className="text-white/60 text-xs italic mt-2">{note}</p>}
     </div>
   )
 }
