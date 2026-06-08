@@ -6,6 +6,7 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { formatInEventTz } from '../lib/eventTimezone'
 import { isCommittee } from '../lib/roles'
 import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
 import RegistrationTimeline from '../components/RegistrationTimeline'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
@@ -655,10 +656,7 @@ export default function EventPage() {
     <div className="bg-base text-white">
       {/* Photo lightbox */}
       {lightboxUrl && (
-        <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-zoom-out"
-          onClick={() => setLightboxUrl(null)}
-        >
+        <Dialog open onClose={() => setLightboxUrl(null)} variant="lightbox" closeOnBackdrop label="Photo viewer" className="contents">
           <img
             src={lightboxUrl}
             alt=""
@@ -672,7 +670,7 @@ export default function EventPage() {
           >
             ×
           </button>
-        </div>
+        </Dialog>
       )}
 
       {/* Hero */}

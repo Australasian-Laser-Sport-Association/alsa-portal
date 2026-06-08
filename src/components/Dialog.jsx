@@ -129,6 +129,7 @@ export default function Dialog({
     center: 'fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4',
     scroll: 'fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto',
     drawer: 'fixed inset-0 bg-black/70 z-50 flex items-end justify-end',
+    lightbox: 'fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4',
   }[variant] ?? 'fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4'
 
   const maxW = SIZE_MAX_W[size] ?? SIZE_MAX_W.md
@@ -136,6 +137,8 @@ export default function Dialog({
     center: `bg-surface border border-line rounded-2xl w-full ${maxW}`,
     scroll: `bg-surface border border-line rounded-2xl w-full my-auto ${maxW}`,
     drawer: 'bg-surface border-l border-line h-full w-full max-w-md overflow-y-auto',
+    // Transparent — it wraps an image; the consumer supplies sizing via className.
+    lightbox: '',
   }[variant] ?? `bg-surface border border-line rounded-2xl w-full ${maxW}`
 
   function handleBackdrop(e) {

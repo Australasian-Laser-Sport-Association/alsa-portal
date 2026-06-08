@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
 import { maskStorageUrl } from '../lib/assetUrl'
 
 const SIDE_EVENT_LABELS = {
@@ -29,8 +30,7 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
   }, [urls.length, onClose])
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
+    <Dialog open onClose={onClose} variant="lightbox" closeOnBackdrop label="Photo viewer" className="relative max-w-4xl max-h-full">
         <img src={urls[current]} alt="" className="max-h-[80vh] max-w-full object-contain rounded-xl" />
         <button
           onClick={onClose}
@@ -57,8 +57,7 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

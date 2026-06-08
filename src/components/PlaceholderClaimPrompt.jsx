@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
+import Dialog from './Dialog'
 
 // Chunk 2 placeholder-claim banner + modal, shared by PlayerHub (post-
 // registration view) and PlayerRegister (pre-registration view). Each instance
@@ -119,11 +120,10 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
       </div>
 
       {open && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-          <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[85vh] overflow-y-auto">
+        <Dialog open onClose={() => setOpen(false)} variant="center" size="xl" className="p-6 max-h-[85vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
-                <p className="text-white font-bold text-lg">Claim a registration</p>
+                <Dialog.Title as="p" className="text-white font-bold text-lg">Claim a registration</Dialog.Title>
                 <p className="text-white text-xs mt-1">
                   Each match is a placeholder profile that shares your alias or email. Claim only the ones that are actually you.
                 </p>
@@ -203,8 +203,7 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
                 )
               })}
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
     </>
   )

@@ -766,10 +766,9 @@ function SignupsTab() {
 
       {/* Detail panel */}
       {detail && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-end" onClick={() => setDetail(null)}>
-          <div className="w-full max-w-md bg-surface border-l border-line h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+        <Dialog open onClose={() => setDetail(null)} variant="drawer" closeOnBackdrop className="p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black text-white">Volunteer Signup</h2>
+              <Dialog.Title className="text-lg font-black text-white">Volunteer Signup</Dialog.Title>
               <button onClick={() => setDetail(null)} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
             </div>
 
@@ -870,8 +869,7 @@ function SignupsTab() {
             </div>
 
             <p className="text-xs text-[#e5e5e5]/30">Signed up {formatDate(detail.created_at) || '—'}</p>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Manual signup modal */}
