@@ -400,7 +400,9 @@ export default function AdminRefereeTest() {
                     <p className="text-xs font-bold text-white mb-2">Image</p>
                     {form.image_url && (
                       <div className="mb-2">
-                        <img src={maskStorageUrl(form.image_url)} alt="" className="w-full max-h-40 object-contain rounded border border-line bg-[#1a1a1a]" />
+                        <div className="h-40 w-full rounded border border-line bg-[#1a1a1a] overflow-hidden">
+                          <img src={maskStorageUrl(form.image_url)} alt="" className="w-full h-full object-contain" />
+                        </div>
                         <button type="button" onClick={() => setForm(f => ({ ...f, image_url: null }))}
                           className="mt-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors">Remove image</button>
                       </div>
