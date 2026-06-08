@@ -33,6 +33,17 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+// A focusable counts only if it's actually rendered: zero client rects covers
+// display:none / detached / collapsed (e.g. a `hidden` file input), and the
+// visibility check covers visibility:hidden. Keeps focus-in and the Tab trap
+// off nodes that match the selector but can't receive focus.
+function isVisible(el) {
+  return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden'
+}
+function getFocusable(panel) {
+  return Array.from(panel.querySelectorAll(FOCUSABLE)).filter(isVisible)
+}
+
 export default function Dialog({
   open,
   onClose,
@@ -56,9 +67,13 @@ export default function Dialog({
     if (!open) return
     restoreRef.current = document.activeElement
     const panel = panelRef.current
-    const first = panel?.querySelector(FOCUSABLE)
-    if (first) first.focus()
-    else panel?.focus()
+    // Don't override focus already inside the panel (e.g. a child's autoFocus fired
+    // during commit, before this effect) — preserves the intended initial field.
+    if (panel && !panel.contains(document.activeElement)) {
+      const first = getFocusable(panel)[0]
+      if (first) first.focus()
+      else panel.focus()
+    }
     return () => {
       const el = restoreRef.current
       if (el && typeof el.focus === 'function') el.focus()
@@ -85,7 +100,7 @@ export default function Dialog({
       if (e.key !== 'Tab') return
       const panel = panelRef.current
       if (!panel) return
-      const nodes = panel.querySelectorAll(FOCUSABLE)
+      const nodes = getFocusable(panel)
       if (nodes.length === 0) {
         e.preventDefault()
         panel.focus()

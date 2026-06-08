@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
 import { dollars } from '../lib/pricing.js'
+import Dialog from './Dialog'
 
 // Admin-only modal for editing a single zltac_registrations row (plus a couple
 // of profile fields). Bypasses the player-side phase guard — admin can edit in
@@ -229,11 +230,10 @@ export default function RegistrationEditModal({
   const labelCls = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl w-full max-w-2xl my-auto" onClick={e => e.stopPropagation()}>
+    <Dialog open onClose={onClose} variant="scroll" size="2xl" closeOnBackdrop>
         <div className="p-6 border-b border-line flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-white font-bold text-lg">Edit registration</h2>
+            <Dialog.Title className="text-white font-bold text-lg">Edit registration</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mt-0.5 truncate">
               {playerName}{profile?.alias && <span className="text-brand"> ({profile.alias})</span>}
               <span className="text-[#e5e5e5]/30"> · ZLTAC {registration.year}</span>
@@ -456,7 +456,6 @@ export default function RegistrationEditModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

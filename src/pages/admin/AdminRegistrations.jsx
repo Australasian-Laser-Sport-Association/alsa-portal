@@ -112,11 +112,10 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[85vh] overflow-y-auto">
+    <Dialog open onClose={onClose} variant="center" size="xl" className="p-6 max-h-[85vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <p className="text-white font-bold text-lg">Link placeholder to user</p>
+            <Dialog.Title as="p" className="text-white font-bold text-lg">Link placeholder to user</Dialog.Title>
             <p className="text-white text-xs mt-1">
               Placeholder: <span className="font-semibold">{phName}</span>
               {placeholder.alias && <span className="text-brand ml-1">"{placeholder.alias}"</span>}
@@ -199,8 +198,7 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

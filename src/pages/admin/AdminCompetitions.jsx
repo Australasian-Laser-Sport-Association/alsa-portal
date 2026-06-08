@@ -96,11 +96,10 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
+    <Dialog open onClose={onClose} variant="center" size="xl" className="p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <p className="text-white font-bold text-lg">{isEdit ? 'Edit competition' : 'Create competition'}</p>
+            <Dialog.Title as="p" className="text-white font-bold text-lg">{isEdit ? 'Edit competition' : 'Create competition'}</Dialog.Title>
             {isEdit && (
               <p className="text-white text-[11px] opacity-50 mt-1 font-mono">URL: /competitions/{initial.slug}</p>
             )}
@@ -162,8 +161,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

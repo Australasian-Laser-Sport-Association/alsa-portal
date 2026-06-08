@@ -63,9 +63,8 @@ function PeriodModal({ open, period, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-        <h3 className="text-white font-bold mb-4">{editing ? 'Edit period' : 'Add new period'}</h3>
+    <Dialog open onClose={onClose} variant="center" size="sm" closeOnBackdrop className="p-6">
+        <Dialog.Title as="h3" className="text-white font-bold mb-4">{editing ? 'Edit period' : 'Add new period'}</Dialog.Title>
         <div className="space-y-3">
           <div>
             <label className="block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5">Label</label>
@@ -109,8 +108,7 @@ function PeriodModal({ open, period, onClose, onSaved }) {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -155,9 +153,8 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-        <h3 className="text-white font-bold mb-1">Grant membership</h3>
+    <Dialog open onClose={onClose} variant="center" size="sm" closeOnBackdrop className="p-6">
+        <Dialog.Title as="h3" className="text-white font-bold mb-1">Grant membership</Dialog.Title>
         <p className="text-[#e5e5e5]/50 text-xs mb-4">{memberName(profile)}{profile.alias && ` "${profile.alias}"`}</p>
         <div className="space-y-3">
           <div>
@@ -206,8 +203,7 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
 

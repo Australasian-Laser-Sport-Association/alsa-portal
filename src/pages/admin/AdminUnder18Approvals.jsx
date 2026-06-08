@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/dateFormat'
+import Dialog from '../../components/Dialog'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
@@ -428,10 +429,9 @@ function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCrea
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-12 overflow-y-auto" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-lg w-full" onClick={e => e.stopPropagation()}>
+    <Dialog open onClose={onClose} variant="scroll" size="lg" closeOnBackdrop className="p-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-white font-bold">Add approval record</h3>
+          <Dialog.Title as="h3" className="text-white font-bold">Add approval record</Dialog.Title>
           <button onClick={onClose} aria-label="Close" className="text-xs text-[#e5e5e5]/40 hover:text-white">✕</button>
         </div>
 
@@ -522,7 +522,6 @@ function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCrea
             {saving ? 'Saving…' : 'Create approval'}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

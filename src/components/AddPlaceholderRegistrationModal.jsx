@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
+import Dialog from './Dialog'
 
 // Admin-only modal for creating a "placeholder" registration: a player who has
 // no portal account yet. It posts create-placeholder-registration to
@@ -125,11 +126,10 @@ export default function AddPlaceholderRegistrationModal({
   const labelCls = 'block text-xs text-[#e5e5e5]/50 font-bold uppercase tracking-wider mb-1.5'
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl w-full max-w-2xl my-auto" onClick={e => e.stopPropagation()}>
+    <Dialog open onClose={onClose} variant="scroll" size="2xl" closeOnBackdrop>
         <div className="p-6 border-b border-line flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-white font-bold text-lg">Add manual registration</h2>
+            <Dialog.Title className="text-white font-bold text-lg">Add manual registration</Dialog.Title>
             <p className="text-[#e5e5e5]/50 text-sm mt-0.5">
               Creates a player profile and registration for ZLTAC {eventYear} without a portal account.
             </p>
@@ -278,7 +278,6 @@ export default function AddPlaceholderRegistrationModal({
             {saving ? 'Creating...' : 'Create registration'}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }

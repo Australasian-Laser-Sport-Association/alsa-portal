@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { formatDate } from '../../lib/dateFormat'
 import { maskStorageUrl } from '../../lib/assetUrl'
+import Dialog from '../../components/Dialog'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/50 uppercase tracking-wider mb-1.5'
@@ -607,9 +608,8 @@ function UploadForm({ documentType, highestVersion, onUploaded, showToast }) {
 
 function ConfirmDialog({ title, body, confirmLabel, busy, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4" onClick={onCancel}>
-      <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full" onClick={e => e.stopPropagation()}>
-        <h3 className="text-white font-bold mb-3">{title}</h3>
+    <Dialog open onClose={onCancel} variant="center" size="sm" closeOnBackdrop className="p-6">
+        <Dialog.Title as="h3" className="text-white font-bold mb-3">{title}</Dialog.Title>
         <p className="text-sm text-[#e5e5e5]/60 leading-relaxed mb-5">{body}</p>
         <div className="flex justify-end gap-3">
           <button onClick={onCancel} className="text-sm text-[#e5e5e5]/60 hover:text-white px-3 py-2">Cancel</button>
@@ -621,7 +621,6 @@ function ConfirmDialog({ title, body, confirmLabel, busy, onConfirm, onCancel })
             {busy ? 'Working…' : confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   )
 }
