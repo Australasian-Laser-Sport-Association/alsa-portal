@@ -70,40 +70,65 @@ function paymentStatus(amountOwingCents, totalPaidCents) {
   return 'unpaid'
 }
 
+// PostgREST caps a single response at a finite number of rows (default 1000
+// unless the project raises it). 1000-row pages keep us safely at or under
+// any such cap; auth.admin.listUsers takes the same perPage.
+const PAGE_SIZE = 1000
+
+// Fetch every row of a PostgREST query in PAGE_SIZE pages. `makeQuery` must
+// return a fresh query builder each call so .range() applies to a clean
+// query. Advances by the actual page length and loops until a page returns 0
+// rows, so a server returning fewer rows per page than requested does not
+// truncate the result. Throws on the first error so the caller's status path
+// surfaces it (no silent truncation).
+async function fetchAllRows(makeQuery, label) {
+  const rows = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1)
+    if (error) throw new Error(`Backup query failed (${label}): ${error.message}`)
+    const page = data ?? []
+    if (page.length === 0) break
+    rows.push(...page)
+    from += page.length
+  }
+  return rows
+}
+
 export async function generateBackupCsvs(supabase) {
   // 1. Pull everything in parallel. Each query is unscoped: backups
   //    intentionally include archived events + cancelled registrations
-  //    so the snapshot is a true restore point.
+  //    so the snapshot is a true restore point. The three high-volume
+  //    tables (registrations, profiles, payment_records) are paginated so a
+  //    PostgREST row cap can never silently truncate the backup; the small
+  //    naturally-bounded tables are single reads.
   const [
     eventsRes,
-    registrationsRes,
     teamsRes,
-    profilesRes,
-    paymentRecordsRes,
     doublesRes,
     triplesRes,
+    registrations,
+    profiles,
+    paymentRecords,
   ] = await Promise.all([
     supabase.from('zltac_events').select('*'),
-    supabase.from('zltac_registrations').select('*'),
     supabase.from('teams').select('id, name, captain_id'),
-    supabase.from('profiles')
-      .select('id, first_name, last_name, alias, dob, phone, state, placeholder_email, is_placeholder'),
-    supabase.from('payment_records')
-      .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes'),
     supabase.from('doubles_pairs').select('event_year, player1_id, player2_id'),
     supabase.from('triples_teams').select('event_year, player1_id, player2_id, player3_id'),
+    fetchAllRows(() => supabase.from('zltac_registrations').select('*'), 'zltac_registrations'),
+    fetchAllRows(() => supabase.from('profiles')
+      .select('id, first_name, last_name, alias, dob, phone, state, placeholder_email, is_placeholder'), 'profiles'),
+    fetchAllRows(() => supabase.from('payment_records')
+      .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes'), 'payment_records'),
   ])
 
-  const firstErr = [eventsRes, registrationsRes, teamsRes, profilesRes, paymentRecordsRes, doublesRes, triplesRes]
+  const firstErr = [eventsRes, teamsRes, doublesRes, triplesRes]
     .map(r => r.error)
     .find(Boolean)
   if (firstErr) throw new Error(`Backup query failed: ${firstErr.message}`)
 
   const events = eventsRes.data ?? []
-  const registrations = registrationsRes.data ?? []
   const teams = teamsRes.data ?? []
-  const profiles = profilesRes.data ?? []
-  const paymentRecords = paymentRecordsRes.data ?? []
   const doublesPairs = doublesRes.data ?? []
   const triplesTeams = triplesRes.data ?? []
 
@@ -134,23 +159,23 @@ export async function generateBackupCsvs(supabase) {
   }
 
   // 5. Auth email lookup. auth.users.email lives outside RLS-managed
-  //    tables, so each user_id needs its own admin.getUserById call. We
-  //    fan out in parallel — same pattern handleCompetitionRegistrations
-  //    and api/admin/volunteers use. Placeholder profiles (no auth row)
-  //    fall back to profiles.placeholder_email.
-  const userIdsNeeded = new Set([
-    ...registrations.map(r => r.user_id),
-    ...paymentRecords.map(p => p.recorded_by).filter(Boolean),
-  ])
+  //    tables, so it comes from the Auth admin API rather than a join. One
+  //    paginated listUsers sweep (PAGE_SIZE per page) builds id → email for
+  //    every user in a handful of calls, replacing a per-user getUserById
+  //    fan-out. Unlike that fan-out, a listUsers failure is thrown so the
+  //    caller's status path surfaces it rather than silently continuing with
+  //    an empty map. Placeholder profiles (no auth row) still fall back to
+  //    profiles.placeholder_email via resolveEmail().
   const emailByAuthId = new Map()
-  await Promise.all([...userIdsNeeded].map(async uid => {
-    try {
-      const { data } = await supabase.auth.admin.getUserById(uid)
-      if (data?.user?.email) emailByAuthId.set(uid, data.user.email)
-    } catch {
-      // No auth row (placeholder) — handled by resolveEmail() below.
+  for (let page = 1; ; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: PAGE_SIZE })
+    if (error) throw new Error(`Backup auth email lookup failed: ${error.message}`)
+    const users = data?.users ?? []
+    if (users.length === 0) break
+    for (const u of users) {
+      if (u?.email) emailByAuthId.set(u.id, u.email)
     }
-  }))
+  }
 
   function resolveEmail(userId) {
     if (!userId) return ''
