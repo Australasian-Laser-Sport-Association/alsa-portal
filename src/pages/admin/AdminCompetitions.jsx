@@ -104,7 +104,7 @@ function CompetitionFormModal({ initial, onClose, onSaved }) {
               <p className="text-white text-[11px] opacity-50 mt-1 font-mono">URL: /competitions/{initial.slug}</p>
             )}
           </div>
-          <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-white text-xl leading-none px-2">×</button>
         </div>
 
         <CompetitionEditForm

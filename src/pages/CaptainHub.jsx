@@ -788,7 +788,7 @@ export default function CaptainHub() {
                 </span>
               )}
             </div>
-            {submitError && <p className="text-red-400 text-xs mt-2">{submitError}</p>}
+            {submitError && <p role="alert" className="text-red-400 text-xs mt-2">{submitError}</p>}
           </div>
         )}
 

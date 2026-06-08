@@ -351,7 +351,7 @@ export default function AdminUsers() {
           <div className="w-full max-w-md bg-surface border-l border-line h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-white">User Profile</h2>
-              <button onClick={() => { setSelected(null); setMsg(null) }} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => { setSelected(null); setMsg(null) }} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
             </div>
 
             {/* Avatar + name */}

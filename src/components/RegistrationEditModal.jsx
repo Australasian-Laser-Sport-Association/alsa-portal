@@ -239,11 +239,11 @@ export default function RegistrationEditModal({
               <span className="text-[#e5e5e5]/30"> · ZLTAC {registration.year}</span>
             </p>
           </div>
-          <button onClick={onClose} className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
         </div>
 
         {error && (
-          <div className="mx-6 mt-4 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-xs">
+          <div role="alert" className="mx-6 mt-4 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-xs">
             {error}
           </div>
         )}

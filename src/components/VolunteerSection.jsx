@@ -359,12 +359,12 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
           >
             {saving ? 'Saving…' : hasExistingSignup ? 'Update volunteer details' : 'Save volunteer details'}
           </button>
-          {error && <span className="text-red-400 text-sm">{error}</span>}
+          {error && <span role="alert" className="text-red-400 text-sm">{error}</span>}
           {!error && msg && <span className="text-brand text-sm">{msg}</span>}
         </div>
       )}
       {/* Errors/notes in registration mode (no save button here) */}
-      {!showSave && error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+      {!showSave && error && <p role="alert" className="text-red-400 text-sm mt-3">{error}</p>}
       {mode === 'registration' && isVolunteering && !readOnly && (
         <p className="text-[11px] text-[#e5e5e5]/35 mt-3">Your volunteer choices are saved when you complete registration.</p>
       )}
@@ -375,7 +375,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
           <div className="bg-surface border border-line rounded-2xl p-6 max-w-sm w-full">
             <p className="text-white font-bold mb-2">Remove your volunteer application?</p>
             <p className="text-[#e5e5e5]/50 text-sm mb-5">This will remove your volunteer application. Continue?</p>
-            {error && <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4"><p className="text-red-400 text-xs">{error}</p></div>}
+            {error && <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4"><p className="text-red-400 text-xs">{error}</p></div>}
             <div className="flex gap-3">
               <button onClick={optOut} disabled={saving}
                 className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">

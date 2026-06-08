@@ -200,7 +200,7 @@ function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
           I have read and agree to the {DOC_LABELS.code_of_conduct} dated {formatDate(activeDoc.effective_date)}.
         </span>
       </label>
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p role="alert" className="text-red-400 text-xs">{error}</p>}
       <button
         onClick={sign}
         disabled={!agreed || saving}
@@ -285,7 +285,7 @@ function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
         </div>
       )}
 
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p role="alert" className="text-red-400 text-xs">{error}</p>}
 
       {status !== 'approved' && (
         <button
@@ -350,7 +350,7 @@ function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) 
           I have read and agree to the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)}.
         </span>
       </label>
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p role="alert" className="text-red-400 text-xs">{error}</p>}
       <button
         onClick={submit}
         disabled={!agreed || saving}
@@ -438,7 +438,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
             {record.confirmed ? 'Confirmed' : isInitiator ? 'Pending their confirmation' : 'Pending your confirmation'}
           </span>
         </div>
-        {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+        {error && <p role="alert" className="text-red-400 text-xs mb-2">{error}</p>}
         {isInitiator && (
           <button onClick={changePartner} disabled={saving}
             className="text-xs text-[#e5e5e5]/40 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
@@ -492,7 +492,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       {search.trim().length >= 2 && !searching && results.length === 0 && (
         <p className="text-[#e5e5e5]/30 text-xs">No available doubles players found for "{search}"</p>
       )}
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+      {error && <p role="alert" className="text-red-400 text-xs mt-2">{error}</p>}
     </div>
   )
 }
@@ -607,6 +607,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
             className="flex-1 bg-surface border border-brand/30 rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand"
           />
           <button onClick={() => { setSearchSlot(null); setSearch(''); setResults([]) }}
+            aria-label="Clear search"
             className="text-[#e5e5e5]/30 hover:text-white text-xs">✕</button>
         </div>
       )
@@ -645,6 +646,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         </span>
         {!isMe && isCreator && (
           <button onClick={() => clearSlot(slot)} disabled={saving}
+            aria-label="Remove"
             className="text-[#e5e5e5]/25 hover:text-red-400 text-xs transition-colors px-1">✕</button>
         )}
       </div>
@@ -702,7 +704,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       {searchSlot && search.trim().length >= 2 && !searching && results.length === 0 && (
         <p className="text-[#e5e5e5]/30 text-xs mt-2">No available triples players found</p>
       )}
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+      {error && <p role="alert" className="text-red-400 text-xs mt-2">{error}</p>}
       {record && isCreator && (
         <button onClick={disbandTeam} disabled={saving}
           className="mt-3 text-xs text-[#e5e5e5]/25 hover:text-red-400 transition-colors">

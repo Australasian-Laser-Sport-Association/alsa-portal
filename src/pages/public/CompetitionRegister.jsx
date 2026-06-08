@@ -104,7 +104,7 @@ export default function CompetitionRegister() {
             <p className="text-white text-sm opacity-70">
               We could not find a competition with that URL. It may have been archived or the registration window may have closed.
             </p>
-            {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+            {error && <p role="alert" className="text-red-400 text-xs mt-3">{error}</p>}
           </div>
         </section>
         <Footer />

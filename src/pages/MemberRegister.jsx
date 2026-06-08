@@ -73,7 +73,7 @@ export default function MemberRegister() {
             </div>
           ) : error ? (
             <div className="text-center py-20">
-              <p className="text-red-400 text-base">
+              <p role="alert" className="text-red-400 text-base">
                 Couldn't load member register — please try again.
               </p>
             </div>

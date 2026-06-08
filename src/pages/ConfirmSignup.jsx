@@ -68,7 +68,7 @@ export default function ConfirmSignup() {
         {status === 'error' && (
           <>
             <h1 className="text-2xl font-bold text-white mb-2">Confirmation failed</h1>
-            <p className="text-[#e5e5e5]/60 text-sm mb-6">{errorMsg}</p>
+            <p role="alert" className="text-[#e5e5e5]/60 text-sm mb-6">{errorMsg}</p>
             <Link
               to="/login"
               className="inline-block bg-brand hover:bg-brand-hover text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-colors"

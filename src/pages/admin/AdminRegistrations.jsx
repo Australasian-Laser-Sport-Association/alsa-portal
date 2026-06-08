@@ -121,7 +121,7 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
               {placeholder.alias && <span className="text-brand ml-1">"{placeholder.alias}"</span>}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-white text-xl leading-none px-2">×</button>
         </div>
 
         {!picked ? (
@@ -809,7 +809,7 @@ export default function AdminRegistrations() {
                 Copy reference
               </button>
             )}
-            <button onClick={() => setPlaceholderBanner(null)} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">×</button>
+            <button onClick={() => setPlaceholderBanner(null)} aria-label="Dismiss" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">×</button>
           </div>
         </div>
       )}

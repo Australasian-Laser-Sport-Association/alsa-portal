@@ -771,7 +771,7 @@ function SignupsTab() {
           <div className="w-full max-w-md bg-surface border-l border-line h-full overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black text-white">Volunteer Signup</h2>
-              <button onClick={() => setDetail(null)} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+              <button onClick={() => setDetail(null)} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
             </div>
 
             <div className="mb-5">
@@ -975,7 +975,7 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
       <div className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-black text-white">Add manual signup</h2>
-          <button onClick={onClose} className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
+          <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-xl leading-none">✕</button>
         </div>
 
         {conflict ? (

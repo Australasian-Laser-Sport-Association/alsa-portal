@@ -131,12 +131,13 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
               <button
                 type="button"
                 onClick={() => setOpen(false)}
+                aria-label="Dismiss"
                 className="text-white text-xl leading-none px-2"
               >×</button>
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+              <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
                 <p className="text-red-400 text-xs">{error}</p>
               </div>
             )}

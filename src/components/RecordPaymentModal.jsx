@@ -235,7 +235,7 @@ export default function RecordPaymentModal({
                 {name}{profile?.alias ? <span className="text-brand"> ({profile.alias})</span> : ''}
               </p>
             </div>
-            <button onClick={onClose} className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
+            <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/40 hover:text-white text-2xl leading-none">×</button>
           </div>
           <div className="grid grid-cols-2 gap-3 mt-4">
             <div className="col-span-2">

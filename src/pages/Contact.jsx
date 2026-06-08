@@ -154,7 +154,7 @@ export default function Contact() {
                   {status === 'loading' ? 'Sending…' : 'Send Message'}
                 </button>
                 {status === 'error' && (
-                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-sm">
+                  <div role="alert" className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-sm">
                     {errorMsg === 'rate-limit' ? (
                       <p className="text-red-400">
                         You've reached the daily message limit (3 per day). Please try again tomorrow or email{' '}

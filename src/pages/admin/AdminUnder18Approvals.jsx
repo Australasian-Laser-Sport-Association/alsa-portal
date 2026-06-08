@@ -432,7 +432,7 @@ function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCrea
       <div className="bg-surface border border-line rounded-2xl p-6 max-w-lg w-full" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-white font-bold">Add approval record</h3>
-          <button onClick={onClose} className="text-xs text-[#e5e5e5]/40 hover:text-white">✕</button>
+          <button onClick={onClose} aria-label="Close" className="text-xs text-[#e5e5e5]/40 hover:text-white">✕</button>
         </div>
 
         <div className="space-y-4">

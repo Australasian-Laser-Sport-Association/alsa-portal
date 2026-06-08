@@ -90,7 +90,7 @@ function CreateTeamModal({ competitionId, onClose, onCreated }) {
       <form onSubmit={submit} className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full">
         <div className="flex items-start justify-between gap-3 mb-4">
           <p className="text-white font-bold text-lg">Create team</p>
-          <button type="button" onClick={onClose} className="text-white text-xl leading-none px-2">×</button>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-white text-xl leading-none px-2">×</button>
         </div>
 
         {error && (

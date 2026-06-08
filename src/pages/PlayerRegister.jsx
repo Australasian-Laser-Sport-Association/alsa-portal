@@ -388,7 +388,7 @@ export default function PlayerRegister() {
             />
           )}
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p role="alert" className="text-red-400 text-sm">{error}</p>}
 
           <button
             type="submit"
