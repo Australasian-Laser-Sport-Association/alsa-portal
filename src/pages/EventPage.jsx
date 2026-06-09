@@ -394,6 +394,11 @@ export default function EventPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [teams, setTeams] = useState([])
   const [regs, setRegs] = useState([])
+  // Masked roster (alias/state only, all rows) that drives the Registered Teams
+  // section for authenticated viewers — sourced from the same public_event_roster
+  // view the anon path uses, so every logged-in user sees all approved teams (not
+  // just their own). `regs` stays the RLS-limited base table for myReg + side events.
+  const [teamRoster, setTeamRoster] = useState([])
   const [doublesPairs, setDoublesPairs] = useState([])
   const [triplesTeams, setTriplesTeams] = useState([])
   const [pairProfileMap, setPairProfileMap] = useState({})
@@ -403,7 +408,7 @@ export default function EventPage() {
 
   useEffect(() => {
     async function loadAuthenticatedRoster(yearInt) {
-      const [{ data: teamsData }, { data: regsData }] = await Promise.all([
+      const [{ data: teamsData }, { data: regsData }, { data: rosterData }] = await Promise.all([
         supabase
           .from('teams')
           .select('id, name, status, logo_url, captain_id, manager_id')
@@ -413,9 +418,25 @@ export default function EventPage() {
           .from('zltac_registrations')
           .select('id, user_id, team_id, side_events, status')
           .eq('year', yearInt),
+        supabase
+          .from('public_event_roster')
+          .select('team_id, year, side_events, alias, state')
+          .eq('year', yearInt),
       ])
       const rawTeams = teamsData ?? []
       const rawRegs = regsData ?? []
+
+      // Registered Teams section is driven by the masked, all-rows roster (same
+      // shape and masking as the anon path) so it shows every approved team, not
+      // just the rows this user's RLS exposes on the base table.
+      setTeamRoster((rosterData ?? []).map((r, idx) => ({
+        id: `roster-${r.team_id ?? 'none'}-${idx}`,
+        _key: `roster-${idx}`,
+        team_id: r.team_id,
+        side_events: r.side_events,
+        status: null,
+        profiles: { alias: r.alias, state: r.state },
+      })))
 
       const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
       const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
@@ -604,7 +625,7 @@ export default function EventPage() {
           </div>
         </section>
 
-        <RegisteredTeamsSection teams={teams} regs={regs} />
+        <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
         {enabledSideEvents.length > 0 && (
           <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={regs} teams={teams} />
         )}
@@ -903,7 +924,7 @@ export default function EventPage() {
       {showRegistrationSections && (
         <>
           <div className="border-t border-line" />
-          <RegisteredTeamsSection teams={teams} regs={regs} />
+          <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
           {enabledSideEvents.length > 0 && (
             <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={regs} teams={teams} />
           )}
