@@ -1,11 +1,13 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { getSiteBanner, SiteBannerContext } from './lib/siteSettings'
 
 // Eager: the always-mounted app shell + the first-paint route. Everything the
 // initial public render needs ships in the main entry so first paint is not
 // gated on a chunk fetch.
 import NavBar from './components/NavBar'
+import SiteBanner from './components/SiteBanner'
 import ActiveEventBanner from './components/ActiveEventBanner'
 import ScrollToTop from './components/ScrollToTop'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -94,8 +96,19 @@ function RouteFallback() {
 }
 
 function App() {
+  // Site-wide testing-mode flag, fetched once here and shared via context so
+  // SiteBanner, the homepage modal, and the AdminHub card reuse one fetch.
+  const [banner, setBanner] = useState({ enabled: false, message: '' })
+
+  useEffect(() => {
+    let cancelled = false
+    getSiteBanner().then(b => { if (!cancelled) setBanner(b) })
+    return () => { cancelled = true }
+  }, [])
+
   return (
     <AuthProvider>
+      <SiteBannerContext.Provider value={{ banner, setBanner }}>
       <BrowserRouter>
         <a
           href="#main-content"
@@ -104,7 +117,13 @@ function App() {
           Skip to content
         </a>
         <ScrollToTop />
-        <NavBar />
+        {/* Banner + nav pinned as one unit: two stacked sticky elements would
+            overlap once scrolled, so the shell wraps both in a single sticky
+            container instead of making SiteBanner sticky on its own. */}
+        <div className="sticky top-0 z-50">
+          <SiteBanner />
+          <NavBar />
+        </div>
         <PinnedActiveEventBanner />
         <main id="main-content">
           <Suspense fallback={<RouteFallback />}>
@@ -184,6 +203,7 @@ function App() {
           </Suspense>
         </main>
       </BrowserRouter>
+      </SiteBannerContext.Provider>
     </AuthProvider>
   )
 }

@@ -159,7 +159,9 @@ export default function NavBar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 bg-surface border-b border-line">
+    // Sticky positioning lives on the App.jsx wrapper (SiteBanner + NavBar
+    // pinned as one unit), so the header itself is static.
+    <header className="bg-surface border-b border-line">
       <div className="h-0.5 bg-brand" />
 
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-6">

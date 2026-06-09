@@ -4,6 +4,7 @@ import { ArrowRight, Trophy, Users, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatInEventTz } from '../lib/eventTimezone'
 import Footer from '../components/Footer'
+import TestingModeModal from '../components/TestingModeModal'
 import { maskStorageUrl } from '../lib/assetUrl'
 
 const CrosshairIcon = ({ className }) => (
@@ -76,6 +77,7 @@ export default function Home() {
 
   return (
     <div className="bg-base text-white">
+      <TestingModeModal />
 
       {/* ── Hero ── */}
       <section
