@@ -211,7 +211,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
                   readOnly
                   className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/60 cursor-not-allowed focus:outline-none"
                 />
-                <p className="text-xs text-white/60 mt-1.5">Your alias is locked because you have registered for a competition. Contact the committee to change it.</p>
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-1.5 text-xs text-yellow-200/80">Your alias is locked because you've registered for a competition. To change it, email <a href="mailto:committee@lasersport.org.au" className="text-yellow-300 hover:text-yellow-100 underline">committee@lasersport.org.au</a>.</div>
               </div>
             ) : (
               <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
