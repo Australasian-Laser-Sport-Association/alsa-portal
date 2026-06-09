@@ -29,10 +29,16 @@ export default async function handler(req, res) {
     ?? req.socket?.remoteAddress
     ?? 'unknown'
 
-  const { success, limit, remaining, reset } = await ratelimit.limit(ip)
-  res.setHeader('X-RateLimit-Limit', limit)
-  res.setHeader('X-RateLimit-Remaining', remaining)
-  res.setHeader('X-RateLimit-Reset', reset)
+  let success = true
+  try {
+    const { success: ok, limit, remaining, reset } = await ratelimit.limit(ip)
+    success = ok
+    res.setHeader('X-RateLimit-Limit', limit)
+    res.setHeader('X-RateLimit-Remaining', remaining)
+    res.setHeader('X-RateLimit-Reset', reset)
+  } catch (err) {
+    console.error('[api/contact] rate-limit unavailable, failing open:', err)
+  }
 
   if (!success) {
     return res.status(429).json({ error: 'Too many requests. Please try again later.' })
