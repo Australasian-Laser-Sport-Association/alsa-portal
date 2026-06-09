@@ -82,6 +82,15 @@ const NAV_ITEMS = [
     ),
     label: 'Volunteers',
   },
+  {
+    to: '/admin/zltac-documents',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+      </svg>
+    ),
+    label: 'ZLTAC Documents',
+  },
   // The Competitions section header and the superadmin "Competitions"
   // link below are gated dynamically in buildNavItems(). Managed
   // competition links are injected after the superadmin link so the
@@ -128,6 +137,15 @@ const NAV_ITEMS = [
       </svg>
     ),
     label: 'ALSA Members',
+  },
+  {
+    to: '/admin/alsa-documents',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+      </svg>
+    ),
+    label: 'ALSA Documents',
   },
   {
     to: '/admin/zltac-hall-of-fame',

@@ -17,6 +17,7 @@ const DEFAULT_NAV_LINKS = [
     children: [
       { label: 'About', href: '/about' },
       { label: 'Member Register', href: '/members' },
+      { label: 'Resources', href: '/resources' },
     ],
   },
   {
@@ -26,6 +27,7 @@ const DEFAULT_NAV_LINKS = [
     children: [
       { label: 'ZLTAC', href: '/zltac' },
       { label: 'Competitions', href: '/competitions' },
+      { label: 'Resources', href: '/zltac/resources' },
     ],
   },
   { label: 'Contact', href: '/contact', visible: true },

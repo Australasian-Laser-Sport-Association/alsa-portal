@@ -22,6 +22,7 @@ const About = lazy(() => import('./pages/About'))
 const MemberRegister = lazy(() => import('./pages/MemberRegister'))
 const Contact = lazy(() => import('./pages/Contact'))
 const ZLTACLanding = lazy(() => import('./pages/ZLTACLanding'))
+const Resources = lazy(() => import('./pages/Resources'))
 const EventPage = lazy(() => import('./pages/EventPage'))
 
 // Auth pages
@@ -59,6 +60,7 @@ const AdminZLTACHallOfFame = lazy(() => import('./pages/admin/AdminZLTACHallOfFa
 const AdminZLTACResults = lazy(() => import('./pages/admin/AdminZLTACResults'))
 const AdminCompetitions = lazy(() => import('./pages/admin/AdminCompetitions'))
 const AdminBackups = lazy(() => import('./pages/admin/AdminBackups'))
+const AdminDocuments = lazy(() => import('./pages/admin/AdminDocuments'))
 
 // Manager (pre-nationals)
 const ManagerLayout = lazy(() => import('./components/ManagerLayout'))
@@ -134,6 +136,10 @@ function App() {
             <Route path="/members" element={<MemberRegister />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/zltac" element={<ZLTACLanding />} />
+            {/* Shared Resources page; keyed per scope so switching between the
+                two routes remounts instead of reusing stale state. */}
+            <Route path="/resources" element={<Resources key="alsa" scope="alsa" />} />
+            <Route path="/zltac/resources" element={<Resources key="zltac" scope="zltac" />} />
 
             {/* Public competition listings (pre-nationals etc.) */}
             <Route path="/competitions" element={<CompetitionsList />} />
@@ -180,8 +186,10 @@ function App() {
               <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
               <Route path="referee-test" element={<AdminRefereeTest />} />
               <Route path="volunteers" element={<AdminVolunteers />} />
+              <Route path="zltac-documents" element={<AdminDocuments key="zltac" scope="zltac" />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="members" element={<AdminMembers />} />
+              <Route path="alsa-documents" element={<AdminDocuments key="alsa" scope="alsa" />} />
               <Route path="competitions" element={<AdminCompetitions />} />
               <Route path="backups" element={<AdminBackups />} />
               {/* Committee users reach managed-competition pages from the Admin
