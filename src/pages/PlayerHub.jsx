@@ -757,6 +757,10 @@ export default function PlayerHub() {
   const [sideEventsError, setSideEventsError] = useState(null)
   const [extrasError, setExtrasError] = useState(null)
 
+  // Holds the slug ('doubles' | 'triples') awaiting withdrawal confirmation
+  // when the user un-selects a side event they are CONFIRMED in. Null = closed.
+  const [withdrawSideEvent, setWithdrawSideEvent] = useState(null)
+
   // Cancel registration modal
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -946,6 +950,22 @@ export default function PlayerHub() {
   }
 
   function toggleSideEvent(slug) {
+    // Un-selecting a side event you are CONFIRMED in dissolves the pairing for
+    // your partner(s) too. Don't flip the toggle or write anything yet — open a
+    // confirmation dialog first. Un-confirmed (pending) pairings fall through.
+    const removing = selectedSlugs.has(slug)
+    if (removing && slug === 'doubles' && doublesRecord?.confirmed) {
+      setWithdrawSideEvent('doubles')
+      return
+    }
+    if (removing && slug === 'triples' && triplesRecord?.confirmed) {
+      setWithdrawSideEvent('triples')
+      return
+    }
+    performToggleSideEvent(slug)
+  }
+
+  function performToggleSideEvent(slug) {
     const prevSlugs = selectedSlugs
     const newSlugs = new Set(selectedSlugs)
     const removing = newSlugs.has(slug)
@@ -1244,6 +1264,40 @@ export default function PlayerHub() {
             </div>
         </Dialog>
       )}
+
+      {/* Confirmed pairing withdrawal warning */}
+      {withdrawSideEvent && (() => {
+        const isDoubles = withdrawSideEvent === 'doubles'
+        const partnerAliases = isDoubles
+          ? [partnerName(doublesRecord?.player1_id === user.id ? doublesRecord?.player2_id : doublesRecord?.player1_id)].filter(Boolean)
+          : [triplesRecord?.player1_id, triplesRecord?.player2_id, triplesRecord?.player3_id]
+              .filter(id => id && id !== user.id).map(partnerName).filter(Boolean)
+        const names = partnerAliases.length ? partnerAliases.join(', ') : (isDoubles ? 'your partner' : 'your teammates')
+        const label = isDoubles ? 'doubles pair' : 'triples team'
+        return (
+          <Dialog open onClose={() => setWithdrawSideEvent(null)} variant="center" size="sm" className="p-6">
+            <Dialog.Title as="p" className="text-white font-bold mb-2">Withdraw from {isDoubles ? 'Doubles' : 'Triples'}?</Dialog.Title>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
+              You are in a confirmed {label} with <span className="text-white font-semibold">{names}</span>.
+              Withdrawing dissolves the {label} for everyone in it, so {names} will be removed too and will need to {isDoubles ? 'find a new partner' : 'form a new team'}.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setWithdrawSideEvent(null)}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { const slug = withdrawSideEvent; setWithdrawSideEvent(null); performToggleSideEvent(slug) }}
+                className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Withdraw anyway
+              </button>
+            </div>
+          </Dialog>
+        )
+      })()}
 
       <div className="max-w-3xl mx-auto px-6 py-10">
 
