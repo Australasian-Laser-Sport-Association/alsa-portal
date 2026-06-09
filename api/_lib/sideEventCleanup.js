@@ -46,3 +46,32 @@ export async function cleanupFormerSideEventMember({ table, slug, playerCols, me
   if (updErr) return
   await computeAndWriteAmountOwing(reg.id)
 }
+
+// The mirror of cleanupFormerSideEventMember: when a player commits to a
+// pairing (creates or accepts one), make sure the side event slug is on their
+// registration and their amount_owing reflects it. Idempotent — a no-op when
+// the slug is already present — and fail-safe on any query error.
+//
+//   slug      'doubles' | 'triples'
+//   memberId  the committing member to add the slug for
+//   eventYear the event year scope
+export async function ensureSideEventMember({ slug, memberId, eventYear }) {
+  if (!memberId) return
+
+  const { data: reg, error: regErr } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('id, side_events')
+    .eq('user_id', memberId)
+    .eq('year', eventYear)
+    .maybeSingle()
+  if (regErr || !reg) return
+  if ((reg.side_events ?? []).includes(slug)) return
+
+  const newSlugs = [...(reg.side_events ?? []), slug]
+  const { error: updErr } = await supabaseAdmin
+    .from('zltac_registrations')
+    .update({ side_events: newSlugs })
+    .eq('id', reg.id)
+  if (updErr) return
+  await computeAndWriteAmountOwing(reg.id)
+}

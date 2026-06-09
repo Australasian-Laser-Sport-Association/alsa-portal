@@ -2,7 +2,7 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
-import { cleanupFormerSideEventMember } from './_lib/sideEventCleanup.js'
+import { cleanupFormerSideEventMember, ensureSideEventMember } from './_lib/sideEventCleanup.js'
 import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
 import { anyPlaceholder } from './_lib/placeholders.js'
 
@@ -139,6 +139,9 @@ async function handleDoubles(req, res, user) {
 
     if (insertErr) return res.status(500).json({ error: insertErr.message })
 
+    // Creator commits on create — auto-add 'doubles' (no manual save needed).
+    await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear })
+
     return res.json({ record })
   }
 
@@ -161,22 +164,8 @@ async function handleDoubles(req, res, user) {
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
 
-    const { data: myReg, error: myRegErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id, side_events')
-      .eq('user_id', user.id)
-      .eq('year', pair.event_year)
-      .maybeSingle()
-    if (myRegErr) return res.status(500).json({ error: myRegErr.message })
-    if (myReg) {
-      const newSlugs = [...new Set([...(myReg.side_events ?? []), 'doubles'])]
-      const { error: sideErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .update({ side_events: newSlugs })
-        .eq('id', myReg.id)
-      if (sideErr) return res.status(500).json({ error: sideErr.message })
-      await computeAndWriteAmountOwing(myReg.id)
-    }
+    // Accepter commits on confirm — auto-add 'doubles' for them.
+    await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear: pair.event_year })
 
     return res.json({ record })
   }
@@ -297,6 +286,10 @@ async function handleTriples(req, res, user) {
       .single()
 
     if (insertErr) return res.status(500).json({ error: insertErr.message })
+
+    // Creator commits on create — auto-add 'triples' (no manual save needed).
+    await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear })
+
     return res.json({ record })
   }
 
@@ -360,22 +353,8 @@ async function handleTriples(req, res, user) {
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
 
-    const { data: myReg, error: myRegErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id, side_events')
-      .eq('user_id', user.id)
-      .eq('year', existing.event_year)
-      .maybeSingle()
-    if (myRegErr) return res.status(500).json({ error: myRegErr.message })
-    if (myReg) {
-      const newSlugs = [...new Set([...(myReg.side_events ?? []), 'triples'])]
-      const { error: sideErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .update({ side_events: newSlugs })
-        .eq('id', myReg.id)
-      if (sideErr) return res.status(500).json({ error: sideErr.message })
-      await computeAndWriteAmountOwing(myReg.id)
-    }
+    // Accepter commits on confirm — auto-add 'triples' for them.
+    await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear: existing.event_year })
 
     return res.json({ record })
   }

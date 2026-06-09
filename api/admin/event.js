@@ -3,7 +3,7 @@ import { Resend } from 'resend'
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
-import { cleanupFormerSideEventMember } from '../_lib/sideEventCleanup.js'
+import { cleanupFormerSideEventMember, ensureSideEventMember } from '../_lib/sideEventCleanup.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -349,6 +349,10 @@ async function handleRegistrations(req, res, user) {
           .from('doubles_pairs')
           .insert({ event_year: reg.year, player1_id: reg.user_id, player2_id: newPartnerId, confirmed: true })
         if (insErr) return res.status(500).json({ error: `doubles insert: ${insErr.message}` })
+
+        // Both inserted members are confirmed — auto-add 'doubles' for each.
+        await ensureSideEventMember({ slug: 'doubles', memberId: reg.user_id, eventYear: reg.year })
+        await ensureSideEventMember({ slug: 'doubles', memberId: newPartnerId, eventYear: reg.year })
       }
 
       // Clean up any former member dropped by the reshuffle (not those in the
@@ -394,6 +398,11 @@ async function handleRegistrations(req, res, user) {
             confirmed: !!(p2 && p3),
           })
         if (insErr) return res.status(500).json({ error: `triples insert: ${insErr.message}` })
+
+        // Auto-add 'triples' for every inserted member (null ids no-op).
+        await ensureSideEventMember({ slug: 'triples', memberId: reg.user_id, eventYear: reg.year })
+        await ensureSideEventMember({ slug: 'triples', memberId: p2, eventYear: reg.year })
+        await ensureSideEventMember({ slug: 'triples', memberId: p3, eventYear: reg.year })
       }
 
       // Clean up any former member dropped by the reshuffle (not those in the
