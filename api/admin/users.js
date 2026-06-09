@@ -29,6 +29,45 @@ export default async function handler(req, res) {
   // Single-user operations when ?id is present
   if (id) {
     if (req.method === 'GET') {
+      // Impact preview for the hard delete: counts of the rows a delete would
+      // destroy via the profiles cascade. Superadmin only, like DELETE itself.
+      if (req.query.action === 'deletion-impact') {
+        const { error: superErr } = await verifySuperAdmin(req)
+        if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+
+        const countOf = (table, col) =>
+          supabaseAdmin.from(table).select('*', { count: 'exact', head: true }).eq(col, id)
+
+        // payment_records hang off the user's ZLTAC registrations, not the
+        // user directly, so fetch the registration ids first.
+        const { data: regRows, error: regErr } = await supabaseAdmin
+          .from('zltac_registrations').select('id').eq('user_id', id)
+        if (regErr) return res.status(500).json({ error: regErr.message })
+        const regIds = (regRows ?? []).map(r => r.id)
+
+        const results = {}
+        const queries = [
+          ['event_registrations',       countOf('event_registrations', 'user_id')],
+          ['competition_registrations', countOf('competition_registrations', 'user_id')],
+          ['payments',                  countOf('payments', 'user_id')],
+          ['payment_records',           regIds.length
+            ? supabaseAdmin.from('payment_records').select('*', { count: 'exact', head: true }).in('registration_id', regIds)
+            : Promise.resolve({ count: 0, error: null })],
+          ['legal_acceptances',         countOf('legal_acceptances', 'user_id')],
+          ['referee_test_results',      countOf('referee_test_results', 'user_id')],
+          ['under_18_approvals',        countOf('under_18_approvals', 'user_id')],
+          ['team_members',              countOf('team_members', 'user_id')],
+          ['alsa_memberships',          countOf('alsa_memberships', 'profile_id')],
+        ]
+        const settled = await Promise.all(queries.map(([, q]) => q))
+        const countErrs = settled.map(r => r.error).filter(Boolean)
+        if (countErrs.length) return res.status(500).json({ error: countErrs.map(e => e.message).join(' | ') })
+
+        results.zltac_registrations = regIds.length
+        queries.forEach(([key], i) => { results[key] = settled[i].count ?? 0 })
+        return res.json(results)
+      }
+
       const { error } = await verifyCommittee(req)
       if (error) return res.status(statusForAuthError(error)).json({ error })
 
@@ -186,13 +225,50 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      // Permanent account deletion is not yet implemented. The previous
-      // handler deleted the profiles row only, leaving an orphaned auth.users
-      // entry — broken state since AuthContext no longer re-seeds on sign-in.
-      // The safe partial action ("Reset member data") now lives on PATCH
-      // { action: 'reset' }. A real DELETE that also removes the auth user
-      // via supabase.auth.admin.deleteUser will land in a follow-up.
-      return res.status(405).json({ error: 'Method not allowed' })
+      // Hard delete. Real users go through auth.admin.deleteUser: the
+      // on_auth_user_deleted trigger removes the profiles row, and the child
+      // FKs cascade from there (registrations, acceptances, payments, ...).
+      // Placeholders have no auth.users row, so their profiles row is deleted
+      // directly with the same cascade. NO ACTION FKs (the committee audit
+      // columns: admin_override_*_set_by, competitions.created_by, etc.)
+      // abort the whole transaction; that surfaces as the 409 below.
+      const { user: caller, error: superErr } = await verifySuperAdmin(req)
+      if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+      if (caller.id === id) {
+        return res.status(403).json({ error: 'Cannot delete your own account' })
+      }
+
+      const { data: target, error: targetErr } = await supabaseAdmin
+        .from('profiles')
+        .select('is_placeholder')
+        .eq('id', id)
+        .maybeSingle()
+      if (targetErr) return res.status(500).json({ error: targetErr.message })
+      if (!target) return res.status(404).json({ error: 'User not found' })
+
+      const FK_BLOCK_MESSAGE = 'This account is referenced by committee audit records and cannot be hard-deleted. Use Remove access instead.'
+      const isFkViolation = (e) =>
+        e?.code === '23503' || /foreign key|violates.*constraint/i.test(e?.message ?? '')
+
+      try {
+        if (target.is_placeholder) {
+          const { error: delErr } = await supabaseAdmin.from('profiles').delete().eq('id', id)
+          if (delErr) {
+            if (isFkViolation(delErr)) return res.status(409).json({ error: FK_BLOCK_MESSAGE })
+            return res.status(500).json({ error: delErr.message })
+          }
+        } else {
+          const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(id)
+          if (authErr) {
+            if (isFkViolation(authErr)) return res.status(409).json({ error: FK_BLOCK_MESSAGE })
+            return res.status(500).json({ error: authErr.message || 'Failed to delete account' })
+          }
+        }
+      } catch (err) {
+        if (isFkViolation(err)) return res.status(409).json({ error: FK_BLOCK_MESSAGE })
+        return res.status(500).json({ error: err?.message || 'Failed to delete account' })
+      }
+      return res.json({ deleted: true })
     }
 
     return res.status(405).json({ error: 'Method not allowed' })

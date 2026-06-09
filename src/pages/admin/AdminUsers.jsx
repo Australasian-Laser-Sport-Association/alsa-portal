@@ -16,6 +16,21 @@ const ROLE_META = {
   player:          { label: 'Player',          cls: 'bg-line text-[#e5e5e5]/60 border-transparent' },
 }
 
+// Friendly labels for the hard-delete impact preview, keyed by the table
+// names the deletion-impact endpoint returns.
+const IMPACT_LABELS = {
+  zltac_registrations: 'ZLTAC registrations',
+  event_registrations: 'event registrations',
+  competition_registrations: 'competition registrations',
+  payments: 'payments',
+  payment_records: 'payment ledger entries',
+  legal_acceptances: 'signed legal acceptances',
+  referee_test_results: 'rules test results',
+  under_18_approvals: 'under 18 approvals',
+  team_members: 'team memberships',
+  alsa_memberships: 'ALSA memberships',
+}
+
 const AVATAR_COLORS = {
   superadmin: 'bg-purple-500/20 text-purple-400',
   alsa_committee: 'bg-red-500/20 text-red-400',
@@ -130,6 +145,10 @@ export default function AdminUsers() {
   const [msg, setMsg] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [confirmRemove, setConfirmRemove] = useState(null)
+  const [confirmHardDelete, setConfirmHardDelete] = useState(null)
+  const [deleteImpact, setDeleteImpact] = useState(null) // null = not fetched yet
+  const [deleting, setDeleting] = useState(false)
+  const [deleteErr, setDeleteErr] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => { loadUsers() }, [])
@@ -185,6 +204,9 @@ export default function AdminUsers() {
     setMsg(null)
     setConfirmDelete(null)
     setConfirmRemove(null)
+    setConfirmHardDelete(null)
+    setDeleteImpact(null)
+    setDeleteErr(null)
     setLoadingDetail(true)
     const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/users?id=${u.id}`)
     setSelectedRegs(regs ?? [])
@@ -243,6 +265,41 @@ export default function AdminUsers() {
       setAliasMsg({ type: 'error', text: err.message })
     } finally {
       setSavingAlias(false)
+    }
+  }
+
+  // Hard-delete flow: open the confirm and fetch the impact preview. The
+  // confirm button stays disabled until the preview has loaded, so the
+  // superadmin always sees what a delete destroys before they can click it.
+  async function startHardDelete(u) {
+    setConfirmHardDelete(u.id)
+    setConfirmDelete(null)
+    setConfirmRemove(null)
+    setDeleteImpact(null)
+    setDeleteErr(null)
+    try {
+      const impact = await apiFetch(`/api/admin/users?id=${u.id}&action=deletion-impact`)
+      setDeleteImpact(impact)
+    } catch (err) {
+      setDeleteErr(err.message)
+    }
+  }
+
+  async function hardDelete(userId) {
+    setDeleting(true)
+    setDeleteErr(null)
+    try {
+      await apiFetch(`/api/admin/users?id=${userId}`, { method: 'DELETE' })
+      setSelected(null)
+      setConfirmHardDelete(null)
+      setDeleteImpact(null)
+      await loadUsers()
+    } catch (err) {
+      // Includes the 409 steering message when committee audit records block
+      // the delete.
+      setDeleteErr(err.message)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -589,7 +646,7 @@ export default function AdminUsers() {
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => { setConfirmDelete(selected.id); setConfirmRemove(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
+                  <button onClick={() => { setConfirmDelete(selected.id); setConfirmRemove(null); setConfirmHardDelete(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
                     Reset member data →
                   </button>
                 )}
@@ -630,8 +687,60 @@ export default function AdminUsers() {
                       </div>
                     </div>
                   ) : (
-                    <button onClick={() => { setConfirmRemove(selected.id); setConfirmDelete(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
+                    <button onClick={() => { setConfirmRemove(selected.id); setConfirmDelete(null); setConfirmHardDelete(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
                       Remove access →
+                    </button>
+                  )}
+                </div>
+
+                {/* Delete permanently — hard delete with impact preview */}
+                <div className="border-t border-red-500/10 mt-3 pt-3">
+                  {confirmHardDelete === selected.id ? (
+                    <div>
+                      <p className="text-xs text-[#e5e5e5]/80 mb-2">
+                        Permanently delete{' '}
+                        <span className="font-semibold text-white">
+                          {[selected.first_name, selected.last_name].filter(Boolean).join(' ') || 'this user'}
+                        </span>?
+                      </p>
+                      {deleteImpact === null && !deleteErr ? (
+                        <p className="text-[11px] text-[#e5e5e5]/60 mb-3">Checking linked records…</p>
+                      ) : deleteImpact && (
+                        <div className="mb-3">
+                          <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed mb-1.5">
+                            This cannot be undone. It will permanently delete the account and:
+                          </p>
+                          {Object.entries(deleteImpact).filter(([, n]) => n > 0).length === 0 ? (
+                            <p className="text-[11px] text-[#e5e5e5]/80">No linked records, only the account itself.</p>
+                          ) : (
+                            <ul className="text-[11px] text-[#e5e5e5]/80 list-disc pl-4 space-y-0.5">
+                              {Object.entries(deleteImpact).filter(([, n]) => n > 0).map(([k, n]) => (
+                                <li key={k}>{n} {IMPACT_LABELS[k] ?? k}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                      {deleteErr && <p className="text-[11px] text-red-400 leading-relaxed mb-3">{deleteErr}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => hardDelete(selected.id)}
+                          disabled={deleting || !deleteImpact}
+                          className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                        >
+                          {deleting ? 'Deleting…' : 'Yes, Delete Permanently'}
+                        </button>
+                        <button
+                          onClick={() => { setConfirmHardDelete(null); setDeleteImpact(null); setDeleteErr(null) }}
+                          className="border border-line text-[#e5e5e5]/60 text-xs font-semibold px-4 py-2 rounded-lg hover:text-white transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => startHardDelete(selected)} className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors">
+                      Delete permanently →
                     </button>
                   )}
                 </div>
