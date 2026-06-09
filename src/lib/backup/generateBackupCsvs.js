@@ -257,10 +257,13 @@ export async function generateBackupCsvs(supabase) {
       balance,
       centsToDollars(balance),
       paymentStatus(owing, paid),
-      reg.admin_override_coc ?? false,
-      reg.admin_override_media ?? false,
-      reg.admin_override_ref_test ?? false,
-      reg.admin_override_u18 ?? false,
+      // Tri-state overrides: emit raw so a restore round-trips faithfully.
+      // null (no override) -> empty cell; true -> true; false (force incomplete)
+      // -> false. Defaulting null to false would force-incomplete every row.
+      reg.admin_override_coc ?? '',
+      reg.admin_override_media ?? '',
+      reg.admin_override_ref_test ?? '',
+      reg.admin_override_u18 ?? '',
       reg.admin_note ?? '',
       reg.created_at ?? '',
     ]
