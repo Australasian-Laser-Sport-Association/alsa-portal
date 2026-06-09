@@ -33,13 +33,13 @@ function sortSideEvents(events) {
 
 // ── Team Card ──────────────────────────────────────────────────────────────
 // `team.profiles` is the captain's profile when fetched via the authenticated
-// path. For anonymous viewers we deliberately don't fetch captain profile
-// data, so first_name/last_name are absent — show "—" rather than leak
-// "undefined undefined". Captain real name is intentionally hidden from anon.
+// path. The captain is shown by alias only (never a real name), matching the
+// masked roster. For anonymous viewers we deliberately don't fetch captain
+// profile data, so the alias is absent and we show "—".
 function TeamCard({ team, players }) {
-  const captainRealName = [team.profiles?.first_name, team.profiles?.last_name]
-    .filter(Boolean).join(' ') || null
-  const captainName = captainRealName ?? '—'
+  // Captain shown by alias only — never a real name — matching the masked
+  // roster. Anon has no captain profile, so this falls back to the dash.
+  const captainName = team.profiles?.alias || '—'
   const teamState = team.profiles?.state ?? null
 
   return (
@@ -627,7 +627,7 @@ export default function EventPage() {
 
         <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
         {enabledSideEvents.length > 0 && (
-          <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={regs} teams={teams} />
+          <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={user ? teamRoster : regs} teams={teams} />
         )}
         {(doublesPairs.length > 0 || triplesTeams.length > 0) && (
           <>
@@ -926,7 +926,7 @@ export default function EventPage() {
           <div className="border-t border-line" />
           <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
           {enabledSideEvents.length > 0 && (
-            <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={regs} teams={teams} />
+            <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={user ? teamRoster : regs} teams={teams} />
           )}
           {/* Partner pairings (doubles/triples) are intentionally hidden from
               anonymous viewers — spec calls them out as private. */}
