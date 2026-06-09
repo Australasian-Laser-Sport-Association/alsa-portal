@@ -423,6 +423,42 @@ async function handleRegistration(req, res, user) {
   const body = req.body ?? {}
   const { action } = body
 
+  if (action === 'sign-legal') {
+    // Player (re)signs CoC / Media Release. Routed through the service role so
+    // the clear_force_incomplete_on_resign AFTER-trigger updates
+    // zltac_registrations with auth.uid() IS NULL — the system path the
+    // protect_registration_admin_fields guard allows — instead of failing
+    // under the player's own auth context.
+    const { documentId, eventYear } = body
+    if (!documentId) return res.status(400).json({ error: 'documentId is required' })
+    if (!eventYear) return res.status(400).json({ error: 'eventYear is required' })
+
+    // Defensive: only an active legal document may be signed. Never trust a
+    // client-supplied document_id for an arbitrary or retired row.
+    const { data: doc, error: docErr } = await supabaseAdmin
+      .from('legal_documents')
+      .select('id, is_active')
+      .eq('id', documentId)
+      .maybeSingle()
+    if (docErr) return res.status(500).json({ error: docErr.message })
+    if (!doc || !doc.is_active) return res.status(400).json({ error: 'Document is not available for signing.' })
+
+    // user_id is taken from the authenticated session, never the request body.
+    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null
+    const { error: upsertErr } = await supabaseAdmin
+      .from('legal_acceptances')
+      .upsert({
+        user_id: user.id,
+        document_id: documentId,
+        event_year: eventYear,
+        accepted_at: new Date().toISOString(),
+        user_agent: userAgent,
+      }, { onConflict: 'user_id,document_id,event_year' })
+    if (upsertErr) return res.status(500).json({ error: upsertErr.message })
+
+    return res.json({ ok: true })
+  }
+
   if (action === 'precheck-register') {
     // Cap-check used by PlayerRegister / CaptainRegister before inserting
     // a new registration row. Returns 400 with a user-facing message when

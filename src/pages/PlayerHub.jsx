@@ -152,7 +152,7 @@ function PdfLink({ doc, label = 'View PDF' }) {
 }
 
 // ── CoC Panel ───────────────────────────────────────────────────────────────
-function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
+function CoCPanel({ eventYear, activeDoc, stale, onAccepted }) {
   const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -168,19 +168,21 @@ function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
   async function sign() {
     if (!agreed) return
     setSaving(true)
-    // Upsert so a player who already has a row (e.g. after a committee
-    // force-incomplete) can re-attest. Bumping accepted_at re-signs; a DB
-    // trigger clears any force-incomplete override on (re)sign.
-    const { error: insErr } = await supabase.from('legal_acceptances').upsert({
-      user_id: userId,
-      document_id: activeDoc.id,
-      event_year: eventYear,
-      accepted_at: new Date().toISOString(),
-      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-    }, { onConflict: 'user_id,document_id,event_year' })
-    setSaving(false)
-    if (insErr) { setError(insErr.message); return }
-    onAccepted()
+    // Routed through the service role (api/player sign-legal) so the re-sign
+    // upsert and its force-incomplete-clearing trigger run as a system update,
+    // bypassing the protect_registration_admin_fields guard. The server derives
+    // user_id from the session; never trust a client-supplied id.
+    try {
+      await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sign-legal', documentId: activeDoc.id, eventYear }),
+      })
+      setSaving(false)
+      onAccepted()
+    } catch (err) {
+      setSaving(false)
+      setError(err.message)
+    }
   }
 
   return (
@@ -306,7 +308,7 @@ function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
 }
 
 // ── Media Release Panel ─────────────────────────────────────────────────────
-function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
+function MediaReleasePanel({ eventYear, activeDoc, stale, onAccepted }) {
   const [agreed, setAgreed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -322,19 +324,21 @@ function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) 
   async function submit() {
     if (!agreed) return
     setSaving(true)
-    // Upsert so a player who already has a row (e.g. after a committee
-    // force-incomplete) can re-attest. Bumping accepted_at re-signs; a DB
-    // trigger clears any force-incomplete override on (re)sign.
-    const { error: insErr } = await supabase.from('legal_acceptances').upsert({
-      user_id: userId,
-      document_id: activeDoc.id,
-      event_year: eventYear,
-      accepted_at: new Date().toISOString(),
-      user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-    }, { onConflict: 'user_id,document_id,event_year' })
-    setSaving(false)
-    if (insErr) { setError(insErr.message); return }
-    onAccepted()
+    // Routed through the service role (api/player sign-legal) so the re-sign
+    // upsert and its force-incomplete-clearing trigger run as a system update,
+    // bypassing the protect_registration_admin_fields guard. The server derives
+    // user_id from the session; never trust a client-supplied id.
+    try {
+      await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'sign-legal', documentId: activeDoc.id, eventYear }),
+      })
+      setSaving(false)
+      onAccepted()
+    } catch (err) {
+      setSaving(false)
+      setError(err.message)
+    }
   }
 
   return (
@@ -1548,7 +1552,6 @@ export default function PlayerHub() {
               >
                 {isRegistered && !cocSatisfied && (
                   <CoCPanel
-                    userId={user.id}
                     eventYear={eventYear}
                     activeDoc={activeDocs.code_of_conduct}
                     stale={cocStatus === 'stale'}
@@ -1625,7 +1628,6 @@ export default function PlayerHub() {
             >
               {isRegistered && !mediaSatisfied && (
                 <MediaReleasePanel
-                  userId={user.id}
                   eventYear={eventYear}
                   activeDoc={activeDocs.media_release}
                   stale={mediaStatus === 'stale'}
