@@ -350,6 +350,25 @@ function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
   )
 }
 
+// ── Side Event Login Notice ─────────────────────────────────────────────────
+// Side event entries are login-only. Anonymous viewers get this card in place
+// of the entries list, with a login link that returns here after sign in.
+function SideEventLoginNotice({ year }) {
+  const loginPath = `/login?redirect=${encodeURIComponent(`/events/${year}`)}`
+  return (
+    <section className="bg-surface border-t border-line">
+      <div className="max-w-4xl mx-auto px-6 py-16">
+        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Entries</p>
+        <h2 className="text-3xl font-black text-white text-center mb-6">Side event entries</h2>
+        <div className="max-w-md mx-auto bg-base border border-line rounded-xl px-5 py-5 text-center">
+          <p className="text-[#e5e5e5]/60 text-sm mb-3">Log in to view side event entries.</p>
+          <Link to={loginPath} className="text-brand text-sm font-bold hover:underline">Log in</Link>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── Hub Pill ────────────────────────────────────────────────────────────────
 // Horizontal pill linking to a hub page. Tints background/border/shadow from
 // the supplied hex `color`; passes that same color through to the icon stroke.
@@ -626,10 +645,12 @@ export default function EventPage() {
         </section>
 
         <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
-        {enabledSideEvents.length > 0 && (
-          <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={user ? teamRoster : regs} teams={teams} />
-        )}
-        {(doublesPairs.length > 0 || triplesTeams.length > 0) && (
+        {enabledSideEvents.length > 0 && (user ? (
+          <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={teamRoster} teams={teams} />
+        ) : (
+          <SideEventLoginNotice year={year} />
+        ))}
+        {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
           <>
             <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
             <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />
@@ -925,9 +946,11 @@ export default function EventPage() {
         <>
           <div className="border-t border-line" />
           <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} />
-          {enabledSideEvents.length > 0 && (
-            <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={user ? teamRoster : regs} teams={teams} />
-          )}
+          {enabledSideEvents.length > 0 && (user ? (
+            <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={teamRoster} teams={teams} />
+          ) : (
+            <SideEventLoginNotice year={year} />
+          ))}
           {/* Partner pairings (doubles/triples) are intentionally hidden from
               anonymous viewers — spec calls them out as private. */}
           {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
