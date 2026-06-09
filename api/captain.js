@@ -306,22 +306,22 @@ export default async function handler(req, res) {
       .filter(a => a.status !== 'rejected')
       .map(a => ({ user_id: a.user_id }))
 
-    // Committee manual overrides per user, from the registration row. The
-    // client ORs these into the completion map so a waived/offline-verified
-    // concern reads as satisfied (CoC, Media, Ref Test, U18). Each override
-    // carries its set_at + reason so the chip tooltip can surface the audit
-    // metadata without a second round-trip.
+    // Committee manual overrides per user, from the registration row. Each is
+    // tri-state: null = follow real completion, true = force complete, false =
+    // force incomplete. Sent RAW (not coerced) so the client can apply the
+    // effective rule. Each override carries its set_at + reason so the chip
+    // tooltip can surface the audit metadata without a second round-trip.
     const overrides = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, {
-      coc:      r.admin_override_coc === true,
+      coc:      r.admin_override_coc ?? null,
       coc_set_at: r.admin_override_coc_set_at ?? null,
       coc_reason: r.admin_override_coc_reason ?? null,
-      media:    r.admin_override_media === true,
+      media:    r.admin_override_media ?? null,
       media_set_at: r.admin_override_media_set_at ?? null,
       media_reason: r.admin_override_media_reason ?? null,
-      ref_test: r.admin_override_ref_test === true,
+      ref_test: r.admin_override_ref_test ?? null,
       ref_test_set_at: r.admin_override_ref_test_set_at ?? null,
       ref_test_reason: r.admin_override_ref_test_reason ?? null,
-      u18:      r.admin_override_u18 === true,
+      u18:      r.admin_override_u18 ?? null,
       u18_set_at: r.admin_override_u18_set_at ?? null,
       u18_reason: r.admin_override_u18_reason ?? null,
     }]))

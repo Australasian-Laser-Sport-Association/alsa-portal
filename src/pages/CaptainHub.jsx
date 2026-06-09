@@ -267,8 +267,11 @@ export default function CaptainHub() {
     const comp = {}
     playerIds.forEach(uid => {
       const reg = regsByUser[uid]
-      // Committee manual overrides fold in here: a concern reads satisfied
-      // when the normal check passes OR the override is set.
+      // Committee manual overrides are tri-state: null = follow real completion,
+      // true = force complete, false = force incomplete. A concern reads
+      // satisfied per the effective rule (ov == null ? real : ov === true), so a
+      // force-incomplete reads NOT satisfied even when the real record exists.
+      // The OVR badge + audit detail stay force-complete-only (truthy ov.*).
       const ov = overridesByUser[uid] ?? {}
       // Rules Test section breakdown for the chip tooltip. Real result → section
       // scores (or legacy note for pre-section rows); override → audit note.
@@ -281,21 +284,21 @@ export default function CaptainHub() {
             ? `Committee override.${overrideSuffix(ov.ref_test_set_at, ov.ref_test_reason)}`
             : null)
       comp[uid] = {
-        coc:           cocSet.has(uid) || ov.coc,
+        coc:           ov.coc == null ? cocSet.has(uid) : ov.coc === true,
         cocOverride:   !!ov.coc,
         cocOverrideDetail: ov.coc
           ? `Committee override.${overrideSuffix(ov.coc_set_at, ov.coc_reason)}`
           : null,
-        test:          testMap[uid]?.passed === true || ov.ref_test,
+        test:          ov.ref_test == null ? testMap[uid]?.passed === true : ov.ref_test === true,
         testOverride:  !!ov.ref_test,
         testScore:     testMap[uid]?.score,
         testDetail,
-        u18:           u18Set.has(uid) || ov.u18,
+        u18:           ov.u18 == null ? u18Set.has(uid) : ov.u18 === true,
         u18Override:   !!ov.u18,
         u18OverrideDetail: ov.u18
           ? `Committee override.${overrideSuffix(ov.u18_set_at, ov.u18_reason)}`
           : null,
-        media:         mediaSet.has(uid) || ov.media,
+        media:         ov.media == null ? mediaSet.has(uid) : ov.media === true,
         mediaOverride: !!ov.media,
         mediaOverrideDetail: ov.media
           ? `Committee override.${overrideSuffix(ov.media_set_at, ov.media_reason)}`
