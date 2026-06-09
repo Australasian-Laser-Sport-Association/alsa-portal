@@ -44,10 +44,13 @@ function CheckRow({ checked, onChange, label, hint }) {
   )
 }
 
-// Override row: checkbox + collapsing reason textarea. When the checkbox is
-// on, the reason field is revealed and required (>= 5 chars). The
-// validation message is local to the row so the admin sees which one to fix.
-function OverrideRow({ checked, onCheckedChange, reason, onReasonChange, label, errorBelow }) {
+// Override row: checkbox shows the EFFECTIVE value (real record unless an
+// override diverges). The hint surfaces the player's real status, plus the
+// committee override when one is set. The reason textarea is revealed and
+// required (>= 5 chars) whenever an override exists (forced complete OR
+// incomplete). The validation message is local to the row.
+function OverrideRow({ checked, onCheckedChange, override, reason, onReasonChange, label, realLabel, errorBelow }) {
+  const overridden = override != null
   return (
     <div className="bg-base border border-line rounded-lg px-3 py-2.5">
       <label className="flex items-start gap-3 cursor-pointer">
@@ -57,9 +60,15 @@ function OverrideRow({ checked, onCheckedChange, reason, onReasonChange, label, 
           onChange={e => onCheckedChange(e.target.checked)}
           className="w-4 h-4 accent-brand mt-0.5"
         />
-        <span className="text-sm text-white block min-w-0">{label}</span>
+        <span className="min-w-0">
+          <span className="text-sm text-white block">{label}</span>
+          <span className="text-[10px] text-[#e5e5e5]/60 block mt-0.5">
+            Player record: {realLabel}
+            {overridden && ` · Committee override: ${override ? 'complete' : 'incomplete'}`}
+          </span>
+        </span>
       </label>
-      {checked && (
+      {overridden && (
         <div className="mt-2 pl-7">
           <textarea
             rows={2}
@@ -122,17 +131,33 @@ export default function RegistrationEditModal({
   const [triplesP2, setTriplesP2] = useState(initialTriplesPartners[0])
   const [triplesP3, setTriplesP3] = useState(initialTriplesPartners[1])
 
-  // Manual overrides — boolean toggle + reason textarea per override. Server
-  // requires reason >= 5 chars whenever the override is on; client mirrors.
-  const [ovCoc, setOvCoc] = useState(!!registration.admin_override_coc)
+  // Manual overrides are tri-state: null = follow the player's real completion,
+  // true = force complete, false = force incomplete. The checkbox shows the
+  // EFFECTIVE value; toggling to agree with reality clears the override to null.
+  // Reals come enriched on the registration row from the admin list.
+  const cocReal   = !!registration.cocReal
+  const mediaReal = !!registration.mediaReal
+  const refReal   = !!registration.refReal
+  const u18Real   = !!registration.u18Real
+
+  const [ovCoc, setOvCoc] = useState(registration.admin_override_coc ?? null)
   const [ovCocReason, setOvCocReason] = useState(registration.admin_override_coc_reason ?? '')
-  const [ovMedia, setOvMedia] = useState(!!registration.admin_override_media)
+  const [ovMedia, setOvMedia] = useState(registration.admin_override_media ?? null)
   const [ovMediaReason, setOvMediaReason] = useState(registration.admin_override_media_reason ?? '')
-  const [ovRef, setOvRef] = useState(!!registration.admin_override_ref_test)
+  const [ovRef, setOvRef] = useState(registration.admin_override_ref_test ?? null)
   const [ovRefReason, setOvRefReason] = useState(registration.admin_override_ref_test_reason ?? '')
-  const [ovU18, setOvU18] = useState(!!registration.admin_override_u18)
+  const [ovU18, setOvU18] = useState(registration.admin_override_u18 ?? null)
   const [ovU18Reason, setOvU18Reason] = useState(registration.admin_override_u18_reason ?? '')
   const [overrideErrors, setOverrideErrors] = useState({}) // { coc, media, ref, u18 }
+
+  // Effective (displayed) value per requirement: the override when set, else
+  // the player's real record. Toggling to a desired value clears to null when
+  // it agrees with reality, otherwise stores the explicit true/false override.
+  const effCoc   = ovCoc   == null ? cocReal   : ovCoc   === true
+  const effMedia = ovMedia == null ? mediaReal : ovMedia === true
+  const effRef   = ovRef   == null ? refReal   : ovRef   === true
+  const effU18   = ovU18   == null ? u18Real   : ovU18   === true
+  const overrideFor = (desired, real) => (desired === real ? null : desired)
 
   // Confirmation flags (player self-attestation; committee can flip)
   const [confirmedSide, setConfirmedSide] = useState(!!registration.has_confirmed_side_events)
@@ -169,10 +194,10 @@ export default function RegistrationEditModal({
     // carry a reason of at least 5 characters. Per-row error surfaces inline
     // so the admin knows which one to fix.
     const errs = {}
-    if (ovCoc   && ovCocReason.trim().length   < 5) errs.coc   = 'Reason must be at least 5 characters.'
-    if (ovMedia && ovMediaReason.trim().length < 5) errs.media = 'Reason must be at least 5 characters.'
-    if (ovRef   && ovRefReason.trim().length   < 5) errs.ref   = 'Reason must be at least 5 characters.'
-    if (ovU18   && ovU18Reason.trim().length   < 5) errs.u18   = 'Reason must be at least 5 characters.'
+    if (ovCoc   != null && ovCocReason.trim().length   < 5) errs.coc   = 'Reason must be at least 5 characters.'
+    if (ovMedia != null && ovMediaReason.trim().length < 5) errs.media = 'Reason must be at least 5 characters.'
+    if (ovRef   != null && ovRefReason.trim().length   < 5) errs.ref   = 'Reason must be at least 5 characters.'
+    if (ovU18   != null && ovU18Reason.trim().length   < 5) errs.u18   = 'Reason must be at least 5 characters.'
     setOverrideErrors(errs)
     if (Object.keys(errs).length > 0) {
       setError('Each enabled override needs a reason of at least 5 characters.')
@@ -198,17 +223,17 @@ export default function RegistrationEditModal({
         // confirmation flags
         has_confirmed_side_events: confirmedSide,
         has_confirmed_extras: confirmedExtras,
-        // manual overrides + reasons. Server clears reason/set_by/set_at
-        // when override is off, so the reason value sent here is ignored on
-        // toggle-off.
+        // Tri-state overrides (null | true | false) sent uncoerced. Server
+        // clears reason/set_by/set_at when the override is null, so the reason
+        // value sent here is ignored when there is no override.
         admin_override_coc: ovCoc,
-        admin_override_coc_reason: ovCoc ? ovCocReason.trim() : null,
+        admin_override_coc_reason: ovCoc != null ? ovCocReason.trim() : null,
         admin_override_media: ovMedia,
-        admin_override_media_reason: ovMedia ? ovMediaReason.trim() : null,
+        admin_override_media_reason: ovMedia != null ? ovMediaReason.trim() : null,
         admin_override_ref_test: ovRef,
-        admin_override_ref_test_reason: ovRef ? ovRefReason.trim() : null,
+        admin_override_ref_test_reason: ovRef != null ? ovRefReason.trim() : null,
         admin_override_u18: ovU18,
-        admin_override_u18_reason: ovU18 ? ovU18Reason.trim() : null,
+        admin_override_u18_reason: ovU18 != null ? ovU18Reason.trim() : null,
         // audit
         admin_note: adminNote.trim() || null,
       }
@@ -373,39 +398,47 @@ export default function RegistrationEditModal({
           <div>
             <SectionHeader>Manual overrides</SectionHeader>
             <p className="text-[10px] text-[#e5e5e5]/60 mb-3 leading-relaxed">
-              Use when the committee has verified a requirement outside the system. An override
-              marks the concern satisfied without creating a (player-signed) record — record the
-              reason in the admin note below.
+              Each box shows the player's current status and follows their real record by default.
+              Change a box to override it: forcing complete or incomplete records a committee
+              decision and needs a reason. Set it back to match the record to clear the override.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <OverrideRow
                 label="Code of Conduct"
-                checked={ovCoc}
-                onCheckedChange={setOvCoc}
+                checked={effCoc}
+                onCheckedChange={d => setOvCoc(overrideFor(d, cocReal))}
+                override={ovCoc}
+                realLabel={cocReal ? 'completed' : 'not completed'}
                 reason={ovCocReason}
                 onReasonChange={setOvCocReason}
                 errorBelow={overrideErrors.coc}
               />
               <OverrideRow
                 label="Media Release"
-                checked={ovMedia}
-                onCheckedChange={setOvMedia}
+                checked={effMedia}
+                onCheckedChange={d => setOvMedia(overrideFor(d, mediaReal))}
+                override={ovMedia}
+                realLabel={mediaReal ? 'completed' : 'not completed'}
                 reason={ovMediaReason}
                 onReasonChange={setOvMediaReason}
                 errorBelow={overrideErrors.media}
               />
               <OverrideRow
                 label="Rules Test"
-                checked={ovRef}
-                onCheckedChange={setOvRef}
+                checked={effRef}
+                onCheckedChange={d => setOvRef(overrideFor(d, refReal))}
+                override={ovRef}
+                realLabel={refReal ? 'completed' : 'not completed'}
                 reason={ovRefReason}
                 onReasonChange={setOvRefReason}
                 errorBelow={overrideErrors.ref}
               />
               <OverrideRow
                 label="Under-18 Approval"
-                checked={ovU18}
-                onCheckedChange={setOvU18}
+                checked={effU18}
+                onCheckedChange={d => setOvU18(overrideFor(d, u18Real))}
+                override={ovU18}
+                realLabel={u18Real ? 'completed' : 'not completed'}
                 reason={ovU18Reason}
                 onReasonChange={setOvU18Reason}
                 errorBelow={overrideErrors.u18}

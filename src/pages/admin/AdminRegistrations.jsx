@@ -369,6 +369,7 @@ export default function AdminRegistrations() {
   const [paymentRecords, setPaymentRecords] = useState([])
   const [doubles, setDoubles] = useState([])
   const [triples, setTriples] = useState([])
+  const [u18Approvals, setU18Approvals] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
@@ -439,6 +440,7 @@ export default function AdminRegistrations() {
       setPaymentRecords(data.payment_records ?? [])
       setDoubles(data.doubles ?? [])
       setTriples(data.triples ?? [])
+      setU18Approvals(data.u18_approvals ?? [])
     } catch (err) {
       setError(err.message)
     }
@@ -452,6 +454,7 @@ export default function AdminRegistrations() {
   const cocSet     = useMemo(() => new Set(cocSigs.map(c => c.user_id)), [cocSigs])
   const refMap     = useMemo(() => Object.fromEntries(refResults.map(r => [r.user_id, r])), [refResults])
   const mediaSet   = useMemo(() => new Set(mediaReleases.map(m => m.user_id)), [mediaReleases])
+  const u18Set     = useMemo(() => new Set(u18Approvals.map(u => u.user_id)), [u18Approvals])
   const recordsByReg = useMemo(() => paymentRecords.reduce((acc, r) => {
     (acc[r.registration_id] ??= []).push(r)
     return acc
@@ -485,17 +488,27 @@ export default function AdminRegistrations() {
     return parts.join('. ')
   }
 
+  // Tri-state override: null = follow real completion, true = force complete,
+  // false = force incomplete. Effective = (override == null) ? real : override.
+  const effective = (ov, real) => (ov == null ? real : ov === true)
+
   return regs.map(reg => {
     const profile = profMap[reg.user_id] ?? null
     const team    = teamMap[reg.team_id] ?? null
-    // Committee manual overrides count as satisfied: normalCheck || override.
-    const coc       = cocSet.has(reg.user_id) || !!reg.admin_override_coc
-    const cocOverride = !!reg.admin_override_coc
-    const ref       = refMap[reg.user_id] ?? null
-    const refPassed = ref?.passed === true || !!reg.admin_override_ref_test
-    const refOverride = !!reg.admin_override_ref_test
-    const media     = mediaSet.has(reg.user_id) || !!reg.admin_override_media
-    const mediaOverride = !!reg.admin_override_media
+    // Effective satisfied honours the tri-state override; an override (true OR
+    // false) exists when the column is non-null. Pure-real values are kept
+    // separately so the modal can show divergence from the player record.
+    const cocReal     = cocSet.has(reg.user_id)
+    const coc         = effective(reg.admin_override_coc, cocReal)
+    const cocOverride = reg.admin_override_coc != null
+    const ref         = refMap[reg.user_id] ?? null
+    const refReal     = ref?.passed === true
+    const refPassed   = effective(reg.admin_override_ref_test, refReal)
+    const refOverride = reg.admin_override_ref_test != null
+    const mediaReal   = mediaSet.has(reg.user_id)
+    const media       = effective(reg.admin_override_media, mediaReal)
+    const mediaOverride = reg.admin_override_media != null
+    const u18Real     = u18Set.has(reg.user_id)
     const payRecords  = recordsByReg[reg.id] ?? []
     const amountOwing = reg.amount_owing ?? 0
     const amountPaid  = payRecords.reduce((s, r) => s + r.amount, 0)
@@ -530,9 +543,9 @@ export default function AdminRegistrations() {
     const mediaTitle = mediaOverride
       ? overrideAudit(reg.admin_override_media_set_at, reg.admin_override_media_reason, reg.admin_override_media_set_by)
       : (media ? 'Media release submitted' : 'Not submitted')
-    return { ...reg, profile, team, coc, cocOverride, cocTitle, ref, refPassed, refOverride, refTitle, media, mediaOverride, mediaTitle, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
+    return { ...reg, profile, team, coc, cocReal, cocOverride, cocTitle, ref, refPassed, refReal, refOverride, refTitle, media, mediaReal, mediaOverride, mediaTitle, u18Real, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
   })
-  }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, recordsByReg, refRequired, cocRequired, paymentRequired])
+  }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, u18Set, recordsByReg, refRequired, cocRequired, paymentRequired])
 
   // Phase + needs-follow-up derivation.
   // "Needs follow-up" = registration where the event is past the open

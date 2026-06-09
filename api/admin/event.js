@@ -185,6 +185,7 @@ async function handleRegistrations(req, res, user) {
       { data: payment_records_raw, error: e7 },
       { data: doubles, error: e8 },
       { data: triples, error: e9 },
+      { data: u18_approvals, error: e10 },
     ] = await Promise.all([
       supabaseAdmin.from('zltac_registrations').select('id, user_id, team_id, year, status, created_at, side_events, dinner_guests, amount_owing, payment_reference, emergency_contact_name, emergency_contact_phone, has_confirmed_side_events, has_confirmed_extras, admin_note, admin_override_coc, admin_override_coc_set_by, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_by, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_by, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_by, admin_override_u18_set_at, admin_override_u18_reason').eq('year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, state, is_placeholder'),
@@ -199,9 +200,10 @@ async function handleRegistrations(req, res, user) {
         .eq('zltac_registrations.year', year),
       supabaseAdmin.from('doubles_pairs').select('*').eq('event_year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('triples_teams').select('*').eq('event_year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('under_18_approvals').select('user_id, status').eq('event_year', year).eq('status', 'approved'),
     ])
 
-    const errs = [e1, e2, e3, e4, e5, e7, e8, e9].filter(Boolean)
+    const errs = [e1, e2, e3, e4, e5, e7, e8, e9, e10].filter(Boolean)
     if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
 
     const coc_sigs = (acceptances ?? [])
@@ -221,7 +223,7 @@ async function handleRegistrations(req, res, user) {
       notes: r.notes,
     }))
 
-    return res.json({ registrations, profiles, teams, coc_sigs, ref_results, media_releases, payment_records, doubles, triples })
+    return res.json({ registrations, profiles, teams, coc_sigs, ref_results, media_releases, payment_records, doubles, triples, u18_approvals })
   }
 
   if (req.method === 'PATCH') {
@@ -252,38 +254,38 @@ async function handleRegistrations(req, res, user) {
     if ('has_confirmed_extras' in body) updates.has_confirmed_extras = !!body.has_confirmed_extras
     if ('emergency_contact_name' in body) updates.emergency_contact_name = body.emergency_contact_name?.trim() || null
     if ('emergency_contact_phone' in body) updates.emergency_contact_phone = body.emergency_contact_phone?.trim() || null
-    // Override transition logic. For each of the four overrides, branch
-    // on what the body is asking for and the current stored state:
-    //   off -> on: validate _reason (>= 5 chars), write _set_by / _set_at
-    //   on  -> on: update _reason (admin may edit it in place), preserve
-    //              _set_by / _set_at (audit records who first granted)
-    //   on  -> off: clear _reason, _set_by, _set_at
-    //   off -> off: no-op
-    // The reason is required whenever the override is being set to true,
-    // including same-true edits, because we always write _reason in that
-    // branch. The client mirrors this validation.
+    // Override transition logic. Each override is tri-state: null = follow the
+    // player's real completion, true = force complete, false = force incomplete.
+    // Do NOT coerce with !! — a deliberate false must survive. Branches:
+    //   null    -> non-null: validate _reason (>= 5 chars), stamp _set_by/_set_at
+    //   non-null-> non-null: update value + _reason, preserve _set_by/_set_at
+    //                        (audit records who first set the override)
+    //   *       -> null:     clear value, _reason, _set_by, _set_at
+    // A reason is required whenever the override is non-null (true or false),
+    // because the value diverges from reality. The client mirrors this.
     const OVERRIDES = ['admin_override_coc', 'admin_override_media', 'admin_override_ref_test', 'admin_override_u18']
     for (const key of OVERRIDES) {
       if (!(key in body)) continue
-      const newValue = !!body[key]
+      const raw = body[key]
+      const newValue = raw === true ? true : raw === false ? false : null
       const reasonKey = `${key}_reason`
       const setByKey  = `${key}_set_by`
       const setAtKey  = `${key}_set_at`
-      const wasOn = !!reg[key]
+      const wasSet = reg[key] !== null && reg[key] !== undefined
 
-      if (newValue) {
+      if (newValue !== null) {
         const reason = typeof body[reasonKey] === 'string' ? body[reasonKey].trim() : ''
         if (reason.length < 5) {
-          return res.status(400).json({ error: `${reasonKey} must be at least 5 characters when ${key} is on` })
+          return res.status(400).json({ error: `${reasonKey} must be at least 5 characters when ${key} is set` })
         }
-        updates[key] = true
+        updates[key] = newValue
         updates[reasonKey] = reason
-        if (!wasOn) {
+        if (!wasSet) {
           updates[setByKey] = user.id
           updates[setAtKey] = new Date().toISOString()
         }
       } else {
-        updates[key] = false
+        updates[key] = null
         updates[reasonKey] = null
         updates[setByKey]  = null
         updates[setAtKey]  = null
@@ -1075,19 +1077,22 @@ async function handleZltacDashboard(req, res) {
     if (balance > 0) amountOwingCents += balance
   }
 
-  // Ratios — committee overrides count toward a satisfied concern (normal || override).
-  const registeredUserIds  = new Set((regsForYear ?? []).map(r => r.user_id))
-  const overrideCocUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_coc).map(r => r.user_id))
-  const overrideMediaUsers = new Set((regsForYear ?? []).filter(r => r.admin_override_media).map(r => r.user_id))
-  const overrideRefUsers   = new Set((regsForYear ?? []).filter(r => r.admin_override_ref_test).map(r => r.user_id))
+  // Ratios honour the tri-state override: a user counts satisfied iff the
+  // override is true, or the override is null/absent and the real record
+  // satisfies it. An override of false (force incomplete) excludes the user.
+  const registeredUserIds = new Set((regsForYear ?? []).map(r => r.user_id))
+  const overrideCoc   = new Map((regsForYear ?? []).map(r => [r.user_id, r.admin_override_coc]))
+  const overrideMedia = new Map((regsForYear ?? []).map(r => [r.user_id, r.admin_override_media]))
+  const overrideRef   = new Map((regsForYear ?? []).map(r => [r.user_id, r.admin_override_ref_test]))
+  const effective = (ov, real) => (ov == null ? real : ov === true)
 
   const refPassedUserIds = new Set((refResults ?? []).filter(r => r.passed).map(r => r.user_id))
-  const refPassedRegistered = [...registeredUserIds].filter(uid => refPassedUserIds.has(uid) || overrideRefUsers.has(uid)).length
+  const refPassedRegistered = [...registeredUserIds].filter(uid => effective(overrideRef.get(uid), refPassedUserIds.has(uid))).length
 
   const cocSignedUserIds = new Set((cocMediaAccs ?? []).filter(a => a.document?.document_type === 'code_of_conduct').map(a => a.user_id))
   const mediaSignedUserIds = new Set((cocMediaAccs ?? []).filter(a => a.document?.document_type === 'media_release').map(a => a.user_id))
-  const cocSignedRegistered   = [...registeredUserIds].filter(uid => cocSignedUserIds.has(uid)   || overrideCocUsers.has(uid)).length
-  const mediaSignedRegistered = [...registeredUserIds].filter(uid => mediaSignedUserIds.has(uid) || overrideMediaUsers.has(uid)).length
+  const cocSignedRegistered   = [...registeredUserIds].filter(uid => effective(overrideCoc.get(uid),   cocSignedUserIds.has(uid))).length
+  const mediaSignedRegistered = [...registeredUserIds].filter(uid => effective(overrideMedia.get(uid), mediaSignedUserIds.has(uid))).length
 
   const refRequired = isRefTestRequired(activeEvent)
   const cocRequired = isCocRequired(activeEvent)
