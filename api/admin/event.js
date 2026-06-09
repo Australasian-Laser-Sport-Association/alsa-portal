@@ -3,6 +3,7 @@ import { Resend } from 'resend'
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
+import { cleanupFormerSideEventMember } from '../_lib/sideEventCleanup.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -310,6 +311,18 @@ async function handleRegistrations(req, res, user) {
 
     if ('doubles_partner_id' in body) {
       const newPartnerId = body.doubles_partner_id || null
+
+      // Capture everyone paired with the user (and, when replacing, with the
+      // new partner) BEFORE deleting their rows, so members dropped by this
+      // reshuffle can be cleaned up afterwards.
+      const droppedDoubles = new Set()
+      const { data: oldUserPairs } = await supabaseAdmin
+        .from('doubles_pairs')
+        .select('player1_id, player2_id')
+        .eq('event_year', reg.year)
+        .or(`player1_id.eq.${reg.user_id},player2_id.eq.${reg.user_id}`)
+      for (const p of oldUserPairs ?? []) for (const pid of [p.player1_id, p.player2_id]) if (pid) droppedDoubles.add(pid)
+
       const { error: clearErr } = await supabaseAdmin
         .from('doubles_pairs')
         .delete()
@@ -318,6 +331,13 @@ async function handleRegistrations(req, res, user) {
       if (clearErr) return res.status(500).json({ error: `doubles clear: ${clearErr.message}` })
 
       if (newPartnerId) {
+        const { data: oldPartnerPairs } = await supabaseAdmin
+          .from('doubles_pairs')
+          .select('player1_id, player2_id')
+          .eq('event_year', reg.year)
+          .or(`player1_id.eq.${newPartnerId},player2_id.eq.${newPartnerId}`)
+        for (const p of oldPartnerPairs ?? []) for (const pid of [p.player1_id, p.player2_id]) if (pid) droppedDoubles.add(pid)
+
         const { error: clearPartnerErr } = await supabaseAdmin
           .from('doubles_pairs')
           .delete()
@@ -330,11 +350,29 @@ async function handleRegistrations(req, res, user) {
           .insert({ event_year: reg.year, player1_id: reg.user_id, player2_id: newPartnerId, confirmed: true })
         if (insErr) return res.status(500).json({ error: `doubles insert: ${insErr.message}` })
       }
+
+      // Clean up any former member dropped by the reshuffle (not those in the
+      // new pairing — the user is recomputed below, the new partner stays in).
+      droppedDoubles.delete(reg.user_id)
+      if (newPartnerId) droppedDoubles.delete(newPartnerId)
+      for (const memberId of droppedDoubles) {
+        await cleanupFormerSideEventMember({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberId, eventYear: reg.year })
+      }
     }
 
     if ('triples_partner_ids' in body) {
       const partnerIds = Array.isArray(body.triples_partner_ids) ? body.triples_partner_ids : []
       const [p2, p3] = [partnerIds[0] || null, partnerIds[1] || null]
+
+      // Capture the user's current team members BEFORE deleting, so members
+      // dropped by this reshuffle can be cleaned up afterwards.
+      const droppedTriples = new Set()
+      const { data: oldTeams } = await supabaseAdmin
+        .from('triples_teams')
+        .select('player1_id, player2_id, player3_id')
+        .eq('event_year', reg.year)
+        .or(`player1_id.eq.${reg.user_id},player2_id.eq.${reg.user_id},player3_id.eq.${reg.user_id}`)
+      for (const t of oldTeams ?? []) for (const pid of [t.player1_id, t.player2_id, t.player3_id]) if (pid) droppedTriples.add(pid)
 
       const { error: clearErr } = await supabaseAdmin
         .from('triples_teams')
@@ -356,6 +394,15 @@ async function handleRegistrations(req, res, user) {
             confirmed: !!(p2 && p3),
           })
         if (insErr) return res.status(500).json({ error: `triples insert: ${insErr.message}` })
+      }
+
+      // Clean up any former member dropped by the reshuffle (not those in the
+      // new team — the user is recomputed below, p2/p3 stay in).
+      droppedTriples.delete(reg.user_id)
+      if (p2) droppedTriples.delete(p2)
+      if (p3) droppedTriples.delete(p3)
+      for (const memberId of droppedTriples) {
+        await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId, eventYear: reg.year })
       }
     }
 

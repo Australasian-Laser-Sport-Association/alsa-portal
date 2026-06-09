@@ -2,6 +2,7 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
+import { cleanupFormerSideEventMember } from './_lib/sideEventCleanup.js'
 import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
 import { anyPlaceholder } from './_lib/placeholders.js'
 
@@ -193,6 +194,11 @@ async function handleDoubles(req, res, user) {
 
     const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })
+
+    // The other former member keeps 'doubles' billed unless cleaned up.
+    const partnerId = pair.player1_id === user.id ? pair.player2_id : pair.player1_id
+    await cleanupFormerSideEventMember({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberId: partnerId, eventYear: pair.event_year })
+
     return res.json({ ok: true })
   }
 
@@ -379,9 +385,11 @@ async function handleTriples(req, res, user) {
     if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
     if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, event_year').eq('id', id).maybeSingle()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, player2_id, player3_id, event_year').eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
+
+    const droppedId = existing[`player${slot}_id`]
 
     const { data: record, error: updateErr } = await supabaseAdmin
       .from('triples_teams')
@@ -391,6 +399,11 @@ async function handleTriples(req, res, user) {
       .single()
 
     if (updateErr) return res.status(500).json({ error: updateErr.message })
+
+    // Only the dropped slot's player loses 'triples'; the remaining members
+    // stay in this (now unconfirmed) team row, so the guard keeps their slug.
+    await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId: droppedId, eventYear: existing.event_year })
+
     return res.json({ record })
   }
 
@@ -412,6 +425,13 @@ async function handleTriples(req, res, user) {
 
     const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
     if (delErr) return res.status(500).json({ error: delErr.message })
+
+    // Every other former member keeps 'triples' billed unless cleaned up.
+    const formerMembers = [existing.player1_id, existing.player2_id, existing.player3_id].filter(pid => pid && pid !== user.id)
+    for (const memberId of formerMembers) {
+      await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId, eventYear: existing.event_year })
+    }
+
     return res.json({ ok: true })
   }
 
@@ -551,6 +571,33 @@ async function handleRegistration(req, res, user) {
       .delete()
       .eq('id', reg.id)
     if (delErr) return res.status(500).json({ error: delErr.message })
+
+    // Cascade: dissolve any doubles/triples this user was in for the year and
+    // clean up the remaining partners (their slug + amount_owing). The user's
+    // own registration is already gone, so only the partners need fixing.
+    const { data: myPairs } = await supabaseAdmin
+      .from('doubles_pairs')
+      .select('id, player1_id, player2_id')
+      .eq('event_year', year)
+      .or(`player1_id.eq.${user.id},player2_id.eq.${user.id}`)
+    const { data: myTeams } = await supabaseAdmin
+      .from('triples_teams')
+      .select('id, player1_id, player2_id, player3_id')
+      .eq('event_year', year)
+      .or(`player1_id.eq.${user.id},player2_id.eq.${user.id},player3_id.eq.${user.id}`)
+
+    const doublesPartners = new Set((myPairs ?? []).flatMap(p => [p.player1_id, p.player2_id]).filter(pid => pid && pid !== user.id))
+    const triplesPartners = new Set((myTeams ?? []).flatMap(t => [t.player1_id, t.player2_id, t.player3_id]).filter(pid => pid && pid !== user.id))
+
+    if (myPairs?.length) await supabaseAdmin.from('doubles_pairs').delete().in('id', myPairs.map(p => p.id))
+    if (myTeams?.length) await supabaseAdmin.from('triples_teams').delete().in('id', myTeams.map(t => t.id))
+
+    for (const memberId of doublesPartners) {
+      await cleanupFormerSideEventMember({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberId, eventYear: year })
+    }
+    for (const memberId of triplesPartners) {
+      await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId, eventYear: year })
+    }
 
     return res.json({ ok: true })
   }
