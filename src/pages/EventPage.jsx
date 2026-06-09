@@ -218,17 +218,16 @@ function DoublesEntriesSection({ pairs, profileMap }) {
   if (!confirmed.length && !pairs.length) return null
 
   function PlayerChip({ playerId }) {
-    const p = profileMap[playerId]
-    const name = p ? `${p.first_name} ${p.last_name}` : '—'
-    const inits = p ? ((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase() : '?'
+    // Alias only, matching the masked roster — never a real name.
+    const alias = profileMap[playerId]?.alias || '—'
+    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
     return (
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <div className="w-8 h-8 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-xs font-black flex-shrink-0">
           {inits}
         </div>
         <div className="min-w-0">
-          <p className="text-white text-sm font-semibold truncate">{name}</p>
-          {p?.alias && <p className="text-brand text-xs">"{p.alias}"</p>}
+          <p className="text-white text-sm font-semibold truncate">{alias}</p>
         </div>
       </div>
     )
@@ -271,18 +270,17 @@ function TriplesEntriesSection({ teams, profileMap }) {
   if (!confirmed.length && !teams.length) return null
 
   function PlayerRow({ playerId }) {
-    const p = profileMap[playerId]
     if (!playerId) return null
-    const name = p ? `${p.first_name} ${p.last_name}` : '—'
-    const inits = p ? ((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase() : '?'
+    // Alias only, matching the masked roster — never a real name.
+    const alias = profileMap[playerId]?.alias || '—'
+    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
     return (
       <div className="flex items-center gap-3 py-1.5">
         <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
           {inits}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-semibold">{name}</p>
-          {p?.alias && <p className="text-brand text-xs">"{p.alias}"</p>}
+          <p className="text-white text-sm font-semibold">{alias}</p>
         </div>
       </div>
     )
@@ -322,7 +320,12 @@ function TriplesEntriesSection({ teams, profileMap }) {
 // ── Side Event Entries Section ──────────────────────────────────────────────
 function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]))
-  const sorted = sortSideEvents(enabledSideEvents.filter(se => se.slug !== 'presentation-dinner'))
+  // Doubles/triples are shown only as confirmed team cards (DoublesEntriesSection
+  // / TriplesEntriesSection), so exclude their slugs here to avoid listing their
+  // players a second time as flat individual entries. Dinner stays excluded too.
+  const sorted = sortSideEvents(enabledSideEvents.filter(se =>
+    se.slug !== 'presentation-dinner' && se.slug !== 'doubles' && se.slug !== 'triples'
+  ))
 
   // Attach teamName to each registration
   const regsWithTeam = regs.map(r => ({
