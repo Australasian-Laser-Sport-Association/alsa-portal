@@ -1,6 +1,28 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 
+// Shared by the 'reset' and 'remove-access' actions: blank all PII and drop
+// back to the base role. The profiles row itself is kept, so nothing cascades.
+// Registrations, acceptances, payments, and audit rows all survive.
+const ANONYMISE_UPDATE = {
+  first_name: null,
+  last_name: null,
+  alias: null,
+  dob: null,
+  state: null,
+  home_arena: null,
+  phone: null,
+  emergency_contact_name: null,
+  emergency_contact_phone: null,
+  alsa_member_id: null,
+  avatar_url: null,
+  roles: ['player'],
+}
+
+// auth.admin ban_duration is a Go-style duration with no "permanent" option;
+// ~100 years is effectively permanent.
+const PERMANENT_BAN = '876600h'
+
 export default async function handler(req, res) {
   const { id } = req.query
 
@@ -39,20 +61,35 @@ export default async function handler(req, res) {
       if (body.action === 'reset') {
         const { error: superErr } = await verifySuperAdmin(req)
         if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
-        update = {
-          first_name: null,
-          last_name: null,
-          alias: null,
-          dob: null,
-          state: null,
-          home_arena: null,
-          phone: null,
-          emergency_contact_name: null,
-          emergency_contact_phone: null,
-          alsa_member_id: null,
-          avatar_url: null,
-          roles: ['player'],
+        update = { ...ANONYMISE_UPDATE }
+      } else if (body.action === 'remove-access') {
+        // Anonymise AND revoke login. The non-destructive alternative to a
+        // hard delete: the profiles row survives, so no FK cascade fires and
+        // the member's records are kept.
+        const { error: superErr } = await verifySuperAdmin(req)
+        if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+
+        const { data: target, error: targetErr } = await supabaseAdmin
+          .from('profiles')
+          .select('is_placeholder')
+          .eq('id', id)
+          .maybeSingle()
+        if (targetErr) return res.status(500).json({ error: targetErr.message })
+        if (!target) return res.status(404).json({ error: 'User not found' })
+
+        // Placeholders have no auth.users row, so there is no login to
+        // revoke. A 404 from the auth API (real profile whose auth user is
+        // already gone) is treated the same way: nothing to ban, still
+        // anonymise. Any other auth error aborts before touching the profile.
+        if (!target.is_placeholder) {
+          const { error: banErr } = await supabaseAdmin.auth.admin.updateUserById(id, {
+            ban_duration: PERMANENT_BAN,
+          })
+          if (banErr && banErr.status !== 404) {
+            return res.status(500).json({ error: `Could not disable login: ${banErr.message}` })
+          }
         }
+        update = { ...ANONYMISE_UPDATE }
       } else if (Array.isArray(body.roles)) {
         // Any change to roles requires superadmin (committee alone cannot
         // promote/demote other users, nor grant 'superadmin' to anyone).

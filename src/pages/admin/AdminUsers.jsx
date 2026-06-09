@@ -129,6 +129,7 @@ export default function AdminUsers() {
   const [aliasMsg, setAliasMsg] = useState(null)
   const [msg, setMsg] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmRemove, setConfirmRemove] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => { loadUsers() }, [])
@@ -183,6 +184,7 @@ export default function AdminUsers() {
     setAliasMsg(null)
     setMsg(null)
     setConfirmDelete(null)
+    setConfirmRemove(null)
     setLoadingDetail(true)
     const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/users?id=${u.id}`)
     setSelectedRegs(regs ?? [])
@@ -587,10 +589,52 @@ export default function AdminUsers() {
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmDelete(selected.id)} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
+                  <button onClick={() => { setConfirmDelete(selected.id); setConfirmRemove(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
                     Reset member data →
                   </button>
                 )}
+
+                {/* Remove access — anonymise + revoke login, keep records */}
+                <div className="border-t border-red-500/10 mt-3 pt-3">
+                  {confirmRemove === selected.id ? (
+                    <div>
+                      <p className="text-xs text-[#e5e5e5]/80 mb-2">
+                        Remove access for{' '}
+                        <span className="font-semibold text-white">
+                          {[selected.first_name, selected.last_name].filter(Boolean).join(' ') || 'this user'}
+                        </span>?
+                      </p>
+                      <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed mb-3">
+                        This blanks their personal info, resets their role to player, and disables their login so they can no longer sign in. Their registrations, signed forms, and payment records are kept.
+                      </p>
+                      <div className="flex gap-2">
+                        <button onClick={async () => {
+                          try {
+                            await apiFetch(`/api/admin/users?id=${selected.id}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ action: 'remove-access' }),
+                            })
+                            setSelected(null)
+                            setConfirmRemove(null)
+                            await loadUsers()
+                          } catch (err) {
+                            setMsg({ type: 'error', text: err.message })
+                            setConfirmRemove(null)
+                          }
+                        }} className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">
+                          Yes, Remove Access
+                        </button>
+                        <button onClick={() => setConfirmRemove(null)} className="border border-line text-[#e5e5e5]/60 text-xs font-semibold px-4 py-2 rounded-lg hover:text-white transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setConfirmRemove(selected.id); setConfirmDelete(null) }} className="text-xs text-red-400/60 hover:text-red-400 font-semibold transition-colors">
+                      Remove access →
+                    </button>
+                  )}
+                </div>
               </div>
             )}
         </Dialog>
