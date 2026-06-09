@@ -168,12 +168,16 @@ function CoCPanel({ userId, eventYear, activeDoc, stale, onAccepted }) {
   async function sign() {
     if (!agreed) return
     setSaving(true)
-    const { error: insErr } = await supabase.from('legal_acceptances').insert({
+    // Upsert so a player who already has a row (e.g. after a committee
+    // force-incomplete) can re-attest. Bumping accepted_at re-signs; a DB
+    // trigger clears any force-incomplete override on (re)sign.
+    const { error: insErr } = await supabase.from('legal_acceptances').upsert({
       user_id: userId,
       document_id: activeDoc.id,
       event_year: eventYear,
+      accepted_at: new Date().toISOString(),
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-    })
+    }, { onConflict: 'user_id,document_id,event_year' })
     setSaving(false)
     if (insErr) { setError(insErr.message); return }
     onAccepted()
@@ -318,12 +322,16 @@ function MediaReleasePanel({ userId, eventYear, activeDoc, stale, onAccepted }) 
   async function submit() {
     if (!agreed) return
     setSaving(true)
-    const { error: insErr } = await supabase.from('legal_acceptances').insert({
+    // Upsert so a player who already has a row (e.g. after a committee
+    // force-incomplete) can re-attest. Bumping accepted_at re-signs; a DB
+    // trigger clears any force-incomplete override on (re)sign.
+    const { error: insErr } = await supabase.from('legal_acceptances').upsert({
       user_id: userId,
       document_id: activeDoc.id,
       event_year: eventYear,
+      accepted_at: new Date().toISOString(),
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-    })
+    }, { onConflict: 'user_id,document_id,event_year' })
     setSaving(false)
     if (insErr) { setError(insErr.message); return }
     onAccepted()
@@ -1529,7 +1537,7 @@ export default function PlayerHub() {
               <ChecklistItem
                 status={!isRegistered ? 'pending' : cocSatisfied ? 'done' : 'error'}
                 label={
-                  cocStatus === 'current'
+                  cocSatisfied && cocStatus === 'current'
                     ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
                     : ovCoc
                       ? `Code of Conduct — recorded by committee${ovCocLine}`
@@ -1538,7 +1546,7 @@ export default function PlayerHub() {
                         : 'Code of Conduct — not yet signed'
                 }
               >
-                {isRegistered && cocStatus !== 'current' && !ovCoc && (
+                {isRegistered && !cocSatisfied && (
                   <CoCPanel
                     userId={user.id}
                     eventYear={eventYear}
@@ -1606,7 +1614,7 @@ export default function PlayerHub() {
             <ChecklistItem
               status={!isRegistered ? 'pending' : mediaSatisfied ? 'done' : 'error'}
               label={
-                mediaStatus === 'current'
+                mediaSatisfied && mediaStatus === 'current'
                   ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
                   : ovMedia
                     ? `Media Release — recorded by committee${ovMediaLine}`
@@ -1615,7 +1623,7 @@ export default function PlayerHub() {
                       : 'Media Release — not yet submitted'
               }
             >
-              {isRegistered && mediaStatus !== 'current' && !ovMedia && (
+              {isRegistered && !mediaSatisfied && (
                 <MediaReleasePanel
                   userId={user.id}
                   eventYear={eventYear}
