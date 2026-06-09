@@ -1125,17 +1125,21 @@ export default function PlayerHub() {
   const mediaSubmitted = mediaStatus === 'current'
   const u18Submitted = !!u18Approval && u18Approval.status !== 'rejected'
 
-  // Committee manual overrides (from zltac_registrations). A concern reads
-  // satisfied when the normal check passes OR its override is set — the same
-  // rule used in CaptainHub / AdminRegistrations / AdminHome.
+  // Committee manual overrides (zltac_registrations) are tri-state: null =
+  // follow the player's real completion, true = force complete, false = force
+  // incomplete. ovCoc/ovMedia/ovRef/ovU18 keep meaning "force complete" so the
+  // "recorded by committee" labels and action-hiding stay correct; the
+  // *Satisfied flags use the full effective rule so a force-incomplete reads as
+  // NOT satisfied and the player's sign/take-test action stays available.
+  const effective = (ov, real) => (ov == null ? real : ov === true)
   const ovCoc = registration?.admin_override_coc === true
   const ovMedia = registration?.admin_override_media === true
   const ovRef = registration?.admin_override_ref_test === true
   const ovU18 = registration?.admin_override_u18 === true
-  const cocSatisfied = cocSigned || ovCoc
-  const mediaSatisfied = mediaSubmitted || ovMedia
-  const refSatisfied = !!testResult?.passed || ovRef
-  const u18Satisfied = u18Submitted || ovU18
+  const cocSatisfied = effective(registration?.admin_override_coc, cocSigned)
+  const mediaSatisfied = effective(registration?.admin_override_media, mediaSubmitted)
+  const refSatisfied = effective(registration?.admin_override_ref_test, !!testResult?.passed)
+  const u18Satisfied = effective(registration?.admin_override_u18, u18Submitted)
 
   // Player-facing override audit string. Shows the date + reason so the
   // player can see why their requirement was waived. Admin alias is NOT
@@ -1646,12 +1650,7 @@ export default function PlayerHub() {
 
             {u18Required && (
               <ChecklistItem
-                status={
-                  !isRegistered ? 'pending'
-                    : (u18Approval?.status === 'approved' || ovU18) ? 'done'
-                    : u18Approval ? 'error'
-                    : 'error'
-                }
+                status={!isRegistered ? 'pending' : u18Satisfied ? 'done' : 'error'}
                 label={
                   u18Approval?.status === 'approved'
                     ? `Under 18 Parental Consent — approved ${formatDate(u18Approval.approved_at)}`
