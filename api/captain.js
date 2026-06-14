@@ -1,23 +1,15 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getActiveEventYear } from './_lib/auth.js'
-import { computeAndWriteAmountOwing, computeAndWriteAmountOwingMany } from './_lib/computeAmountOwing.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
+import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
+
+const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 
 async function denyIfLocked(res, year) {
   const guard = await requireOpenPhase(year)
   if (guard.ok) return false
   res.status(guard.status).json({ error: guard.error, phase: guard.phase })
   return true
-}
-
-// A ZLTAC team (event_id set) is locked for roster/identity changes once it has
-// been submitted for approval (pending) or approved. The Batch-1 DB trigger
-// enforces this against direct anon-client writes, but /api/captain runs as the
-// service role and bypasses that trigger — so service-role mutations of the
-// roster or the team must re-check it here. Competition teams (event_id null)
-// are out of scope.
-function isZltacLocked(team) {
-  return !!team?.event_id && (team.status === 'pending' || team.status === 'approved')
 }
 
 export default async function handler(req, res) {
@@ -28,80 +20,68 @@ export default async function handler(req, res) {
 
   const { action, ...body } = req.body ?? {}
 
+  if (action === 'create-team') {
+    const year = Number.parseInt(body.year, 10)
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const state = typeof body.state === 'string' ? body.state.trim() : ''
+    const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
+    const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
+    const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : ''
+
+    if (!Number.isInteger(year)) return res.status(400).json({ error: 'year is required' })
+    if (!name || name.length > 80) return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
+    if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
+    if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
+    if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
+    if (!isAllowedTeamLogoUrl(logoUrl, process.env.VITE_SUPABASE_URL)) {
+      return res.status(400).json({ error: 'Invalid team logo URL.' })
+    }
+
+    const { data, error: createErr } = await supabaseAdmin.rpc('create_zltac_captain_team', {
+      p_user_id: user.id,
+      p_year: year,
+      p_name: name,
+      p_state: state,
+      p_home_venue: homeVenue || null,
+      p_colour: colour || null,
+      p_logo_url: logoUrl || null,
+    })
+    if (createErr) {
+      const mapped = captainTeamErrorResponse(createErr)
+      return res.status(mapped.status).json({ error: mapped.error })
+    }
+    return res.json(data)
+  }
+
   if (action === 'add-player') {
     const { playerId, teamId, year } = body
     if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
-    if (await denyIfLocked(res, year)) return
-
-    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id, event_id, status').eq('id', teamId).maybeSingle()
-    if (teamErr) return res.status(500).json({ error: teamErr.message })
-    if (!team || team.captain_id !== user.id) {
-      return res.status(403).json({ error: 'Only the team captain can add players' })
+    const { data, error: addErr } = await supabaseAdmin.rpc('add_zltac_team_player', {
+      p_captain_id: user.id,
+      p_player_id: playerId,
+      p_team_id: teamId,
+      p_year: Number.parseInt(year, 10),
+    })
+    if (addErr) {
+      const mapped = captainTeamErrorResponse(addErr)
+      return res.status(mapped.status).json({ error: mapped.error })
     }
-    // Re-enforce the team lock (service role bypasses the DB trigger).
-    if (isZltacLocked(team)) {
-      return res.status(409).json({ error: 'This team is locked while it is under review or approved. Contact the committee to change the roster.' })
+    return res.json({ data })
+  }
+
+  if (action === 'remove-player') {
+    const { playerId, teamId, year } = body
+    if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
+    const { data, error: removeErr } = await supabaseAdmin.rpc('remove_zltac_team_player', {
+      p_captain_id: user.id,
+      p_player_id: playerId,
+      p_team_id: teamId,
+      p_year: Number.parseInt(year, 10),
+    })
+    if (removeErr) {
+      const mapped = captainTeamErrorResponse(removeErr)
+      return res.status(mapped.status).json({ error: mapped.error })
     }
-
-    // Enforce per-event max_players_per_team. When the cap is null, no
-    // limit applies. We treat re-assigning a player who's already on this
-    // team as a no-op for cap purposes (idempotent add).
-    const { data: eventForCap, error: eventForCapErr } = await supabaseAdmin
-      .from('zltac_events')
-      .select('max_players_per_team')
-      .eq('year', year)
-      .maybeSingle()
-    if (eventForCapErr) return res.status(500).json({ error: eventForCapErr.message })
-
-    const teamCap = eventForCap?.max_players_per_team
-    if (teamCap) {
-      const { data: currentReg, error: currentRegErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .select('team_id')
-        .eq('user_id', playerId)
-        .eq('year', year)
-        .maybeSingle()
-      if (currentRegErr) return res.status(500).json({ error: currentRegErr.message })
-
-      if (currentReg?.team_id !== teamId) {
-        const { count, error: countErr } = await supabaseAdmin
-          .from('zltac_registrations')
-          .select('id', { count: 'exact', head: true })
-          .eq('team_id', teamId)
-          .eq('year', year)
-        if (countErr) return res.status(500).json({ error: countErr.message })
-
-        if ((count ?? 0) >= teamCap) {
-          return res.status(400).json({ error: `Team is full (${teamCap}/${teamCap}). Contact the committee.` })
-        }
-      }
-    }
-
-    const { data, error: updateErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .update({ team_id: teamId })
-      .eq('user_id', playerId)
-      .eq('year', year)
-      .select()
-
-    if (updateErr) return res.status(500).json({ error: updateErr.message })
-
-    if (data?.[0]?.id) await computeAndWriteAmountOwing(data[0].id)
-
-    // Phase B.3a dual-write: mirror membership into team_members.
-    try {
-      const { error: memberErr } = await supabaseAdmin.from('team_members').upsert({
-        team_id: teamId,
-        user_id: playerId,
-        roles: ['player'],
-        invite_status: 'accepted',
-        responded_at: new Date().toISOString(),
-      }, { onConflict: 'team_id,user_id' })
-      if (memberErr) console.error('[api/captain add-player] dual-write team_members upsert failed:', memberErr.message)
-    } catch (err) {
-      console.error('[api/captain add-player] dual-write threw:', err)
-    }
-
     return res.json({ data })
   }
 
@@ -143,42 +123,16 @@ export default async function handler(req, res) {
   if (action === 'disband-team') {
     const { teamId, year } = body
     if (!teamId || !year) return res.status(400).json({ error: 'teamId and year are required' })
-    if (await denyIfLocked(res, year)) return
-
-    // Validate caller is captain
-    const { data: team, error: teamErr } = await supabaseAdmin.from('teams').select('captain_id, event_id, status').eq('id', teamId).maybeSingle()
-    if (teamErr) return res.status(500).json({ error: teamErr.message })
-    if (!team) return res.status(404).json({ error: 'Team not found' })
-    if (team.captain_id !== user.id) return res.status(403).json({ error: 'Only the team captain can disband the team' })
-    // Re-enforce the team lock (service role bypasses the DB trigger).
-    if (isZltacLocked(team)) {
-      return res.status(409).json({ error: 'This team is locked while it is under review or approved. Contact the committee to disband it.' })
+    const { data, error: disbandErr } = await supabaseAdmin.rpc('disband_zltac_team', {
+      p_captain_id: user.id,
+      p_team_id: teamId,
+      p_year: Number.parseInt(year, 10),
+    })
+    if (disbandErr) {
+      const mapped = captainTeamErrorResponse(disbandErr)
+      return res.status(mapped.status).json({ error: mapped.error })
     }
-
-    // 1. Kick all members off the team but keep their registrations
-    const { data: affected, error: regErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .update({ team_id: null })
-      .eq('team_id', teamId)
-      .eq('year', year)
-      .select('id')
-    if (regErr) return res.status(500).json({ error: regErr.message })
-
-    if (affected?.length) await computeAndWriteAmountOwingMany(affected.map(r => r.id))
-
-    // 2. Phase B.3a dual-write: clear team_members rows for this team
-    try {
-      const { error: memberErr } = await supabaseAdmin.from('team_members').delete().eq('team_id', teamId)
-      if (memberErr) console.error('[api/captain disband-team] dual-write team_members delete failed:', memberErr.message)
-    } catch (err) {
-      console.error('[api/captain disband-team] dual-write threw:', err)
-    }
-
-    // 3. Delete the team itself
-    const { error: delErr } = await supabaseAdmin.from('teams').delete().eq('id', teamId)
-    if (delErr) return res.status(500).json({ error: delErr.message })
-
-    return res.json({ ok: true })
+    return res.json({ ok: true, ...data })
   }
 
   if (action === 'team-completions') {

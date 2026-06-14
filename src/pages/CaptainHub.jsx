@@ -386,25 +386,20 @@ export default function CaptainHub() {
   // ── Remove player ─────────────────────────────────────────────────────────
   async function confirmRemove() {
     if (!removeConfirm) return
-    const { error } = await supabase
-      .from('zltac_registrations')
-      .update({ team_id: null })
-      .eq('id', removeConfirm.regId)
-
-    if (error) { showToast(`Error: ${error.message}`); setRemoveConfirm(null); return }
-
-    // Phase B.3a dual-write: mirror removal into team_members.
     try {
-      if (team?.id && removeConfirm.userId) {
-        const { error: memberErr } = await supabase
-          .from('team_members')
-          .delete()
-          .eq('team_id', team.id)
-          .eq('user_id', removeConfirm.userId)
-        if (memberErr) console.error('[CaptainHub confirmRemove] dual-write team_members delete failed:', memberErr.message)
-      }
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'remove-player',
+          playerId: removeConfirm.userId,
+          teamId: team?.id,
+          year: event?.year,
+        }),
+      })
     } catch (err) {
-      console.error('[CaptainHub confirmRemove] dual-write threw:', err)
+      showToast(`Error: ${err.message}`)
+      setRemoveConfirm(null)
+      return
     }
 
     setRoster(r => r.filter(p => p.id !== removeConfirm.regId))

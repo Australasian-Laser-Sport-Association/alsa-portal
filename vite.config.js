@@ -51,13 +51,19 @@ export default defineConfig(({ mode }) => {
   // Merge ALL env vars (no VITE_ prefix filter) into process.env so api/* handlers
   // can read process.env.RESEND_API_KEY, SUPABASE_SERVICE_ROLE_KEY, etc. in dev.
   Object.assign(process.env, loadEnv(mode, process.cwd(), ''))
+  const sentryUploadEnabled = !!process.env.SENTRY_AUTH_TOKEN
+    && process.env.SENTRY_DISABLE_UPLOAD !== 'true'
   return {
-    plugins: [react(), vercelStyleApiPlugin(), sentryVitePlugin({
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      org: "australasian-laser-sport-assoc",
-      project: "alsa-portal",
-      sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
-    })],
+    plugins: [
+      react(),
+      vercelStyleApiPlugin(),
+      sentryUploadEnabled && sentryVitePlugin({
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        org: "australasian-laser-sport-assoc",
+        project: "alsa-portal",
+        sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+      }),
+    ].filter(Boolean),
     resolve: {
       alias: {
         '@': resolve(__dirname, './src'),

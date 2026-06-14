@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
-import { recomputeOwing } from '../lib/recomputeOwing'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import { TEAM_COLOURS } from '../lib/teamColours'
@@ -73,25 +72,16 @@ export default function CaptainRegister() {
     setSaving(true)
     setError('')
 
-    // Server-side cap checks before any inserts. max_teams gates the team
-    // creation; max_players gates the captain's own registration upsert.
-    // Both are no-ops when the corresponding column is null.
-    try {
-      await apiFetch('/api/captain', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'precheck-create-team', year: parseInt(year) }),
-      })
-      await apiFetch('/api/player?resource=registration', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'precheck-register', year: parseInt(year) }),
-      })
-    } catch (err) {
+    // The API resolves the event again inside the transaction. This local guard
+    // prevents uploading a logo when the page failed to load an event.
+    if (!event?.id) {
+      setError('Could not find the ZLTAC event for this year.')
       setSaving(false)
-      setError(err?.message || 'Could not start team registration. Please try again.')
       return
     }
 
     let logo_url = null
+    let uploadedLogoPath = null
     if (logoFile) {
       const ext = extensionForMime(logoFile.type)
       const path = `${user.id}/${Date.now()}.${ext}`
@@ -99,90 +89,32 @@ export default function CaptainRegister() {
       if (upErr) { setError(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
       const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
       logo_url = urlData.publicUrl
+      uploadedLogoPath = up.path
     }
 
-    // Hard-required for the teams xor CHECK ((event_id IS NULL) != (competition_id IS NULL)).
-    // The form should never render without an active event for this year, but
-    // guard anyway so we fail loudly instead of crashing on event.id below.
-    if (!event?.id) {
-      setError('Could not find the ZLTAC event for this year.')
-      setSaving(false)
-      return
-    }
-
-    const { data: newTeam, error: insertError } = await supabase.from('teams').insert({
-      name: teamName.trim(),
-      captain_id: user.id,
-      manager_id: user.id,
-      event_id: event.id,
-      format: 'team',
-      // ZLTAC teams start in 'draft' (Batch 2): the captain builds the roster,
-      // then submits for committee approval (draft -> pending via /api/captain
-      // submit-team). 'draft' is also required so the captain's own
-      // registration upsert below isn't blocked by the Batch-1 roster trigger,
-      // which freezes membership once a team is pending/approved. This path only
-      // ever creates ZLTAC teams (event_id set); competition teams are created
-      // 'approved' elsewhere and are unaffected.
-      status: 'draft',
-      state: teamState,
-      home_venue: homeVenue.trim() || null,
-      colour,
-      logo_url,
-    }).select().single()
-
-    if (insertError) {
-      // Surface a friendly message for the two ways the new uniqueness
-      // guard rejects a second insert: the partial unique index
-      // (Postgres 23505) and the teams_captain_insert RLS WITH CHECK.
-      // Other errors fall through to the raw message.
-      const code = insertError.code
-      const msg = insertError.message ?? ''
-      const isDuplicate = code === '23505'
-        || /row-level security/i.test(msg)
-        || /teams_one_per_captain/i.test(msg)
-      setError(isDuplicate
-        ? 'You already have a team for this event.'
-        : msg)
-      setSaving(false)
-      return
-    }
-
-    // Register the captain as a player on their own team
-    const { data: capReg, error: capRegError } = await supabase.from('zltac_registrations').upsert({
-      user_id: user.id,
-      year: parseInt(year),
-      team_id: newTeam.id,
-      side_events: null,
-      status: 'pending',
-    }, { onConflict: 'user_id,year' }).select('id').single()
-    if (capRegError || !capReg?.id) {
-      // The team row was created, but the captain's own registration failed.
-      // Halt rather than advancing to step 2 as if they were registered.
-      setError(capRegError?.message ?? 'Your team was created, but we could not register you onto it. Please contact the committee.')
-      setSaving(false)
-      return
-    }
-    await recomputeOwing(capReg.id)
-
-    // Mirror the captain into team_members (unified teams schema). The team
-    // row itself is already complete from the single INSERT above; only the
-    // membership row remains.
     try {
-      const { error: memberErr } = await supabase.from('team_members').insert({
-        team_id: newTeam.id,
-        user_id: user.id,
-        roles: ['manager', 'captain', 'player'],
-        invite_status: 'accepted',
-        responded_at: new Date().toISOString(),
+      const result = await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'create-team',
+          year: parseInt(year),
+          name: teamName.trim(),
+          state: teamState,
+          homeVenue: homeVenue.trim() || null,
+          colour,
+          logoUrl: logo_url,
+        }),
       })
-      if (memberErr) console.error('[CaptainRegister] team_members insert failed:', memberErr.message)
+      setSubmittedTeam(result.team)
+      setStep(2)
     } catch (err) {
-      console.error('[CaptainRegister] team_members insert threw:', err)
+      if (uploadedLogoPath) {
+        await supabase.storage.from('team-logos').remove([uploadedLogoPath])
+      }
+      setError(err?.message || 'Could not create the team. Please try again.')
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
-    setSubmittedTeam(newTeam)
-    setStep(2)
   }
 
   if (authLoading || initialLoading) {
