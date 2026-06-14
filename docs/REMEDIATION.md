@@ -13,7 +13,7 @@ are all complete.
 | AUTH-01 | Committee roles have overly broad write access | Partially fixed | Advisor authority removed and alias changes audited; finer ALSA/ZLTAC capability scopes remain |
 | DATA-01 | Registration and team limits are not atomic | In progress | ZLTAC team/player/roster caps serialized; remaining competition caps need coverage |
 | DATA-02 | Multi-table registration/team/payment workflows are not transactional | In progress | Captain team creation is atomic; remaining roster, partner, and admin edit flows remain |
-| OPS-01 | PII exports are emailed and are not restorable backups | Open | Encrypted backup target and restore exercise |
+| OPS-01 | PII exports are emailed and are not restorable backups | Code complete | Apply private-bucket migration and complete a non-production restore exercise |
 | TEST-01 | Critical authorization and migration paths lack automated tests | In progress | CI now runs tests; API, RLS, and migration-reset gates remain |
 | AUTH-02 | Hosted authentication hardening is not proven | Open | Supabase setting evidence and privileged MFA |
 | SEC-03 | Production security headers are incomplete | Baseline complete | Deploy smoke test and tested CSP remain |

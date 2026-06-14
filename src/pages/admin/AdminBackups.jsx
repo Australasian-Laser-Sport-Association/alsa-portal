@@ -3,10 +3,10 @@ import { apiFetch } from '../../lib/apiFetch.js'
 import { relativeTime } from '../../lib/relativeTime.js'
 
 // Admin → Backups page. Configures the backup_settings row (frequency,
-// weekly_day, recipient_emails) and surfaces the last-run status from the
+// weekly_day, optional notification emails) and surfaces the last-run status from the
 // row itself. "Run backup now" calls the same /api/admin/event?resource=
 // backup-run endpoint the cron uses, with enforceSchedule = false so the
-// backend always sends regardless of today's day-of-week.
+// backend always stores regardless of today's day-of-week.
 //
 // last_backup_at / last_backup_status are NEVER set optimistically from
 // the client — every action refetches settings from the server so the UI
@@ -105,15 +105,11 @@ export default function AdminBackups() {
       const result = await apiFetch('/api/admin/event?resource=backup-run', {
         method: 'POST',
       })
-      // The handler always returns 200 — distinguish success/failure by
-      // the `sent` flag. On either outcome, refetch settings so the
-      // last_backup_at / last_backup_status block shows what the backend
-      // actually wrote (not what we'd guess from the client clock).
-      if (result?.sent === true) {
-        showToast(`Backup sent to ${result.recipients} recipient${result.recipients === 1 ? '' : 's'}.`, 'success')
+      if (result?.stored === true) {
+        showToast('Backup stored in private object storage.', 'success')
       } else {
         const errMsg = result?.error ? `: ${result.error}` : ''
-        showToast(`Backup did not send${errMsg}`, 'error')
+        showToast(`Backup was not stored${errMsg}`, 'error')
       }
       await load()
     } catch (err) {
@@ -169,7 +165,7 @@ export default function AdminBackups() {
       <div className="mb-6">
         <h1 className="text-2xl font-black text-white">Backups</h1>
         <p className="text-white opacity-50 text-sm mt-1">
-          Configure the automatic CSV backup schedule and run a manual backup.
+          Configure private CSV backups and run a manual backup.
         </p>
       </div>
 
@@ -200,7 +196,7 @@ export default function AdminBackups() {
             <option value="weekly">Weekly</option>
           </select>
           <p className="text-white text-[11px] opacity-50 mt-1.5">
-            The Vercel cron fires daily; this setting decides whether a backup actually sends.
+            The Vercel cron fires daily; this setting decides whether a backup is stored.
           </p>
         </div>
 
@@ -223,7 +219,7 @@ export default function AdminBackups() {
         )}
 
         <div>
-          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Recipient emails</label>
+          <label className="block text-xs text-white font-bold uppercase tracking-wider mb-1.5">Notification emails</label>
           <textarea
             value={emailsText}
             onChange={e => setEmailsText(e.target.value)}
@@ -232,7 +228,7 @@ export default function AdminBackups() {
             className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand resize-none"
           />
           <p className="text-white text-[11px] opacity-50 mt-1.5">
-            Comma-separated. The backup attaches three CSVs (registrations, payments, events).
+            Optional and comma-separated. Notifications contain counts only; backup files are never emailed.
           </p>
         </div>
 
@@ -252,7 +248,7 @@ export default function AdminBackups() {
       <div className="bg-surface border border-line rounded-2xl p-5">
         <p className="text-white text-xs font-bold uppercase tracking-wider opacity-70 mb-2">Run a backup now</p>
         <p className="text-white text-sm opacity-70 mb-4">
-          Sends all three CSVs to the recipients above immediately. Bypasses the frequency setting.
+          Stores a private backup immediately and optionally sends a summary notification. Bypasses the frequency setting.
         </p>
         <button
           type="button"
@@ -260,7 +256,7 @@ export default function AdminBackups() {
           disabled={running}
           className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all"
         >
-          {running ? 'Running...' : 'Run backup now'}
+          {running ? 'Running...' : 'Store backup now'}
         </button>
       </div>
     </div>

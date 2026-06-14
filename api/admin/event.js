@@ -5,6 +5,7 @@ import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/a
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { cleanupFormerSideEventMember, ensureSideEventMember } from '../_lib/sideEventCleanup.js'
 import { changeProfileAlias } from '../_lib/profileChanges.js'
+import { buildBackupFiles } from '../_lib/backupStorage.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -880,16 +881,12 @@ async function handleBackupSettings(req, res, user) {
 
 
 // ── backup-run ────────────────────────────────────────────────────────────────
-// Generates the three backup CSVs, emails them via Resend, and updates
-// last_backup_at + last_backup_status on the settings row.
+// Generates the backup CSVs, stores them privately, sends an optional
+// summary-only notification, and updates last_backup_at/status.
 //
 // Two auth contexts converge here:
 //   - Cron: enforces frequency + weekly_day in Australia/Sydney
-//   - Admin manual: always sends, bypasses frequency/weekly_day
-//
-// IMPORTANT: never returns 500 on email failure. Update last_backup_status
-// with the error message and return 200 so Vercel does not retry the cron
-// indefinitely and the admin UI can surface the failure on next reload.
+//   - Admin manual: always stores, bypasses frequency/weekly_day
 async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -927,12 +924,23 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
     }
   }
 
-  // Recipient guard. Cron path returns 200 (don't fail the cron); admin
-  // path returns 400 so the UI can prompt them to add recipients.
-  if (!Array.isArray(settings.recipient_emails) || settings.recipient_emails.length === 0) {
-    await recordOutcome('No recipients configured')
-    if (enforceSchedule) return res.json({ ok: true, sent: false, error: 'no_recipients' })
-    return res.status(400).json({ error: 'No recipient emails configured. Add at least one on the Backups page.' })
+  const runId = randomUUID()
+  const objectPrefix = `${dateStr}/${new Date().toISOString().replace(/[:.]/g, '-')}-${runId}`
+  const { error: runInsertErr } = await supabaseAdmin.from('backup_runs').insert({
+    id: runId,
+    status: 'running',
+    object_prefix: objectPrefix,
+    triggered_by: triggeredBy,
+  })
+  if (runInsertErr) return res.status(500).json({ error: `Could not start backup run: ${runInsertErr.message}` })
+
+  const failRun = async message => {
+    await supabaseAdmin.from('backup_runs').update({
+      status: 'failed',
+      failure_message: message,
+      completed_at: new Date().toISOString(),
+    }).eq('id', runId)
+    await recordOutcome(`Failed: ${message}`)
   }
 
   // Generate the three CSVs.
@@ -941,19 +949,45 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
     csvs = await generateBackupCsvs(supabaseAdmin)
   } catch (err) {
     const msg = err?.message || 'CSV generation failed'
-    await recordOutcome(`Generation failed: ${msg}`)
-    // Cron: 200 so Vercel doesn't retry. Admin: still 200 so the UI parses
-    // the response uniformly and reads { sent: false }.
-    return res.json({ ok: true, sent: false, error: msg })
+    await failRun(`Generation failed: ${msg}`)
+    return res.status(500).json({ error: msg })
   }
 
-  // Email body. Plain text with a per-event registration breakdown.
+  const { manifest, files: storedFiles } = buildBackupFiles(csvs)
+  const objectPaths = storedFiles.map(file => `${objectPrefix}/${file.name}`)
+  const uploadResults = await Promise.all(storedFiles.map((file, index) =>
+    supabaseAdmin.storage.from('portal-backups').upload(objectPaths[index], Buffer.from(file.content, 'utf8'), {
+      contentType: file.contentType,
+      upsert: false,
+    })
+  ))
+  const uploadError = uploadResults.find(result => result.error)?.error
+  if (uploadError) {
+    await supabaseAdmin.storage.from('portal-backups').remove(objectPaths)
+    await failRun(`Storage failed: ${uploadError.message}`)
+    return res.status(500).json({ error: uploadError.message })
+  }
+
+  const completedAt = new Date().toISOString()
+  const { error: completeErr } = await supabaseAdmin.from('backup_runs').update({
+    status: 'complete',
+    object_paths: objectPaths,
+    manifest,
+    completed_at: completedAt,
+  }).eq('id', runId)
+  if (completeErr) {
+    await supabaseAdmin.storage.from('portal-backups').remove(objectPaths)
+    await failRun(`Metadata failed: ${completeErr.message}`)
+    return res.status(500).json({ error: completeErr.message })
+  }
+
+  // Optional email contains summary counts only. PII remains in private storage.
   const breakdownLines = csvs.eventBreakdown.map(
     e => `  - ${e.name || 'Unnamed event'} ${e.year}: ${e.registrationCount} registration${e.registrationCount === 1 ? '' : 's'}`,
   )
-  const triggerNote = triggeredBy ? `Triggered manually by ${triggeredBy}.` : 'Triggered by the scheduled backup.'
+  const triggerNote = triggeredBy ? 'Triggered manually by an administrator.' : 'Triggered by the scheduled backup.'
   const bodyText = [
-    `ALSA Portal backup attached for ${dateStr} (Australia/Sydney).`,
+    `ALSA Portal backup stored successfully for ${dateStr} (Australia/Sydney).`,
     '',
     `Registrations: ${csvs.registrationsCount}`,
     `Payment records: ${csvs.paymentsCount}`,
@@ -962,50 +996,67 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
     csvs.eventBreakdown.length > 0 ? 'Per event:' : 'No event registrations yet.',
     ...breakdownLines,
     '',
+    'The files are in the private portal-backups storage bucket. No personal data is attached to this email.',
+    '',
     triggerNote,
   ].join('\n')
 
   const subject = `ALSA Portal backup for ${dateStr} (${csvs.registrationsCount} registrations, ${csvs.eventsCount} events)`
 
-  // Mirror the api/contact.js Resend pattern — same client setup, same
-  // noreply@lasersport.org.au from-address (different display name so the
-  // backup mails are visually distinct in the recipient's inbox).
-  const resend = new Resend(process.env.RESEND_API_KEY)
-  let sendError = null
-  try {
-    const { error } = await resend.emails.send({
-      from: 'ALSA Portal Backup <noreply@lasersport.org.au>',
-      to: settings.recipient_emails,
-      subject,
-      text: bodyText,
-      attachments: [
-        { filename: `alsa-registrations-${dateStr}.csv`, content: Buffer.from(csvs.registrationsCsv, 'utf-8') },
-        { filename: `alsa-payments-${dateStr}.csv`,      content: Buffer.from(csvs.paymentsCsv, 'utf-8') },
-        { filename: `alsa-events-${dateStr}.csv`,        content: Buffer.from(csvs.eventsCsv, 'utf-8') },
-      ],
-    })
-    if (error) sendError = error?.message || 'Resend returned an error'
-  } catch (err) {
-    sendError = err?.message || 'Resend threw'
+  const recipients = Array.isArray(settings.recipient_emails) ? settings.recipient_emails : []
+  let sendError = recipients.length > 0 && !process.env.RESEND_API_KEY
+    ? 'RESEND_API_KEY is not configured'
+    : null
+  if (recipients.length > 0 && process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      const { error } = await resend.emails.send({
+        from: 'ALSA Portal Backup <noreply@lasersport.org.au>',
+        to: recipients,
+        subject,
+        text: bodyText,
+      })
+      if (error) sendError = error?.message || 'Resend returned an error'
+    } catch (err) {
+      sendError = err?.message || 'Resend threw'
+    }
   }
 
   if (sendError) {
-    await recordOutcome(`Email failed: ${sendError}`)
-    console.error('[backup-run] email send failed:', sendError)
-    // Never 500 — Vercel would retry the cron; admin UI parses { sent: false }.
-    return res.json({ ok: true, sent: false, error: sendError })
+    console.error('[backup-run] notification email failed:', sendError)
   }
 
-  const recipientCount = settings.recipient_emails.length
-  await recordOutcome(`Sent to ${recipientCount} recipient${recipientCount === 1 ? '' : 's'}`)
+  const retentionCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: expiredRuns } = await supabaseAdmin
+    .from('backup_runs')
+    .select('id, object_paths')
+    .eq('status', 'complete')
+    .lt('started_at', retentionCutoff)
+  for (const expired of expiredRuns ?? []) {
+    if (expired.object_paths?.length) {
+      const { error: removeErr } = await supabaseAdmin.storage.from('portal-backups').remove(expired.object_paths)
+      if (removeErr) continue
+    }
+    await supabaseAdmin.from('backup_runs').delete().eq('id', expired.id)
+  }
+
+  const notificationStatus = recipients.length === 0
+    ? 'no notification recipients configured'
+    : sendError
+      ? `notification failed: ${sendError}`
+      : `notified ${recipients.length} recipient${recipients.length === 1 ? '' : 's'}`
+  await recordOutcome(`Stored privately; ${notificationStatus}`, completedAt)
   return res.json({
     ok: true,
-    sent: true,
+    stored: true,
+    notified: recipients.length > 0 && !sendError,
     date: dateStr,
+    objectPrefix,
     registrations: csvs.registrationsCount,
     payments: csvs.paymentsCount,
     events: csvs.eventsCount,
-    recipients: recipientCount,
+    recipients: recipients.length,
+    notificationError: sendError,
   })
 }
 
@@ -1272,7 +1323,7 @@ export default async function handler(req, res) {
   if (resource === 'registrations')    return handleRegistrations(req, res, user)
   if (resource === 'payments')         return handlePayments(req, res, user)
   if (resource === 'backup-settings')  return handleBackupSettings(req, res, user)
-  if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.email ?? user.id })
+  if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.id })
   if (resource === 'profile-search')   return handleProfileSearch(req, res)
   if (resource === 'zltac-dashboard')  return handleZltacDashboard(req, res)
   if (resource === 'team-review')      return handleTeamReview(req, res)
