@@ -45,9 +45,6 @@ export default function AdminUnder18Approvals() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  useEffect(() => { loadProfiles() }, [])
-  useEffect(() => { load() }, [yearFilter, statusFilter])
-
   async function loadProfiles() {
     // Committee users can SELECT all profiles via the profiles_select_committee RLS policy.
     const { data } = await supabase
@@ -85,6 +82,11 @@ export default function AdminUnder18Approvals() {
 
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadProfiles() }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [yearFilter, statusFilter])
 
   const counts = useMemo(() => ({
     all: rows.length,

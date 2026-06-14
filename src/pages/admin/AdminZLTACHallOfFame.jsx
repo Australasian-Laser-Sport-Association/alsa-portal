@@ -39,8 +39,6 @@ export default function AdminZLTACHallOfFame() {
   const [toast, setToast] = useState(null)
   const [errors, setErrors] = useState({})
 
-  useEffect(() => { loadList() }, [])
-
   async function loadList() {
     setLoadingList(true)
     const { data, error } = await supabase
@@ -51,6 +49,9 @@ export default function AdminZLTACHallOfFame() {
     if (!error) setRows(data ?? [])
     setLoadingList(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadList() }, [])
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type })

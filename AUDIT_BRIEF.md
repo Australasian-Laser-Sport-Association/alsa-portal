@@ -183,7 +183,7 @@ For every table:
 
 ## 3.1 Baseline
 
-- Confirm `npm run lint` reports **no more than 23 problems (16 errors, 7 warnings)**. List any regression.
+- Confirm `npm run lint` reports **no more than 7 problems (0 errors, 7 warnings)**. List any regression.
 - Run with `--max-warnings 0` mentally — which warnings, if any, should be promoted to errors?
 
 ## 3.2 Error handling

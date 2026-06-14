@@ -124,8 +124,6 @@ function TournamentsTab() {
   const [selected, setSelected] = useState(null) // 'new' | uuid | null
   const { toast, show: showToast } = useToast()
 
-  useEffect(() => { loadList() }, [])
-
   async function loadList() {
     setLoadingList(true)
     const [yearsRes, placingsRes] = await Promise.all([
@@ -147,6 +145,9 @@ function TournamentsTab() {
     }
     setLoadingList(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadList() }, [])
 
   function startNew() {
     setSelected('new')
@@ -811,8 +812,6 @@ function LegendsSection({ showToast }) {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null) // uuid
 
-  useEffect(() => { load() }, [])
-
   async function load() {
     setLoading(true)
     const { data } = await supabase
@@ -823,6 +822,9 @@ function LegendsSection({ showToast }) {
     setRows(data ?? [])
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [])
 
   function startEdit(row) {
     setEditingId(row.id)
@@ -1072,8 +1074,6 @@ function DynastiesSection({ showToast }) {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
-  useEffect(() => { load() }, [])
-
   async function load() {
     setLoading(true)
     const { data } = await supabase
@@ -1084,6 +1084,9 @@ function DynastiesSection({ showToast }) {
     setRows(data ?? [])
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [])
 
   function startEdit(row) {
     setEditingId(row.id)
@@ -1361,8 +1364,6 @@ function ExtrasTab() {
   const photoRef = useRef()
   const photoUrlRef = useRef()
 
-  useEffect(() => { loadYears() }, [])
-
   async function loadYears() {
     setLoadingList(true)
     // Existing zltac_event_history rows only — same table/scope the Tournaments
@@ -1374,6 +1375,9 @@ function ExtrasTab() {
     setYears(data ?? [])
     setLoadingList(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadYears() }, [])
 
   async function selectYear(id) {
     setSelectedId(id)

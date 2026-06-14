@@ -790,42 +790,6 @@ export default function PlayerHub() {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
-  useEffect(() => {
-    if (!authLoading && !user) { navigate('/login'); return }
-    if (!user) return
-    load()
-  }, [authLoading, user, navigate])
-
-  // Refetch when the tab regains focus/visibility so committee-side changes
-  // (status, admin overrides, etc.) appear without a manual reload. Preserves
-  // in-progress edit drafts (side-event selections, dinner guests).
-  useEffect(() => {
-    function refetch() {
-      if (user && !document.hidden) { refreshProfile(); load({ preserveDrafts: true }) }
-    }
-    window.addEventListener('focus', refetch)
-    document.addEventListener('visibilitychange', refetch)
-    return () => {
-      window.removeEventListener('focus', refetch)
-      document.removeEventListener('visibilitychange', refetch)
-    }
-  }, [user]) // eslint-disable-line
-
-  // Open a section when its anchor is targeted, so the checklist links
-  // (#side-events, #extras) and any deep link land on expanded content.
-  useEffect(() => {
-    const SECTION_IDS = ['side-events', 'extras', 'volunteering', 'payment-details']
-    function openFromHash() {
-      const id = window.location.hash.replace('#', '')
-      if (SECTION_IDS.includes(id)) {
-        setOpenSections(prev => ({ ...prev, [id]: true }))
-      }
-    }
-    openFromHash()
-    window.addEventListener('hashchange', openFromHash)
-    return () => window.removeEventListener('hashchange', openFromHash)
-  }, [])
-
   async function load(opts) {
     const preserveDrafts = opts?.preserveDrafts === true
     // 1. Get active event
@@ -960,6 +924,43 @@ export default function PlayerHub() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (!authLoading && !user) { navigate('/login'); return }
+    if (!user) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load()
+  }, [authLoading, user, navigate])
+
+  // Refetch when the tab regains focus/visibility so committee-side changes
+  // (status, admin overrides, etc.) appear without a manual reload. Preserves
+  // in-progress edit drafts (side-event selections, dinner guests).
+  useEffect(() => {
+    function refetch() {
+      if (user && !document.hidden) { refreshProfile(); load({ preserveDrafts: true }) }
+    }
+    window.addEventListener('focus', refetch)
+    document.addEventListener('visibilitychange', refetch)
+    return () => {
+      window.removeEventListener('focus', refetch)
+      document.removeEventListener('visibilitychange', refetch)
+    }
+  }, [user]) // eslint-disable-line
+
+  // Open a section when its anchor is targeted, so the checklist links
+  // (#side-events, #extras) and any deep link land on expanded content.
+  useEffect(() => {
+    const SECTION_IDS = ['side-events', 'extras', 'volunteering', 'payment-details']
+    function openFromHash() {
+      const id = window.location.hash.replace('#', '')
+      if (SECTION_IDS.includes(id)) {
+        setOpenSections(prev => ({ ...prev, [id]: true }))
+      }
+    }
+    openFromHash()
+    window.addEventListener('hashchange', openFromHash)
+    return () => window.removeEventListener('hashchange', openFromHash)
+  }, [])
 
   function toggleSideEvent(slug) {
     // Un-selecting a side event you are CONFIRMED in dissolves the pairing for

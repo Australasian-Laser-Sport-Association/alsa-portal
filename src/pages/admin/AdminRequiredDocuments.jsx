@@ -90,6 +90,7 @@ export default function AdminRequiredDocuments() {
     setSummary(map)
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadSummary() }, [])
 
   const activeLabel = DOC_TYPES.find(t => t.key === selected)?.label ?? ''
@@ -192,8 +193,6 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
   const [confirmAction, setConfirmAction] = useState(null) // { type: 'deactivate'|'reactivate', id, label }
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { load() }, [documentType])
-
   async function load() {
     setLoading(true)
     const { data, error } = await supabase
@@ -210,6 +209,9 @@ function DocumentTab({ documentType, label, showToast, onDataChanged }) {
     setLoading(false)
     onDataChanged?.()
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [documentType])
 
   const active = rows.find(r => r.is_active) ?? null
   const history = rows.filter(r => !r.is_active)

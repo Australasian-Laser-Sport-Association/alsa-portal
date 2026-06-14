@@ -29,12 +29,6 @@ export default function RefereeTest() {
   // still sees RulesTestRunner's own results screen rather than being bumped.
   const [passedResult, setPassedResult] = useState(null)
 
-  useEffect(() => {
-    if (!authLoading && !user) { navigate('/login'); return }
-    if (!user) return
-    loadData()
-  }, [authLoading, user]) // eslint-disable-line
-
   async function loadData() {
     // Player-facing fetch uses the column-masked view. correct_answer is
     // never sent to the browser; scoring happens server-side in
@@ -71,6 +65,13 @@ export default function RefereeTest() {
     })
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (!authLoading && !user) { navigate('/login'); return }
+    if (!user) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadData()
+  }, [authLoading, user]) // eslint-disable-line
 
   // Submit the raw answers and let the server score them. The response
   // carries the authoritative result + per-question breakdown so the runner

@@ -81,8 +81,6 @@ function RolesTab() {
   const [sortEdits, setSortEdits] = useState({})
   const [deleteModal, setDeleteModal] = useState(null) // { role, refCount, busy, error, soft }
 
-  useEffect(() => { load() }, [])
-
   async function load() {
     setLoading(true)
     try {
@@ -94,6 +92,9 @@ function RolesTab() {
     }
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load() }, [])
 
   function startAdd() {
     setForm(EMPTY_ROLE); setEditingId(null); setFieldErr({}); setMsg(null); setFormOpen(true)
@@ -416,11 +417,6 @@ function SettingsTab() {
       })
   }, [])
 
-  useEffect(() => {
-    if (!eventId) { setForm(null); return }
-    loadSettings(eventId)
-  }, [eventId])
-
   async function loadSettings(id) {
     setForm(null); setMsg(null)
     const { ok, status, body } = await rawApi(`/api/admin/volunteers?resource=settings&eventId=${id}`)
@@ -438,6 +434,12 @@ function SettingsTab() {
       setMsg({ type: 'error', text: body?.error || 'Failed to load settings.' })
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!eventId) { setForm(null); return }
+    loadSettings(eventId)
+  }, [eventId])
 
   async function handleSave() {
     setSaving(true); setMsg(null)
@@ -561,8 +563,6 @@ function SignupsTab() {
     }).catch(err => setError(err.message))
   }, [])
 
-  useEffect(() => { loadSignups() }, [filterEvent, filterRoleIds, hasNotes, refreshKey])
-
   async function loadSignups() {
     setLoading(true); setError(null)
     const params = new URLSearchParams()
@@ -577,6 +577,9 @@ function SignupsTab() {
     }
     setLoading(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadSignups() }, [filterEvent, filterRoleIds, hasNotes, refreshKey])
 
   function toggleRole(id) {
     setFilterRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -909,12 +912,11 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
     if (defaultAppliedRef.current) return
     const def = activeRoles.find(r => r.is_default)
     if (def) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedRoleIds([def.id])
       defaultAppliedRef.current = true
     }
   }, [activeRoles])
-
-  useEffect(() => { if (eventId) loadPlayers(eventId) }, [eventId])
 
   async function loadPlayers(eid) {
     setLoadingPlayers(true); setError(''); setRegistrationId('')
@@ -945,6 +947,9 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
     }
     setLoadingPlayers(false)
   }
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (eventId) loadPlayers(eventId) }, [eventId])
 
   function toggleRole(id) {
     setSelectedRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
