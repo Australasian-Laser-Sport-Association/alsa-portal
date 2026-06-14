@@ -12,6 +12,7 @@ import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
 import { TeamShieldIcon } from '../components/icons.jsx'
 import { maskStorageUrl } from '../lib/assetUrl'
+import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
 import { TEAM_COLOURS } from '../lib/teamColours'
 
 function isUnder18(dob, eventYear) {
@@ -455,9 +456,9 @@ export default function CaptainHub() {
   // ── Logo upload ──────────────────────────────────────────────────────────
   // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
   // team_logos_captain_team_write RLS policy (see 20260520000000 migration).
-  // We do not delete the old file when replacing; orphaned files are cheap
-  // and audit-friendly. SVGs are allowed but rendered only via <img src>.
-  const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+  // We do not delete the old file when replacing; orphan cleanup is handled
+  // separately. Active document formats such as SVG are deliberately rejected.
+  const LOGO_ACCEPTED_TYPES = RASTER_IMAGE_TYPES
   const LOGO_MAX_BYTES = 2 * 1024 * 1024 // 2 MB
 
   function pickLogo() {
@@ -471,7 +472,7 @@ export default function CaptainHub() {
     setLogoError('')
 
     if (!LOGO_ACCEPTED_TYPES.includes(file.type)) {
-      setLogoError('Unsupported file type. Use PNG, JPEG, WebP, or SVG.')
+      setLogoError('Unsupported file type. Use PNG, JPEG, or WebP.')
       e.target.value = ''
       return
     }
@@ -489,14 +490,7 @@ export default function CaptainHub() {
 
     setLogoUploading(true)
     try {
-      const extFromName = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : null
-      const extFromMime = ({
-        'image/png': 'png',
-        'image/jpeg': 'jpg',
-        'image/webp': 'webp',
-        'image/svg+xml': 'svg',
-      })[file.type]
-      const ext = extFromName || extFromMime || 'bin'
+      const ext = extensionForMime(file.type)
       const path = `${team.id}/${Date.now()}.${ext}`
 
       const { data: up, error: upErr } = await supabase.storage
@@ -723,12 +717,6 @@ export default function CaptainHub() {
         {/* Header */}
         <div className="flex items-start gap-5 mb-6">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0" style={{ background: team.colour ?? '#00E6FF' }}>
-            {/* SAFETY: do not inline-render SVG logos — always use <img src>.
-                Inlining (e.g. dangerouslySetInnerHTML on fetched SVG markup)
-                would allow scripts in user-uploaded SVGs to execute in the
-                app's origin. <img src> isolates the SVG to the Storage CDN
-                origin. The legal-documents bucket and team-logos bucket both
-                permit SVG uploads; never render those inline. */}
             {team.logo_url
               ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain rounded-xl" />
               : initials(team.name)

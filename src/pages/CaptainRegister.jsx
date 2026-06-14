@@ -7,6 +7,7 @@ import { recomputeOwing } from '../lib/recomputeOwing'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import { TEAM_COLOURS } from '../lib/teamColours'
+import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -52,6 +53,11 @@ export default function CaptainRegister() {
   function handleLogoSelect(e) {
     const file = e.target.files[0]
     if (!file) return
+    if (!RASTER_IMAGE_TYPES.includes(file.type)) {
+      setError('Logo must be a PNG, JPEG, or WebP image.')
+      e.target.value = ''
+      return
+    }
     if (file.size > 2 * 1024 * 1024) { setError('Logo must be under 2MB.'); return }
     setLogoFile(file)
     setLogoPreview(URL.createObjectURL(file))
@@ -87,9 +93,9 @@ export default function CaptainRegister() {
 
     let logo_url = null
     if (logoFile) {
-      const ext = logoFile.name.split('.').pop()
+      const ext = extensionForMime(logoFile.type)
       const path = `${user.id}/${Date.now()}.${ext}`
-      const { data: up, error: upErr } = await supabase.storage.from('team-logos').upload(path, logoFile, { upsert: true })
+      const { data: up, error: upErr } = await supabase.storage.from('team-logos').upload(path, logoFile, { upsert: true, contentType: logoFile.type })
       if (upErr) { setError(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
       const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
       logo_url = urlData.publicUrl
@@ -340,9 +346,9 @@ export default function CaptainRegister() {
           {/* Logo upload */}
           <div>
             <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">
-              Team Logo <span className="text-[#e5e5e5]/60 font-normal normal-case">(PNG or JPG, max 2MB)</span>
+              Team Logo <span className="text-[#e5e5e5]/60 font-normal normal-case">(PNG, JPEG or WebP, max 2MB)</span>
             </label>
-            <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
+            <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoSelect} className="hidden" />
             {logoPreview ? (
               <div className="flex items-center gap-4">
                 <img src={logoPreview} alt="Preview" className="h-16 w-16 object-contain rounded-xl border border-line bg-base p-1" />

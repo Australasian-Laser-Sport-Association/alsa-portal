@@ -1,3 +1,4 @@
+import { isIP } from 'node:net'
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
@@ -429,32 +430,51 @@ async function handleRegistration(req, res, user) {
     // zltac_registrations with auth.uid() IS NULL — the system path the
     // protect_registration_admin_fields guard allows — instead of failing
     // under the player's own auth context.
-    const { documentId, eventYear } = body
+    const { documentId } = body
+    const eventYear = Number.parseInt(body.eventYear, 10)
     if (!documentId) return res.status(400).json({ error: 'documentId is required' })
-    if (!eventYear) return res.status(400).json({ error: 'eventYear is required' })
+    if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'eventYear is required' })
 
     // Defensive: only an active legal document may be signed. Never trust a
     // client-supplied document_id for an arbitrary or retired row.
     const { data: doc, error: docErr } = await supabaseAdmin
       .from('legal_documents')
-      .select('id, is_active')
+      .select('id, is_active, document_type')
       .eq('id', documentId)
       .maybeSingle()
     if (docErr) return res.status(500).json({ error: docErr.message })
-    if (!doc || !doc.is_active) return res.status(400).json({ error: 'Document is not available for signing.' })
+    const signableTypes = ['code_of_conduct', 'media_release']
+    if (!doc || !doc.is_active || !signableTypes.includes(doc.document_type)) {
+      return res.status(400).json({ error: 'Document is not available for signing.' })
+    }
+
+    const { data: registration, error: registrationErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('year', eventYear)
+      .maybeSingle()
+    if (registrationErr) return res.status(500).json({ error: registrationErr.message })
+    if (!registration) return res.status(403).json({ error: 'Register for this event before signing its documents.' })
 
     // user_id is taken from the authenticated session, never the request body.
     const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null
-    const { error: upsertErr } = await supabaseAdmin
+    const forwardedFor = typeof req.headers['x-forwarded-for'] === 'string'
+      ? req.headers['x-forwarded-for'].split(',')[0].trim()
+      : null
+    const rawIpAddress = forwardedFor || (typeof req.headers['x-real-ip'] === 'string' ? req.headers['x-real-ip'].trim() : null)
+    const ipAddress = rawIpAddress && isIP(rawIpAddress) ? rawIpAddress : null
+    const { error: insertErr } = await supabaseAdmin
       .from('legal_acceptances')
-      .upsert({
+      .insert({
         user_id: user.id,
         document_id: documentId,
         event_year: eventYear,
         accepted_at: new Date().toISOString(),
+        ip_address: ipAddress,
         user_agent: userAgent,
-      }, { onConflict: 'user_id,document_id,event_year' })
-    if (upsertErr) return res.status(500).json({ error: upsertErr.message })
+      })
+    if (insertErr) return res.status(500).json({ error: insertErr.message })
 
     return res.json({ ok: true })
   }

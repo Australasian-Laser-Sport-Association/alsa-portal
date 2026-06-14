@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { ShieldAlert, BookOpen } from 'lucide-react'
 import RulesTestRunner from '../../components/RulesTestRunner'
 import { maskStorageUrl } from '../../lib/assetUrl'
+import { RASTER_IMAGE_TYPES, extensionForMime } from '../../lib/uploadPolicy'
 
 const CATEGORIES = ['Rules', 'Safety', 'Equipment', 'Scoring', 'General']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
@@ -17,11 +18,10 @@ const SECTIONS = [
 
 // Per-question media (referee-test-media bucket, see migration 20260520060002).
 const REFEREE_MEDIA_BUCKET = 'referee-test-media'
-const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+const IMAGE_TYPES = RASTER_IMAGE_TYPES
 const VIDEO_TYPES = ['video/mp4', 'video/webm']
 const MEDIA_MAX_BYTES = 25 * 1024 * 1024 // 25 MB
 const EXT_BY_MIME = {
-  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/svg+xml': 'svg',
   'video/mp4': 'mp4', 'video/webm': 'webm',
 }
 
@@ -109,7 +109,7 @@ export default function AdminRefereeTest() {
   async function uploadMedia(file, kind) {
     const allowed = kind === 'image' ? IMAGE_TYPES : VIDEO_TYPES
     if (!allowed.includes(file.type)) {
-      setMediaErr(`Unsupported ${kind} type — use ${kind === 'image' ? 'PNG, JPEG, WebP or SVG' : 'MP4 or WebM'}.`)
+      setMediaErr(`Unsupported ${kind} type — use ${kind === 'image' ? 'PNG, JPEG or WebP' : 'MP4 or WebM'}.`)
       return
     }
     if (file.size > MEDIA_MAX_BYTES) {
@@ -120,7 +120,7 @@ export default function AdminRefereeTest() {
     const field = kind === 'image' ? 'image_url' : 'video_url'
     setBusy(true); setMediaErr('')
     try {
-      const ext = (file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : null) || EXT_BY_MIME[file.type] || 'bin'
+      const ext = extensionForMime(file.type) || EXT_BY_MIME[file.type]
       const path = `questions/${editing || '_new'}/${Date.now()}.${ext}`
       const { data, error } = await supabase.storage
         .from(REFEREE_MEDIA_BUCKET)
@@ -407,11 +407,11 @@ export default function AdminRefereeTest() {
                           className="mt-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors">Remove image</button>
                       </div>
                     )}
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" disabled={imageUploading}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" disabled={imageUploading}
                       onChange={e => { const fl = e.target.files?.[0]; if (fl) uploadMedia(fl, 'image'); e.target.value = '' }}
                       className="block w-full text-xs text-[#e5e5e5]/60 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-line file:text-[#e5e5e5]/70 file:text-xs hover:file:bg-[#374056] disabled:opacity-50" />
                     {imageUploading && <p className="text-brand text-[11px] mt-1">Uploading image…</p>}
-                    <p className="text-[10px] text-[#e5e5e5]/60 mt-1">PNG, JPEG, WebP or SVG · max 25 MB</p>
+                    <p className="text-[10px] text-[#e5e5e5]/60 mt-1">PNG, JPEG or WebP · max 25 MB</p>
                   </div>
                   {/* Video */}
                   <div className="bg-base border border-line rounded-lg p-3">

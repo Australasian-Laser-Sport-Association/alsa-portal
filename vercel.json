@@ -1,9 +1,19 @@
 {
   "devCommand": "vite",
   "regions": ["syd1"],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ],
   "rewrites": [
-    { "source": "/files/documents/:path*", "destination": "https://atwutsywnlnzqkqudxdv.supabase.co/storage/v1/object/public/legal-documents/:path*" },
-    { "source": "/files/:path*", "destination": "https://atwutsywnlnzqkqudxdv.supabase.co/storage/v1/object/public/:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

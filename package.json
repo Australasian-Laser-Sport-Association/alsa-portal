@@ -11,7 +11,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "security:purge-svg": "node scripts/purge-active-storage-files.mjs"
   },
   "dependencies": {
     "@sentry/react": "^10.56.0",
