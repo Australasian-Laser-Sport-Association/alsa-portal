@@ -1,4 +1,5 @@
 import { isIP } from 'node:net'
+import { enforceRateLimit } from './_lib/rateLimit.js'
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
@@ -799,6 +800,19 @@ export default async function handler(req, res) {
   if (error) return res.status(401).json({ error })
 
   const resource = req.query.resource
+
+  const action = req.body?.action
+  const rateConfig = resource === 'claim'
+    ? { limit: 5, window: '10 m', prefix: 'placeholder-claim' }
+    : resource === 'claimable'
+      ? { limit: 30, window: '1 m', prefix: 'placeholder-discovery' }
+      : (resource === 'doubles' || resource === 'triples') && action === 'search'
+        ? { limit: 30, window: '1 m', prefix: 'partner-search' }
+        : null
+  if (rateConfig && !await enforceRateLimit(req, res, {
+    identifier: user.id,
+    ...rateConfig,
+  })) return
 
   // GET endpoints
   if (req.method === 'GET') {

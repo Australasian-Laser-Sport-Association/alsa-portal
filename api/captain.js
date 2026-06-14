@@ -2,6 +2,7 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getActiveEventYear } from './_lib/auth.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
 import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
+import { enforceRateLimit } from './_lib/rateLimit.js'
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 
@@ -17,6 +18,13 @@ export default async function handler(req, res) {
 
   const { user, error } = await verifyUser(req)
   if (error) return res.status(401).json({ error })
+
+  if (!await enforceRateLimit(req, res, {
+    identifier: user.id,
+    limit: 60,
+    window: '1 m',
+    prefix: 'captain-mutations',
+  })) return
 
   const { action, ...body } = req.body ?? {}
 

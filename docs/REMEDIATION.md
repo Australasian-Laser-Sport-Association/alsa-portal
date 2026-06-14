@@ -22,7 +22,7 @@ are all complete.
 
 | ID | Finding | Status |
 | --- | --- | --- |
-| ABUSE-01 | Application endpoints lack consistent rate limits | Open |
+| ABUSE-01 | Application endpoints lack consistent rate limits | Partially fixed; high-impact search, claim, profile, captain, volunteer, and admin event routes protected |
 | OPS-02 | Backup failures are not externally actionable | Open |
 | LEGAL-01 | Legal acceptance evidence and immutability are incomplete | Code complete; deployment verification pending |
 | DB-01 | Database reset, seed, and drift checks are not in CI | Open |

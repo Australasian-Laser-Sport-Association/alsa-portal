@@ -6,6 +6,7 @@ import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { cleanupFormerSideEventMember, ensureSideEventMember } from '../_lib/sideEventCleanup.js'
 import { changeProfileAlias } from '../_lib/profileChanges.js'
 import { buildBackupFiles } from '../_lib/backupStorage.js'
+import { enforceRateLimit } from '../_lib/rateLimit.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -1318,6 +1319,14 @@ export default async function handler(req, res) {
 
   const { user, error: authErr } = await verifyCommittee(req)
   if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+
+  const limit = resource === 'profile-search' ? 60 : 120
+  if (!await enforceRateLimit(req, res, {
+    identifier: user.id,
+    limit,
+    window: '1 m',
+    prefix: resource === 'profile-search' ? 'admin-profile-search' : 'admin-event',
+  })) return
 
   if (resource === 'event')            return handleEvent(req, res)
   if (resource === 'registrations')    return handleRegistrations(req, res, user)

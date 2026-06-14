@@ -1,6 +1,7 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser, getTeammateIds } from './_lib/auth.js'
 import { COMMITTEE_ROLES, PUBLIC_ROLE_BADGE_ROLES } from '../src/lib/roles.js'
+import { enforceRateLimit } from './_lib/rateLimit.js'
 
 // Sanity cap on the ID-lookup batch. The largest legitimate caller is
 // EventPage, which requests every registration + captain for one event year
@@ -44,6 +45,12 @@ export default async function handler(req, res) {
 
   const { user, error: authErr } = await verifyUser(req)
   if (authErr) return res.status(401).json({ error: authErr })
+  if (!await enforceRateLimit(req, res, {
+    identifier: user.id,
+    limit: 60,
+    window: '1 m',
+    prefix: 'profile-lookup',
+  })) return
 
   const { ids, teamId, eventYear, year } = req.body ?? {}
 

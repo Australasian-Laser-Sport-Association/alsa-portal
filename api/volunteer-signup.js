@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { verifyUser } from './_lib/auth.js'
 import { eventPhase } from '../src/lib/eventPhase.js'
+import { enforceRateLimit } from './_lib/rateLimit.js'
 
 // Player-facing volunteer signup. One flat handler (Vercel function-count cap):
 //   GET    ?registration_id=  → caller's signup (roles + status + notes) or 404
@@ -50,6 +51,12 @@ function shapeSignup(signup) {
 export default async function handler(req, res) {
   const { user, error: authErr } = await verifyUser(req)
   if (authErr) return res.status(401).json({ error: authErr })
+  if ((req.method === 'PUT' || req.method === 'DELETE') && !await enforceRateLimit(req, res, {
+    identifier: user.id,
+    limit: 30,
+    window: '1 m',
+    prefix: 'volunteer-mutations',
+  })) return
 
   const registrationId = req.query.registration_id
   if (!registrationId) return res.status(400).json({ error: 'registration_id is required' })

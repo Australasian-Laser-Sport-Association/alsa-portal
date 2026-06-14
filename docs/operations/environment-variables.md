@@ -39,8 +39,8 @@ This distinction is security-relevant: a value prefixed `VITE_` will be embedded
 | `RESEND_API_KEY` | Resend API key for transactional email. Used by `api/contact.js` and optional summary-only backup notifications. Backup files are stored privately and never attached. | **No** — allows sending mail from the project's Resend domain. | Resend dashboard → API Keys |
 | `CRON_SECRET` | Shared secret protecting the backup cron. Vercel auto-injects `Authorization: Bearer <secret>` on scheduled requests; the handler rejects any request that does not match (constant-time compare). | **No** — leak lets anyone trigger the backup-run endpoint. Generate a long random string. | Self-generated (e.g. `openssl rand -hex 32`); set the same value in Vercel. |
 | `SENTRY_AUTH_TOKEN` | Build-time token used by the Sentry Vite plugin (`vite.config.js`) to upload source maps during `vite build`. If unset, the upload (and the post-upload `.map` cleanup) is skipped. | **No** — grants Sentry project write access. Build-time only; not in the runtime bundle. | Sentry dashboard → Settings → Auth Tokens |
-| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint. Read via `Redis.fromEnv()` in `api/contact.js` for contact-form rate limiting. Required (with the token below) for that endpoint. | **No** — server-side only. | Upstash dashboard → Redis database → REST API |
-| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST auth token. Paired with `UPSTASH_REDIS_REST_URL` for rate limiting in `api/contact.js`. | **No** — grants read/write to the rate-limit store. | Upstash dashboard → Redis database → REST API |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST endpoint used by public and authenticated API rate limiters. Required in production with the token below; protected authenticated routes fail closed if it is unavailable. | **No** — server-side only. | Upstash dashboard → Redis database → REST API |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST auth token paired with `UPSTASH_REDIS_REST_URL`. | **No** — grants read/write to the rate-limit store. | Upstash dashboard → Redis database → REST API |
 
 ## Adding a new variable
 
