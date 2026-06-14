@@ -6,6 +6,7 @@ import { formatDate } from '../lib/dateFormat'
 import { apiFetch } from '../lib/apiFetch.js'
 import { maskStorageUrl } from '../lib/assetUrl'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
+import { COMMITTEE_EMAIL } from '../lib/eventPhase'
 import CommitteeBadge from '../components/CommitteeBadge'
 import MemberBadge from '../components/MemberBadge'
 
@@ -211,7 +212,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
                   readOnly
                   className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/60 cursor-not-allowed focus:outline-none"
                 />
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-1.5 text-xs text-yellow-200/80">Your alias is locked because you've registered for a competition. To change it, email <a href="mailto:committee@lasersport.org.au" className="text-yellow-300 hover:text-yellow-100 underline">committee@lasersport.org.au</a>.</div>
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-1.5 text-xs text-yellow-200/80">Your alias is locked because you've registered for a competition. To change it, email <a href={`mailto:${COMMITTEE_EMAIL}`} className="text-yellow-300 hover:text-yellow-100 underline">{COMMITTEE_EMAIL}</a>.</div>
               </div>
             ) : (
               <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
@@ -461,11 +462,6 @@ export default function PlayerDashboard() {
   const [aliasLocked, setAliasLocked] = useState(false)
   const [ownsTeam, setOwnsTeam] = useState(false)
 
-  useEffect(() => {
-    if (!user) return
-    load()
-  }, [user]) // eslint-disable-line
-
   async function load() {
     const { data: ev } = await supabase
       .from('zltac_events').select('name, year').eq('status', 'open').maybeSingle()
@@ -522,6 +518,12 @@ export default function PlayerDashboard() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (!user) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load()
+  }, [user]) // eslint-disable-line
 
   if (loading || profileLoading) {
     return (
