@@ -46,5 +46,16 @@ describe('authentication boundary', () => {
     expect(result.roles).toEqual(['zltac_committee'])
     expect(from).toHaveBeenCalledTimes(1)
   })
-})
 
+  it('does not treat an advisor designation as committee authority', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+    maybeSingle.mockResolvedValue({
+      data: { roles: ['advisor'], suspended: false },
+      error: null,
+    })
+
+    const result = await verifyCommittee({ headers: { authorization: 'Bearer valid-token' } })
+
+    expect(result.error).toBe('Forbidden')
+  })
+})

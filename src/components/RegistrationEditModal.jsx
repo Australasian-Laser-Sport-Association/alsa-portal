@@ -100,6 +100,7 @@ export default function RegistrationEditModal({
   const uid = useId()
   // Player identity (alias/state live on profiles; emergency contact on the reg)
   const [alias, setAlias] = useState(profile?.alias ?? '')
+  const [aliasChangeReason, setAliasChangeReason] = useState('')
   const [stateVal, setStateVal] = useState(profile?.state ?? '')
   const [ecName, setEcName] = useState(registration.emergency_contact_name ?? '')
   const [ecPhone, setEcPhone] = useState(registration.emergency_contact_phone ?? '')
@@ -190,6 +191,14 @@ export default function RegistrationEditModal({
   async function save() {
     setError('')
 
+    const nextAlias = alias.trim() || null
+    const originalAlias = profile?.alias?.trim() || null
+    const aliasChanged = nextAlias !== originalAlias
+    if (aliasChanged && aliasChangeReason.trim().length < 5) {
+      setError('Changing the alias requires a reason of at least 5 characters.')
+      return
+    }
+
     // Reason validation mirrors the server: every override that is on must
     // carry a reason of at least 5 characters. Per-row error surfaces inline
     // so the admin knows which one to fix.
@@ -209,7 +218,6 @@ export default function RegistrationEditModal({
       const body = {
         registrationId: registration.id,
         // identity
-        alias: alias.trim() || null,
         state: stateVal || null,
         emergency_contact_name: ecName.trim() || null,
         emergency_contact_phone: ecPhone.trim() || null,
@@ -236,6 +244,10 @@ export default function RegistrationEditModal({
         admin_override_u18_reason: ovU18 != null ? ovU18Reason.trim() : null,
         // audit
         admin_note: adminNote.trim() || null,
+      }
+      if (aliasChanged) {
+        body.alias = nextAlias
+        body.alias_change_reason = aliasChangeReason.trim()
       }
       const result = await apiFetch('/api/admin/event?resource=registrations', {
         method: 'PATCH',
@@ -298,8 +310,22 @@ export default function RegistrationEditModal({
                 <label htmlFor={`${uid}-ec-phone`} className={labelCls}>Emergency contact phone</label>
                 <input id={`${uid}-ec-phone`} type="text" value={ecPhone} onChange={e => setEcPhone(e.target.value)} className={inputCls} placeholder="—" />
               </div>
+              {(alias.trim() || null) !== (profile?.alias?.trim() || null) && (
+                <div className="col-span-2">
+                  <label htmlFor={`${uid}-alias-reason`} className={labelCls}>Alias change reason</label>
+                  <textarea
+                    id={`${uid}-alias-reason`}
+                    rows={2}
+                    value={aliasChangeReason}
+                    onChange={e => setAliasChangeReason(e.target.value)}
+                    className={`${inputCls} resize-none`}
+                    placeholder="Why is this identity change required?"
+                  />
+                  <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Required and stored in the profile audit trail.</p>
+                </div>
+              )}
             </div>
-            <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Alias and state are saved to the player's profile.</p>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Alias and state are saved to the player's profile. Alias edits are audited.</p>
           </div>
 
           <div className="border-t border-line" />

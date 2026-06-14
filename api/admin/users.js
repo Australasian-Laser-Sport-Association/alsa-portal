@@ -1,6 +1,7 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { PERMANENT_BAN, setUserSuspension } from '../_lib/suspension.js'
+import { changeProfileAlias } from '../_lib/profileChanges.js'
 
 // Shared by the 'reset' and 'remove-access' actions: blank all PII and drop
 // back to the base role. The profiles row itself is kept, so nothing cascades.
@@ -162,15 +163,6 @@ export default async function handler(req, res) {
         if (result.error) return res.status(500).json({ error: result.error })
         return res.json({ ok: true })
       } else if (Object.prototype.hasOwnProperty.call(body, 'alias')) {
-        // Committee alias edit. Normalise: trim, empty -> null. Length cap 30,
-        // no charset rules (mirrors the trim-only handling at signup; format
-        // validation is intentionally out of scope here).
-        const raw = typeof body.alias === 'string' ? body.alias.trim() : ''
-        const alias = raw || null
-        if (alias && alias.length > 30) {
-          return res.status(400).json({ error: 'Alias must be 30 characters or fewer.' })
-        }
-
         // Authority: editing the alias of a target whose roles include
         // 'superadmin' requires superadmin (mirrors the suspend guard). The
         // whole-endpoint self-block above already prevents editing your own row.
@@ -186,47 +178,21 @@ export default async function handler(req, res) {
           if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
         }
 
-        // Soft uniqueness guard — committee curation path only. There is NO DB
-        // unique constraint on alias (deliberate; the hard constraint is a
-        // separate task). Compare case-insensitively in JS to match
-        // claim_placeholder's lower() semantics exactly and sidestep ilike
-        // wildcard edge cases (% _ * in an alias). Exclude the target's own row
-        // so re-saving an unchanged alias is a no-op, not a false collision.
-        if (alias) {
-          const { data: others, error: clashErr } = await supabaseAdmin
-            .from('profiles')
-            .select('id, first_name, last_name, alias')
-            .neq('id', id)
-            .not('alias', 'is', null)
-          if (clashErr) return res.status(500).json({ error: clashErr.message })
-          const lc = alias.toLowerCase()
-          const clash = (others ?? []).find(o => (o.alias ?? '').toLowerCase() === lc)
-          if (clash) {
-            const who = [clash.first_name, clash.last_name].filter(Boolean).join(' ') || 'another member'
-            return res.status(409).json({
-              error: `Alias "${clash.alias}" is already used by ${who}. Choose a different alias.`,
-            })
-          }
-        }
-
-        // Update profiles.alias ONLY. Do NOT cascade to existing
-        // payments / zltac_registrations payment_reference values — those are
-        // frozen at insert by design (see 20260514000000_payment_tracking.sql).
-        update = { alias }
+        const result = await changeProfileAlias({
+          supabase: supabaseAdmin,
+          targetProfileId: id,
+          newAlias: body.alias,
+          reason: body.alias_change_reason,
+          changedBy: caller.id,
+          source: 'admin-users',
+        })
+        if (result.error) return res.status(result.status).json({ error: result.error })
+        return res.json({ ok: true, alias: result.data?.alias ?? null })
       } else {
         return res.status(400).json({ error: 'roles, suspended, or action is required' })
       }
       const { error: patchErr } = await supabaseAdmin.from('profiles').update(update).eq('id', id)
-      if (patchErr) {
-        // Race backstop to the alias soft-check above: the lower(alias) unique
-        // index (23505) can still fire if a concurrent write took the alias
-        // between the soft-check and this update. The soft-check returns a more
-        // specific message; this is the generic fallback for the race.
-        if (patchErr.code === '23505') {
-          return res.status(409).json({ error: 'That alias is already taken, please choose another.' })
-        }
-        return res.status(500).json({ error: patchErr.message })
-      }
+      if (patchErr) return res.status(500).json({ error: patchErr.message })
       return res.json({ ok: true })
     }
 

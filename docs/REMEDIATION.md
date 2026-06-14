@@ -10,7 +10,7 @@ are all complete.
 | --- | --- | --- | --- |
 | SEC-01 | Active storage content exposed on the application origin | Code complete | Apply migration, run verification SQL and hosted-object cleanup |
 | SEC-02 | Suspended accounts remain authorized | Code complete | Apply migration and run API/RLS verification |
-| AUTH-01 | Committee roles have overly broad write access | Open | Capability matrix and authorization tests |
+| AUTH-01 | Committee roles have overly broad write access | Partially fixed | Advisor authority removed and alias changes audited; finer ALSA/ZLTAC capability scopes remain |
 | DATA-01 | Registration and team limits are not atomic | Open | Transactional database tests |
 | DATA-02 | Multi-table registration/team/payment workflows are not transactional | Open | RPC migration and failure-path tests |
 | OPS-01 | PII exports are emailed and are not restorable backups | Open | Encrypted backup target and restore exercise |

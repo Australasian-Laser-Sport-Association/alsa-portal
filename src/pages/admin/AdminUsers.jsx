@@ -2,7 +2,7 @@
 import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
-import { COMMITTEE_ROLES, ROLE_ORDER, isCommittee } from '../../lib/roles'
+import { PRIVILEGED_ROLES, ROLE_ORDER, isCommittee } from '../../lib/roles'
 import Dialog from '../../components/Dialog'
 
 const ALL_ROLES = ['player', 'captain', 'zltac_committee', 'alsa_committee', 'advisor', 'superadmin']
@@ -140,6 +140,7 @@ export default function AdminUsers() {
   const [savingRoles, setSavingRoles] = useState(false)
   const [editingAlias, setEditingAlias] = useState(false)
   const [draftAlias, setDraftAlias] = useState('')
+  const [aliasChangeReason, setAliasChangeReason] = useState('')
   const [savingAlias, setSavingAlias] = useState(false)
   const [aliasMsg, setAliasMsg] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -200,6 +201,7 @@ export default function AdminUsers() {
     setEditingRoles(false)
     setEditingAlias(false)
     setDraftAlias(u.alias ?? '')
+    setAliasChangeReason('')
     setAliasMsg(null)
     setMsg(null)
     setConfirmDelete(null)
@@ -249,16 +251,26 @@ export default function AdminUsers() {
       return
     }
     const nextAlias = trimmed || null
+    if (nextAlias === (selected?.alias?.trim() || null)) {
+      setEditingAlias(false)
+      setAliasMsg(null)
+      return
+    }
+    if (aliasChangeReason.trim().length < 5) {
+      setAliasMsg({ type: 'error', text: 'Alias change reason must be at least 5 characters.' })
+      return
+    }
     setSavingAlias(true)
     try {
       await apiFetch(`/api/admin/users?id=${userId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ alias: nextAlias }),
+        body: JSON.stringify({ alias: nextAlias, alias_change_reason: aliasChangeReason.trim() }),
       })
       const update = u => u.id === userId ? { ...u, alias: nextAlias } : u
       setUsers(us => us.map(update))
       setSelected(s => s ? { ...s, alias: nextAlias } : s)
       setDraftAlias(nextAlias ?? '')
+      setAliasChangeReason('')
       setEditingAlias(false)
       setAliasMsg({ type: 'ok', text: 'Alias updated.' })
     } catch (err) {
@@ -315,7 +327,7 @@ export default function AdminUsers() {
 
   function canAssignRole(targetRole) {
     if (isSuperAdmin) return true
-    return !COMMITTEE_ROLES.includes(targetRole)
+    return !PRIVILEGED_ROLES.includes(targetRole)
   }
 
   const allStates = useMemo(
@@ -443,7 +455,7 @@ export default function AdminUsers() {
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] text-white/60 font-bold uppercase tracking-wider">Alias</p>
                 {!editingAlias && (
-                  <button onClick={() => { setEditingAlias(true); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
+                  <button onClick={() => { setEditingAlias(true); setDraftAlias(selected.alias ?? ''); setAliasChangeReason(''); setAliasMsg(null) }}
                     className="text-[10px] text-brand/70 hover:text-brand font-semibold transition-colors">
                     Edit alias
                   </button>
@@ -461,12 +473,27 @@ export default function AdminUsers() {
                     className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white opacity-100 placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors mb-1.5"
                   />
                   <p className="text-[10px] text-white/60 mb-3">Leave blank to clear. Max 30 characters.</p>
+                  {(draftAlias.trim() || null) !== (selected.alias?.trim() || null) && (
+                    <>
+                      <label htmlFor="alias-change-reason" className="block text-[10px] text-white/60 font-bold uppercase tracking-wider mb-1.5">
+                        Change reason
+                      </label>
+                      <textarea
+                        id="alias-change-reason"
+                        rows={2}
+                        value={aliasChangeReason}
+                        onChange={e => setAliasChangeReason(e.target.value)}
+                        placeholder="Why is this identity change required?"
+                        className="w-full bg-base border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand resize-none mb-3"
+                      />
+                    </>
+                  )}
                   <div className="flex gap-2">
                     <button onClick={() => saveAlias(selected.id)} disabled={savingAlias}
                       className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black text-xs font-bold px-4 py-2 rounded-lg transition-all">
                       {savingAlias ? 'Saving…' : 'Save Alias'}
                     </button>
-                    <button onClick={() => { setEditingAlias(false); setDraftAlias(selected.alias ?? ''); setAliasMsg(null) }}
+                    <button onClick={() => { setEditingAlias(false); setDraftAlias(selected.alias ?? ''); setAliasChangeReason(''); setAliasMsg(null) }}
                       className="border border-line text-white/60 hover:text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors">
                       Cancel
                     </button>

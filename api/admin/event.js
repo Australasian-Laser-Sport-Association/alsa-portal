@@ -4,6 +4,7 @@ import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { cleanupFormerSideEventMember, ensureSideEventMember } from '../_lib/sideEventCleanup.js'
+import { changeProfileAlias } from '../_lib/profileChanges.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -300,8 +301,31 @@ async function handleRegistrations(req, res, user) {
       if (updErr) return res.status(500).json({ error: updErr.message })
     }
 
+    if ('alias' in body) {
+      const { data: target, error: targetErr } = await supabaseAdmin
+        .from('profiles')
+        .select('roles')
+        .eq('id', reg.user_id)
+        .maybeSingle()
+      if (targetErr) return res.status(500).json({ error: targetErr.message })
+      if (!target) return res.status(404).json({ error: 'Profile not found' })
+      if ((target.roles ?? []).includes('superadmin')) {
+        const { error: superErr } = await verifySuperAdmin(req)
+        if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
+      }
+
+      const aliasResult = await changeProfileAlias({
+        supabase: supabaseAdmin,
+        targetProfileId: reg.user_id,
+        newAlias: body.alias,
+        reason: body.alias_change_reason,
+        changedBy: user.id,
+        source: 'registration-editor',
+      })
+      if (aliasResult.error) return res.status(aliasResult.status).json({ error: aliasResult.error })
+    }
+
     const profileUpdates = {}
-    if ('alias' in body) profileUpdates.alias = body.alias?.trim() || null
     if ('state' in body) profileUpdates.state = body.state || null
     if (Object.keys(profileUpdates).length > 0) {
       const { error: profErr } = await supabaseAdmin
