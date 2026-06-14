@@ -3,7 +3,7 @@ import { COMMITTEE_ROLES } from '../../src/lib/roles.js'
 
 export function statusForAuthError(error) {
   if (error === 'Unauthorized') return 401
-  if (error === 'Forbidden') return 403
+  if (error === 'Forbidden' || error === 'Account suspended') return 403
   return 500
 }
 
@@ -12,23 +12,27 @@ export async function verifyUser(req) {
   if (!token) return { user: null, error: 'Unauthorized' }
   const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
   if (error || !user) return { user: null, error: 'Unauthorized' }
-  return { user, error: null }
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('roles, suspended')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (profileError || !profile) {
+    return { user: null, profile: null, roles: null, error: 'Internal error' }
+  }
+  if (profile.suspended) {
+    return { user: null, profile: null, roles: null, error: 'Account suspended' }
+  }
+  return { user, profile, roles: profile.roles ?? [], error: null }
 }
 
 export async function verifyCommittee(req) {
-  const { user, error } = await verifyUser(req)
+  const { user, profile, roles, error } = await verifyUser(req)
   if (error) return { user: null, roles: null, error }
-  const { data: profile, error: profileErr } = await supabaseAdmin
-    .from('profiles')
-    .select('roles')
-    .eq('id', user.id)
-    .maybeSingle()
-  if (profileErr) return { user: null, roles: null, error: 'Internal error' }
-  const roles = profile?.roles ?? []
   if (!roles.some(r => COMMITTEE_ROLES.includes(r))) {
     return { user: null, roles: null, error: 'Forbidden' }
   }
-  return { user, roles, error: null }
+  return { user, profile, roles, error: null }
 }
 
 export async function verifySuperAdmin(req) {

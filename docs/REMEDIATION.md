@@ -9,7 +9,7 @@ are all complete.
 | ID | Finding | Status | Evidence required |
 | --- | --- | --- | --- |
 | SEC-01 | Active storage content exposed on the application origin | Code complete | Apply migration, run verification SQL and hosted-object cleanup |
-| SEC-02 | Suspended accounts remain authorized | Open | API/RLS enforcement and session revocation tests |
+| SEC-02 | Suspended accounts remain authorized | Code complete | Apply migration and run API/RLS verification |
 | AUTH-01 | Committee roles have overly broad write access | Open | Capability matrix and authorization tests |
 | DATA-01 | Registration and team limits are not atomic | Open | Transactional database tests |
 | DATA-02 | Multi-table registration/team/payment workflows are not transactional | Open | RPC migration and failure-path tests |

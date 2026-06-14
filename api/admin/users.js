@@ -1,5 +1,6 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/auth.js'
+import { PERMANENT_BAN, setUserSuspension } from '../_lib/suspension.js'
 
 // Shared by the 'reset' and 'remove-access' actions: blank all PII and drop
 // back to the base role. The profiles row itself is kept, so nothing cascades.
@@ -18,10 +19,6 @@ const ANONYMISE_UPDATE = {
   avatar_url: null,
   roles: ['player'],
 }
-
-// auth.admin ban_duration is a Go-style duration with no "permanent" option;
-// ~100 years is effectively permanent.
-const PERMANENT_BAN = '876600h'
 
 export default async function handler(req, res) {
   const { id } = req.query
@@ -146,7 +143,7 @@ export default async function handler(req, res) {
         // requires superadmin — prevents committee locking out a superadmin.
         const { data: target, error: targetErr } = await supabaseAdmin
           .from('profiles')
-          .select('roles')
+          .select('roles, suspended, is_placeholder')
           .eq('id', id)
           .maybeSingle()
         if (targetErr) return res.status(500).json({ error: targetErr.message })
@@ -154,7 +151,16 @@ export default async function handler(req, res) {
           const { error: superErr } = await verifySuperAdmin(req)
           if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
         }
-        update = { suspended: body.suspended }
+        if (!target) return res.status(404).json({ error: 'User not found' })
+        const result = await setUserSuspension({
+          supabase: supabaseAdmin,
+          userId: id,
+          suspended: body.suspended,
+          previousSuspended: target.suspended,
+          isPlaceholder: target.is_placeholder,
+        })
+        if (result.error) return res.status(500).json({ error: result.error })
+        return res.json({ ok: true })
       } else if (Object.prototype.hasOwnProperty.call(body, 'alias')) {
         // Committee alias edit. Normalise: trim, empty -> null. Length cap 30,
         // no charset rules (mirrors the trim-only handling at signup; format
