@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, memo, Fragment } from 'react'
+﻿import { useState, useEffect, useMemo, useCallback, useId, memo, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
@@ -202,6 +202,196 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
   )
 }
 
+const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+
+const TEAM_FORMAT_OPTIONS = [
+  { value: 'team', label: 'Team' },
+  { value: 'doubles', label: 'Doubles' },
+  { value: 'triples', label: 'Triples' },
+]
+const TEAM_ENTRY_OPTIONS = [
+  { value: '', label: 'Not set' },
+  { value: 'state_association', label: 'State Association' },
+  { value: 'direct_entry', label: 'Direct Entry' },
+]
+const TEAM_STATUS_OPTIONS = ['draft', 'pending', 'approved', 'rejected']
+
+function personName(profile) {
+  const full = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
+  return full || profile?.alias || 'Unknown'
+}
+
+// Admin-only modal to edit a single ZLTAC team's settings. Writes through the
+// service-role team-settings route, which is exempt from the team lock, so a
+// locked team stays editable. Mirrors RegistrationEditModal's layout.
+function TeamEditModal({ team, people, onClose, onSaved }) {
+  const uid = useId()
+  const [name, setName] = useState(team.name ?? '')
+  const [stateVal, setStateVal] = useState(team.state ?? '')
+  const [entryType, setEntryType] = useState(team.entry_type ?? '')
+  const [status, setStatus] = useState(team.status ?? 'draft')
+  const [format, setFormat] = useState(team.format ?? 'team')
+  const [homeVenue, setHomeVenue] = useState(team.home_venue ?? '')
+  const [colour, setColour] = useState(team.colour ?? '')
+  const [logoUrl, setLogoUrl] = useState(team.logo_url ?? '')
+  const [captainId, setCaptainId] = useState(team.captain_id ?? '')
+  const [managerId, setManagerId] = useState(team.manager_id ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const inputCls = 'w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand'
+  const labelCls = 'block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5'
+
+  const peopleOptions = useMemo(() => (people ?? [])
+    .filter(p => p.user_id)
+    .map(p => ({ id: p.user_id, name: personName(p.profile) }))
+    .sort((a, b) => a.name.localeCompare(b.name)), [people])
+
+  async function save() {
+    setError('')
+    if (!name.trim() || name.trim().length > 80) { setError('Team name is required and must be 80 characters or fewer.'); return }
+    if (!STATES.includes(stateVal)) { setError('A valid team state is required.'); return }
+    if (!captainId) { setError('A captain is required.'); return }
+    if (colour.trim() && !/^#[0-9a-f]{6}$/i.test(colour.trim())) { setError('Team colour must be a hex value like #00FF41.'); return }
+    setSaving(true)
+    try {
+      const result = await apiFetch('/api/admin/event?resource=team-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          teamId: team.id,
+          name: name.trim(),
+          state: stateVal,
+          entry_type: entryType || null,
+          status,
+          format,
+          home_venue: homeVenue.trim() || null,
+          colour: colour.trim() || null,
+          logo_url: logoUrl.trim() || null,
+          captain_id: captainId,
+          manager_id: managerId || null,
+        }),
+      })
+      onSaved(result.team)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} variant="scroll" size="2xl" closeOnBackdrop>
+      <div className="p-6 border-b border-line flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <Dialog.Title className="text-white font-bold text-lg">Edit team</Dialog.Title>
+          <p className="text-[#e5e5e5]/60 text-sm mt-0.5 truncate">{team.name}</p>
+        </div>
+        <button onClick={onClose} aria-label="Close" className="text-[#e5e5e5]/60 hover:text-white text-2xl leading-none">×</button>
+      </div>
+
+      {error && (
+        <div role="alert" className="mx-6 mt-4 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-red-400 text-xs">{error}</div>
+      )}
+
+      <div className="p-6">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label htmlFor={`${uid}-name`} className={labelCls}>Team name</label>
+            <input id={`${uid}-name`} type="text" maxLength={80} value={name} onChange={e => setName(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label htmlFor={`${uid}-state`} className={labelCls}>State</label>
+            <select id={`${uid}-state`} value={stateVal} onChange={e => setStateVal(e.target.value)} className={inputCls}>
+              <option value="">Select…</option>
+              {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${uid}-entry`} className={labelCls}>Entry type</label>
+            <select id={`${uid}-entry`} value={entryType} onChange={e => setEntryType(e.target.value)} className={inputCls}>
+              {TEAM_ENTRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${uid}-status`} className={labelCls}>Status</label>
+            <select id={`${uid}-status`} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
+              {TEAM_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${uid}-format`} className={labelCls}>Format</label>
+            <select id={`${uid}-format`} value={format} onChange={e => setFormat(e.target.value)} className={inputCls}>
+              {TEAM_FORMAT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${uid}-captain`} className={labelCls}>Captain</label>
+            <select id={`${uid}-captain`} value={captainId} onChange={e => setCaptainId(e.target.value)} className={inputCls}>
+              <option value="">Select…</option>
+              {peopleOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${uid}-manager`} className={labelCls}>Manager</label>
+            <select id={`${uid}-manager`} value={managerId} onChange={e => setManagerId(e.target.value)} className={inputCls}>
+              <option value="">No manager</option>
+              {peopleOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label htmlFor={`${uid}-venue`} className={labelCls}>Home venue</label>
+            <input id={`${uid}-venue`} type="text" maxLength={120} value={homeVenue} onChange={e => setHomeVenue(e.target.value)} className={inputCls} placeholder="—" />
+          </div>
+          <div>
+            <label htmlFor={`${uid}-colour`} className={labelCls}>Colour</label>
+            <input id={`${uid}-colour`} type="text" value={colour} onChange={e => setColour(e.target.value)} className={inputCls} placeholder="#00FF41" />
+          </div>
+          <div>
+            <label htmlFor={`${uid}-logo`} className={labelCls}>Logo URL</label>
+            <input id={`${uid}-logo`} type="text" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} className={inputCls} placeholder="—" />
+          </div>
+        </div>
+        <p className="text-[10px] text-[#e5e5e5]/60 mt-3">Committee edits bypass the team lock. Changing the captain updates the team record only, not roster membership.</p>
+      </div>
+
+      <div className="px-6 py-4 border-t border-line flex items-center justify-end gap-3">
+        <button onClick={onClose} className="text-sm text-[#e5e5e5]/60 hover:text-white px-3 py-2">Cancel</button>
+        <button onClick={save} disabled={saving} className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-colors">
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
+// Small per-team "add an unassigned player" control. Holds its own select state
+// so the parent doesn't need per-row state inside the team map.
+function AddPlayerControl({ candidates, busy, onAdd }) {
+  const [pick, setPick] = useState('')
+  if (candidates.length === 0) {
+    return <p className="text-[#e5e5e5]/50 text-xs">No unassigned registered players to add.</p>
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={pick}
+        onChange={e => setPick(e.target.value)}
+        className="bg-base border border-line rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand max-w-xs"
+      >
+        <option value="">Add a player…</option>
+        {candidates.map(c => <option key={c.user_id} value={c.user_id}>{c.label}</option>)}
+      </select>
+      <button
+        onClick={() => { if (pick) { onAdd(pick); setPick('') } }}
+        disabled={busy || !pick}
+        className="text-xs bg-brand/10 hover:bg-brand/20 disabled:opacity-40 text-brand font-semibold px-3 py-1.5 rounded-lg transition-colors"
+      >
+        Add to team
+      </button>
+    </div>
+  )
+}
+
 // Minimum canonical roster to field a ZLTAC team. Mirrors the captain-side
 // submit gate (CaptainHub / api/captain submit-team); shown here as context for
 // the committee while reviewing.
@@ -395,6 +585,7 @@ export default function AdminRegistrations() {
   const [reviewError, setReviewError] = useState('')
   const [rejectingTeam, setRejectingTeam] = useState(null) // team id whose reject-reason input is open
   const [rejectReason, setRejectReason] = useState('')
+  const [editTeam, setEditTeam] = useState(null)          // team row being edited in TeamEditModal
 
   // Deep link from the Admin Event page ("Add manual registration") opens the
   // modal directly. Consume the param so a refresh does not reopen it.
@@ -638,6 +829,40 @@ export default function AdminRegistrations() {
     }
   }
 
+  // Registered players for the year with no team — candidates for "Add to team".
+  const unassignedPlayers = useMemo(
+    () => players.filter(p => !p.team_id).map(p => ({
+      user_id: p.user_id,
+      label: `${personName(p.profile)}${p.profile?.alias ? ` (${p.profile.alias})` : ''}`,
+    })),
+    [players]
+  )
+
+  function handleTeamSettingsSaved(updatedTeam) {
+    setEditTeam(null)
+    setTeams(prev => prev.map(t => (t.id === updatedTeam.id ? { ...t, ...updatedTeam } : t)))
+    showToast('Team updated')
+  }
+
+  // add / remove / move all set zltac_registrations.team_id server-side, recompute
+  // fees, then refetch so rosters, player rows, and balances stay consistent.
+  async function rosterChange(action, userId, teamId) {
+    setReviewBusy(true)
+    setReviewError('')
+    try {
+      await apiFetch('/api/admin/event?resource=team-roster', {
+        method: 'POST',
+        body: JSON.stringify({ action, userId, teamId, year: eventYear }),
+      })
+      await fetchAll()
+      showToast(action === 'remove' ? 'Player removed from team' : 'Roster updated')
+    } catch (err) {
+      setReviewError(err?.message || 'Could not update the roster.')
+    } finally {
+      setReviewBusy(false)
+    }
+  }
+
   // Expand/collapse a team's roster; resets any in-progress review state so a
   // stale error/reason from one team never bleeds into another.
   function toggleExpand(id) {
@@ -775,6 +1000,16 @@ export default function AdminRegistrations() {
             showToast('Placeholder linked. Registration moved to the chosen user.')
             fetchAll()
           }}
+        />
+      )}
+
+      {/* Edit team settings modal */}
+      {editTeam && (
+        <TeamEditModal
+          team={editTeam}
+          people={allPlayersForPicker}
+          onClose={() => setEditTeam(null)}
+          onSaved={handleTeamSettingsSaved}
         />
       )}
 
@@ -991,12 +1226,20 @@ export default function AdminRegistrations() {
                         <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{playerCountByTeam[t.id] ?? 0}</td>
                         <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(t.created_at)}</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={e => { e.stopPropagation(); toggleExpand(t.id) }}
-                            className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            {isExpanded ? 'Hide roster' : 'Review roster'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={e => { e.stopPropagation(); setEditTeam(t) }}
+                              className="text-xs bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              Edit team
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleExpand(t.id) }}
+                              className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              {isExpanded ? 'Hide roster' : 'Review roster'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (
@@ -1013,6 +1256,7 @@ export default function AdminRegistrations() {
                                 {orderedRoster.map(p => {
                                   const isCap = p.user_id === t.captain_id
                                   const pname = [p.profile?.first_name, p.profile?.last_name].filter(Boolean).join(' ') || 'Unknown'
+                                  const otherTeams = teams.filter(x => x.id !== t.id)
                                   return (
                                     <div key={p.id} className="flex items-center gap-2 flex-wrap">
                                       <span className="text-white text-xs font-medium">{pname}</span>
@@ -1022,11 +1266,43 @@ export default function AdminRegistrations() {
                                         : <span className="text-[10px] text-[#e5e5e5]/50">State not set</span>}
                                       {isCap && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">Captain</span>}
                                       <EligibilityChips p={p} cocRequired={cocRequired} refRequired={refRequired} paymentRequired={paymentRequired} />
+                                      {isCap ? (
+                                        <span className="ml-auto text-[10px] text-[#e5e5e5]/50">Reassign captain in Edit team first</span>
+                                      ) : (
+                                        <span className="ml-auto flex items-center gap-2">
+                                          {otherTeams.length > 0 && (
+                                            <select
+                                              value=""
+                                              disabled={reviewBusy}
+                                              onChange={e => { if (e.target.value) rosterChange('move', p.user_id, e.target.value) }}
+                                              className="bg-base border border-line rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand"
+                                            >
+                                              <option value="">Move to…</option>
+                                              {otherTeams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                            </select>
+                                          )}
+                                          <button
+                                            onClick={() => rosterChange('remove', p.user_id, null)}
+                                            disabled={reviewBusy}
+                                            className="text-[11px] bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 text-red-400 font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                                          >
+                                            Remove
+                                          </button>
+                                        </span>
+                                      )}
                                     </div>
                                   )
                                 })}
                               </div>
                             )}
+
+                            <div className="mb-3 pt-1">
+                              <AddPlayerControl
+                                candidates={unassignedPlayers}
+                                busy={reviewBusy}
+                                onAdd={userId => rosterChange('add', userId, t.id)}
+                              />
+                            </div>
 
                             {canReview ? (
                               <div className="pt-2 border-t border-line">
