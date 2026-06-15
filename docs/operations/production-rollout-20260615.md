@@ -5,6 +5,23 @@ Status: **NO-GO until every gate below is satisfied.**
 This rollout contains seven hosted migrations: two existing application
 migrations and five remediation migrations. There is no advisor migration.
 
+## Recorded rollback deployment
+
+Verified on 2026-06-15 before the rollout:
+
+- Vercel deployment ID: `dpl_AY7YWr8yaAWtAR92zaten8s2dbfa`
+- Deployment URL: `https://alsa-portal-l6x4wts5y-alsa-e4cd3ec0.vercel.app`
+- Source: `main` commit `e1036169c6bb76aee867a4b52a37fa5e6f2317cc`
+- Status: Ready, currently carrying the production aliases
+
+Emergency code rollback is to promote this deployment back to production.
+Do not redeploy it from source during an incident.
+
+The deployment build log also shows Sentry release/source-map upload failures
+with HTTP 401 due to an invalid Sentry token. The application build still
+completed, so this is not a database-rollout blocker, but production stack
+traces may lack source maps until the Vercel Sentry credential is repaired.
+
 ## Go/no-go gates
 
 - A pull request for `codex/remediation-launch-blockers` is open and GitHub CI
