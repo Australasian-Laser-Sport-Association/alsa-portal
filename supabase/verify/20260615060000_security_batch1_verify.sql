@@ -1,4 +1,4 @@
--- Run after 20260615000000_security_batch1.sql. This script is read-only and
+-- Run after 20260615060000_security_batch1.sql. This script is read-only and
 -- raises an exception on the first failed security invariant.
 
 DO $$
@@ -61,4 +61,3 @@ BEGIN
 
   RAISE NOTICE 'PASS: security batch 1 database invariants hold';
 END $$;
-

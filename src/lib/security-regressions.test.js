@@ -34,7 +34,7 @@ describe('deployment security configuration', () => {
 describe('legal acceptance database boundary', () => {
   it('revokes browser writes and removes the re-attestation uniqueness constraint', async () => {
     const migration = await readFile(
-      new URL('../../supabase/migrations/20260615000000_security_batch1.sql', import.meta.url),
+      new URL('../../supabase/migrations/20260615060000_security_batch1.sql', import.meta.url),
       'utf8',
     )
     expect(migration).toMatch(/REVOKE INSERT, UPDATE, DELETE ON public\.legal_acceptances FROM authenticated/i)

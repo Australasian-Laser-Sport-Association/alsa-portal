@@ -46,7 +46,8 @@ schema parity.
 
 The high-risk assumptions are:
 
-- `security_batch1`: `legal_acceptances` evidence columns and grants;
+- `security_batch1` (`20260615060000`, deliberately last):
+  `legal_acceptances` evidence columns and grants;
   `storage.buckets.allowed_mime_types`; `teams.logo_url`; and
   `referee_questions.image_url` (confirmed in the local reset schema).
 - `suspension_enforcement`: `profiles.id/roles/suspended`,

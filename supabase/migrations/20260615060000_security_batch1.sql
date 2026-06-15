@@ -10,6 +10,9 @@ BEGIN;
 DROP POLICY IF EXISTS legal_acceptances_insert_own ON public.legal_acceptances;
 DROP POLICY IF EXISTS legal_acceptances_update_own ON public.legal_acceptances;
 DROP POLICY IF EXISTS legal_acceptances_committee_all ON public.legal_acceptances;
+DROP POLICY IF EXISTS active_user_insert ON public.legal_acceptances;
+DROP POLICY IF EXISTS active_user_update ON public.legal_acceptances;
+DROP POLICY IF EXISTS active_user_delete ON public.legal_acceptances;
 
 REVOKE INSERT, UPDATE, DELETE ON public.legal_acceptances FROM authenticated;
 
@@ -49,4 +52,3 @@ WHERE image_url IS NOT NULL
   AND lower(split_part(image_url, '?', 1)) LIKE '%.svg';
 
 COMMIT;
-
