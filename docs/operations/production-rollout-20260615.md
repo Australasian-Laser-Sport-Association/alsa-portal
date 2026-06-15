@@ -54,6 +54,12 @@ Generate and verify SHA-256 hashes for all three files. Keep a second encrypted
 copy on separate storage for ongoing Free-plan operations. Database exports
 include Storage metadata, not the stored file contents themselves.
 
+Take a new export immediately before the rollout window; an earlier drill
+export proves the procedure but is not the final recovery point. Verify that the
+off-machine encrypted copy can be decrypted and that its hashes still match.
+Full replacement-project recovery is a 30-60+ minute last resort. The reverse
+SQL pack remains the primary migration rollback.
+
 ## Migration-history rule
 
 The staged procedure below uses the Supabase SQL Editor so the suspension
