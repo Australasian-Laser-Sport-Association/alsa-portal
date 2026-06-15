@@ -11,8 +11,9 @@ migrations and five remediation migrations. There is no advisor migration.
   is green: 23 tests pass, production build passes, ESLint is no worse than the
   0-error/7-warning baseline.
 - A known-good production deployment is selected in Vercel for code rollback.
-- Supabase backup/PITR availability has been confirmed for the production
-  project.
+- Recovery coverage is confirmed. On paid Supabase this may be a recent managed
+  backup or PITR point. On Free it must be a fresh manual export containing
+  roles, schema, data, and verified checksums, stored outside Git.
 - The exact linked dry-run list matches the seven migrations below.
 - `supabase/verify/20260615_preflight_schema_verify.sql` passes in the production
   SQL Editor before any migration is applied.
@@ -38,6 +39,20 @@ Expected order:
 5. `20260615040000_atomic_zltac_capacity_and_captain_team.sql`
 6. `20260615050000_private_backup_storage.sql`
 7. `20260615060000_security_batch1.sql`
+
+For a Free-plan project, create the manual recovery set before the hosted
+preflight. The destination must be git-ignored because the data export contains
+PII:
+
+```powershell
+supabase db dump --linked --role-only --file <backup-dir>\roles.sql
+supabase db dump --linked --file <backup-dir>\schema.sql
+supabase db dump --linked --data-only --use-copy --file <backup-dir>\data.sql
+```
+
+Generate and verify SHA-256 hashes for all three files. Keep a second encrypted
+copy on separate storage for ongoing Free-plan operations. Database exports
+include Storage metadata, not the stored file contents themselves.
 
 ## Migration-history rule
 

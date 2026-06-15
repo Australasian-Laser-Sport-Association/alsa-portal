@@ -35,5 +35,8 @@ dist-ssr
 lint-output.txt
 .env*.local
 
+# Local production database exports (contain PII; never commit)
+.backups/
+
 # Sentry Config File
 .env.sentry-build-plugin
