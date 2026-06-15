@@ -5,11 +5,17 @@ import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/a
 import { computeAndWriteAmountOwing } from '../_lib/computeAmountOwing.js'
 import { cleanupFormerSideEventMember, ensureSideEventMember } from '../_lib/sideEventCleanup.js'
 import { changeProfileAlias } from '../_lib/profileChanges.js'
+import { isAllowedTeamLogoUrl } from '../_lib/captainTeam.js'
 import { buildBackupFiles } from '../_lib/backupStorage.js'
 import { enforceRateLimit } from '../_lib/rateLimit.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
+
+const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
+const TEAM_FORMATS = new Set(['team', 'doubles', 'triples'])
+const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
+const TEAM_STATUSES = new Set(['draft', 'pending', 'approved', 'rejected'])
 
 // Committee-gated event operations. Dispatches by ?resource=:
 //   ?resource=event            → archive / delete the event (POST + body.action)
@@ -176,7 +182,7 @@ async function handleRegistrations(req, res, user) {
     if (evLookupErr) return res.status(500).json({ error: evLookupErr.message })
     const eventId = ev?.id ?? null
     const teamsQuery = eventId
-      ? supabaseAdmin.from('teams').select('id, name, entry_type, state, status, captain_id, created_at, event_id').eq('event_id', eventId)
+      ? supabaseAdmin.from('teams').select('id, name, entry_type, state, status, captain_id, manager_id, home_venue, colour, logo_url, format, rejection_reason, created_at, event_id').eq('event_id', eventId)
       : Promise.resolve({ data: [], error: null })
 
     const [
@@ -1308,6 +1314,140 @@ async function handleTeamReview(req, res) {
   return res.json({ ok: true, status: update.status })
 }
 
+// ── team-settings ───────────────────────────────────────────────────────────
+// Committee edit of any ZLTAC team's settings. Runs on the service role, which
+// is exempt from the Batch-1 team lock (enforce_zltac_team_lock), so locked
+// teams (pending/approved) can still be edited here. Each field is validated
+// and applied only when present in the body. Dispatcher already verifyCommittee'd.
+async function handleTeamSettings(req, res) {
+  if (req.method !== 'PATCH') return res.status(405).json({ error: 'Method not allowed' })
+
+  const body = req.body ?? {}
+  const { teamId } = body
+  if (!teamId) return res.status(400).json({ error: 'teamId is required' })
+
+  const { data: team, error: teamErr } = await supabaseAdmin
+    .from('teams').select('id, event_id').eq('id', teamId).maybeSingle()
+  if (teamErr) return res.status(500).json({ error: teamErr.message })
+  if (!team) return res.status(404).json({ error: 'Team not found' })
+  if (!team.event_id) return res.status(400).json({ error: 'Only ZLTAC teams can be edited here' })
+
+  const updates = {}
+  if ('name' in body) {
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    if (!name || name.length > 80) return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
+    updates.name = name
+  }
+  if ('state' in body) {
+    const state = typeof body.state === 'string' ? body.state.trim() : ''
+    if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
+    updates.state = state
+  }
+  if ('home_venue' in body) {
+    const hv = typeof body.home_venue === 'string' ? body.home_venue.trim() : ''
+    if (hv.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
+    updates.home_venue = hv || null
+  }
+  if ('entry_type' in body) {
+    if (body.entry_type != null && !TEAM_ENTRY_TYPES.has(body.entry_type)) {
+      return res.status(400).json({ error: 'Invalid entry type.' })
+    }
+    updates.entry_type = body.entry_type || null
+  }
+  if ('format' in body) {
+    if (!TEAM_FORMATS.has(body.format)) return res.status(400).json({ error: 'Invalid team format.' })
+    updates.format = body.format
+  }
+  if ('colour' in body) {
+    const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
+    if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
+    updates.colour = colour || null
+  }
+  if ('logo_url' in body) {
+    const logoUrl = typeof body.logo_url === 'string' ? body.logo_url.trim() : ''
+    if (!isAllowedTeamLogoUrl(logoUrl, process.env.VITE_SUPABASE_URL)) {
+      return res.status(400).json({ error: 'Invalid team logo URL.' })
+    }
+    updates.logo_url = logoUrl || null
+  }
+  if ('manager_id' in body) {
+    updates.manager_id = body.manager_id || null
+  }
+  if ('captain_id' in body) {
+    if (!body.captain_id) return res.status(400).json({ error: 'A captain is required.' })
+    updates.captain_id = body.captain_id
+  }
+  if ('status' in body) {
+    if (!TEAM_STATUSES.has(body.status)) return res.status(400).json({ error: 'Invalid status.' })
+    updates.status = body.status
+    // Clear a stale rejection reason whenever the team is no longer rejected.
+    if (body.status !== 'rejected') updates.rejection_reason = null
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'No editable fields supplied.' })
+  }
+
+  const { data: updated, error: updErr } = await supabaseAdmin
+    .from('teams').update(updates).eq('id', teamId)
+    .select('id, name, entry_type, state, status, captain_id, manager_id, home_venue, colour, logo_url, format, rejection_reason, created_at, event_id')
+    .single()
+  if (updErr) return res.status(500).json({ error: updErr.message })
+  return res.json({ ok: true, team: updated })
+}
+
+// ── team-roster ─────────────────────────────────────────────────────────────
+// Committee add / remove / move of a player on a ZLTAC team, by setting,
+// clearing, or changing zltac_registrations.team_id directly. Runs on the
+// service role, which is exempt from the roster lock and (after migration
+// 20260616010000) from the per-team capacity cap. amount_owing is recomputed
+// after every change via computeAndWriteAmountOwing, mirroring the PATCH path.
+async function handleTeamRoster(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  const body = req.body ?? {}
+  const { action, userId } = body
+  const year = parseInt(body.year)
+  if (action !== 'add' && action !== 'remove' && action !== 'move') {
+    return res.status(400).json({ error: "action must be 'add', 'remove', or 'move'" })
+  }
+  if (!userId || !year) return res.status(400).json({ error: 'userId and year are required' })
+
+  const { data: reg, error: regErr } = await supabaseAdmin
+    .from('zltac_registrations').select('id, team_id').eq('user_id', userId).eq('year', year).maybeSingle()
+  if (regErr) return res.status(500).json({ error: regErr.message })
+  if (!reg) return res.status(404).json({ error: 'Player is not registered for this event year.' })
+
+  let newTeamId = null
+  if (action === 'add' || action === 'move') {
+    const { teamId } = body
+    if (!teamId) return res.status(400).json({ error: 'teamId is required' })
+    const { data: team, error: teamErr } = await supabaseAdmin
+      .from('teams').select('id, event_id').eq('id', teamId).maybeSingle()
+    if (teamErr) return res.status(500).json({ error: teamErr.message })
+    if (!team || !team.event_id) return res.status(400).json({ error: 'Destination team is not a ZLTAC team.' })
+    const { data: ev, error: evErr } = await supabaseAdmin
+      .from('zltac_events').select('year').eq('id', team.event_id).maybeSingle()
+    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (!ev || ev.year !== year) return res.status(400).json({ error: 'Destination team belongs to a different event year.' })
+    newTeamId = teamId
+  }
+
+  const { error: setErr } = await supabaseAdmin
+    .from('zltac_registrations').update({ team_id: newTeamId }).eq('id', reg.id)
+  if (setErr) {
+    // 23503/23514 are the trigger's integrity guards (not a ZLTAC team / wrong
+    // year) — surface as a 400 with the DB message rather than a 500.
+    const code = setErr.code
+    return res.status(code === '23503' || code === '23514' ? 400 : 500).json({ error: setErr.message })
+  }
+
+  const { amountOwing, error: recErr } = await computeAndWriteAmountOwing(reg.id)
+  if (recErr) return res.status(500).json({ error: `recompute: ${recErr}` })
+
+  return res.json({ ok: true, registrationId: reg.id, team_id: newTeamId, amountOwing: amountOwing ?? 0 })
+}
+
 export default async function handler(req, res) {
   const resource = req.query.resource
 
@@ -1336,5 +1476,7 @@ export default async function handler(req, res) {
   if (resource === 'profile-search')   return handleProfileSearch(req, res)
   if (resource === 'zltac-dashboard')  return handleZltacDashboard(req, res)
   if (resource === 'team-review')      return handleTeamReview(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", "zltac-dashboard", or "team-review"' })
+  if (resource === 'team-settings')    return handleTeamSettings(req, res)
+  if (resource === 'team-roster')      return handleTeamRoster(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", "zltac-dashboard", "team-review", "team-settings", or "team-roster"' })
 }
