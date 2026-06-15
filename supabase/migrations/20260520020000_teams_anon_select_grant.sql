@@ -1,0 +1,23 @@
+-- ============================================================
+-- Migration: GRANT SELECT ON teams TO anon
+-- Date: 2026-05-20
+-- Purpose:
+--   The teams_public_read RLS policy (initial schema, 20260422000000:592)
+--   is `FOR SELECT USING (true)` with no TO clause, intended to make team
+--   rows readable by everyone including unauthenticated visitors. However
+--   the role_grants_baseline.sql migration only granted SELECT on
+--   public.teams to authenticated, not anon. PostgreSQL evaluates the
+--   GRANT layer before RLS, so anon requests to /rest/v1/teams currently
+--   return 42501 "permission denied for table teams" — the RLS policy is
+--   never reached.
+--
+--   This breaks the Current Event page for logged-out visitors (the
+--   roster section needs the teams join, but the teams query fails before
+--   public_event_roster can be cross-referenced).
+--
+--   Adding SELECT for anon makes the existing RLS policy take effect for
+--   anon as intended. Writes remain blocked: no INSERT/UPDATE/DELETE
+--   grants for anon on this table.
+-- ============================================================
+
+GRANT SELECT ON public.teams TO anon;

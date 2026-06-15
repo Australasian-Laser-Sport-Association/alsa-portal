@@ -1,0 +1,1194 @@
+﻿import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch.js'
+import { arePaymentsOpen } from '../../lib/payments'
+import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
+import { maskStorageUrl } from '../../lib/assetUrl'
+import Dialog from '../../components/Dialog'
+
+const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
+
+// Timezone selector options. Value is the IANA name stored on the event row;
+// label is the friendly form shown in the dropdown. Australia/Melbourne is the
+// default for new events.
+const TIMEZONE_OPTIONS = [
+  { value: 'Australia/Melbourne', label: 'Melbourne (AEST/AEDT)' },
+  { value: 'Australia/Sydney',    label: 'Sydney (AEST/AEDT)' },
+  { value: 'Australia/Brisbane',  label: 'Brisbane (AEST)' },
+  { value: 'Australia/Adelaide',  label: 'Adelaide (ACST/ACDT)' },
+  { value: 'Australia/Perth',     label: 'Perth (AWST)' },
+  { value: 'Australia/Hobart',    label: 'Hobart (AEST/AEDT)' },
+  { value: 'Australia/Darwin',    label: 'Darwin (ACST)' },
+  { value: 'Pacific/Auckland',    label: 'Auckland (NZST/NZDT)' },
+]
+
+const DEFAULT_SIDE_EVENTS = [
+  { slug: 'lord-of-the-rings', name: 'Lord of the Rings', description: 'Epic multi-round format — only the finest warriors survive each ring to claim the ultimate title.', enabled: true, price: '25.00', max_participants: '', custom: false },
+  { slug: 'solos', name: 'Solos', description: 'Head-to-head individual competition. Prove you are the best single player in Australasia.', enabled: true, price: '20.00', max_participants: '', custom: false },
+  { slug: 'doubles', name: 'Doubles', description: 'Partner with a teammate and coordinate your strategy to outmanoeuvre the field.', enabled: true, price: '20.00', max_participants: '', custom: false },
+  { slug: 'triples', name: 'Triples', description: 'Fast-paced three-player team format. Communication and chemistry decide the winners.', enabled: true, price: '20.00', max_participants: '', custom: false },
+  { slug: 'presentation-dinner', name: 'Presentation Dinner', description: 'Join fellow competitors for the official presentation evening and awards ceremony.', enabled: true, price: '65.00', max_participants: '', custom: false },
+]
+
+const EMPTY_CUSTOM = { name: '', description: '', max_participants: '' }
+
+function centsToDisplay(cents) { return ((cents ?? 0) / 100).toFixed(2) }
+function displayToCents(val) { return Math.round((parseFloat(val) || 0) * 100) }
+
+function Toggle({ value, onChange, disabled }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!value)}
+      className={`w-10 h-5 rounded-full transition-colors relative flex-shrink-0 disabled:opacity-40 ${value ? 'bg-brand' : 'bg-line'}`}
+    >
+      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${value ? 'translate-x-5' : ''}`} />
+    </button>
+  )
+}
+
+function DollarInput({ label, hint, value, onChange, disabled }) {
+  return (
+    <div>
+      <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+      {hint && <p className="text-xs text-[#e5e5e5]/60 mb-1.5">{hint}</p>}
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm font-semibold">$</span>
+        <input
+          type="number" min="0" step="0.01"
+          value={value} disabled={disabled}
+          onChange={e => onChange(e.target.value)}
+          className="w-full bg-base border border-line rounded-lg pl-7 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors disabled:opacity-40"
+        />
+      </div>
+    </div>
+  )
+}
+
+function StatusBanner({ status, onChangeStatus, saving, archived }) {
+  const map = {
+    draft:    { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/60', msg: 'Event is in draft — not visible to the public' },
+    open:     { bg: 'bg-brand/10', text: 'text-brand', msg: 'Registration is open' },
+    closed:   { bg: 'bg-yellow-500/10', text: 'text-yellow-400', msg: 'Registration is closed' },
+    archived: { bg: 'bg-[#2D2D2D]', text: 'text-[#e5e5e5]/60', msg: 'Event archived — read only' },
+  }
+  const s = map[status] ?? map.draft
+
+  return (
+    <div className={`${s.bg} border border-line rounded-xl px-5 py-4 flex items-center justify-between gap-4 mb-6`}>
+      <div className="flex items-center gap-3">
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${status === 'open' ? 'bg-brand animate-pulse' : status === 'closed' ? 'bg-yellow-400' : 'bg-[#e5e5e5]/20'}`} />
+        <span className={`text-sm font-semibold ${s.text}`}>{s.msg}</span>
+      </div>
+      {!archived && (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {status === 'draft' && (
+            <button onClick={() => onChangeStatus('open')} disabled={saving}
+              className="text-xs bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg transition-all">
+              Open Registration
+            </button>
+          )}
+          {status === 'open' && (
+            <button onClick={() => onChangeStatus('closed')} disabled={saving}
+              className="text-xs bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 font-bold px-4 py-2 rounded-lg transition-all">
+              Close Registration
+            </button>
+          )}
+          {status === 'closed' && (
+            <button onClick={() => onChangeStatus('open')} disabled={saving}
+              className="text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-4 py-2 rounded-lg transition-all">
+              Reopen
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function AdminEvent() {
+  const navigate = useNavigate()
+  const [event, setEvent] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  // Archive modal
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+
+  // Delete modal
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
+  const [deleteCounts, setDeleteCounts] = useState({ regs: null, teams: null })
+
+  // Form state
+  const [form, setForm] = useState({})
+  const [sideEvents, setSideEvents] = useState(DEFAULT_SIDE_EVENTS)
+  const [pricing, setPricing] = useState({ player_fee: '0.00', team_fee: '0.00', dinner_guest_fee: '65.00', processing_fee_pct: '2.50' })
+  const [bank, setBank] = useState({ bsb: '', account_number: '', account_name: '' })
+  const [settings, setSettings] = useState({ timezone: 'Australia/Melbourne', reg_open_date: '', reg_close_date: '', event_starts_at: '', max_teams: '', max_players: '', max_players_per_team: '', require_coc: true, require_ref_test: true, require_payment: true, allow_side_events_only: false, enable_waitlist: false, committee_email: '', payments_override: '' })
+
+  // Logo
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoRef = useRef()
+
+  // Photos
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoRef = useRef()
+
+  // Cover photo
+  const [coverUploading, setCoverUploading] = useState(false)
+  const coverRef = useRef()
+
+  // Custom side event
+  const [showAddCustom, setShowAddCustom] = useState(false)
+  const [customForm, setCustomForm] = useState(EMPTY_CUSTOM)
+
+  useEffect(() => { loadCurrentEvent() }, [])
+
+  async function loadCurrentEvent() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('zltac_events')
+      .select('*')
+      .neq('status', 'archived')
+      .order('year', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (data) populateForm(data)
+    setEvent(data)
+    setLoading(false)
+  }
+
+  function populateForm(ev) {
+    setForm({
+      name: ev.name ?? '',
+      year: ev.year ?? new Date().getFullYear() + 1,
+      status: ev.status ?? 'draft',
+      start_date: ev.start_date ?? '',
+      end_date: ev.end_date ?? '',
+      location: ev.location ?? '',
+      venue: ev.venue ?? '',
+      description: ev.description ?? '',
+      logo_url: ev.logo_url ?? '',
+      cover_photo_url: ev.cover_photo_url ?? '',
+      hero_text: ev.hero_text ?? '',
+      photo_urls: ev.photo_urls ?? [],
+    })
+    const rawSides = ev.side_events
+    setSideEvents(rawSides
+      ? rawSides.map(se => ({ ...se, price: centsToDisplay(se.price), max_participants: se.max_participants ?? '' }))
+      : DEFAULT_SIDE_EVENTS
+    )
+    setPricing({
+      player_fee: centsToDisplay(ev.main_fee),
+      team_fee: centsToDisplay(ev.team_fee),
+      dinner_guest_fee: centsToDisplay(ev.dinner_guest_price),
+      processing_fee_pct: ev.processing_fee_pct != null ? String(ev.processing_fee_pct) : '2.50',
+    })
+    setBank({
+      bsb: ev.bank_bsb ?? '',
+      account_number: ev.bank_account_number ?? '',
+      account_name: ev.bank_account_name ?? '',
+    })
+    const tz = ev.timezone || 'Australia/Melbourne'
+    setSettings({
+      timezone: tz,
+      reg_open_date: toInputValue(ev.reg_open_date, tz),
+      reg_close_date: toInputValue(ev.reg_close_date, tz),
+      event_starts_at: toInputValue(ev.event_starts_at, tz),
+      max_teams: ev.max_teams ?? '',
+      max_players: ev.max_players ?? '',
+      max_players_per_team: ev.max_players_per_team ?? '',
+      require_coc: ev.require_coc ?? true,
+      require_ref_test: ev.require_ref_test ?? true,
+      require_payment: ev.require_payment ?? true,
+      allow_side_events_only: ev.allow_side_events_only ?? false,
+      enable_waitlist: ev.enable_waitlist ?? false,
+      committee_email: ev.committee_email ?? '',
+      // '' = Auto (payments_override NULL); 'open'/'closed' = manual override.
+      payments_override: ev.payments_override ?? '',
+    })
+    setLogoFile(null)
+    setLogoPreview(maskStorageUrl(ev.logo_url ?? null))
+  }
+
+  function handleTabClick(i) {
+    setActiveTab(i)
+  }
+
+  function handleLogoSelect(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) { setMsg({ type: 'error', text: 'Logo must be under 2MB.' }); return }
+    setLogoFile(file)
+    setLogoPreview(URL.createObjectURL(file))
+    setMsg(null)
+  }
+
+  async function uploadLogo() {
+    if (!logoFile) return form.logo_url ?? ''
+    setUploadingLogo(true)
+    const ext = logoFile.name.split('.').pop()
+    const { data, error } = await supabase.storage.from('event-logos').upload(`${Date.now()}.${ext}`, logoFile, { upsert: true })
+    setUploadingLogo(false)
+    if (error) { setMsg({ type: 'error', text: `Logo upload failed: ${error.message}` }); return form.logo_url ?? '' }
+    return supabase.storage.from('event-logos').getPublicUrl(data.path).data.publicUrl
+  }
+
+  async function uploadPhoto(file) {
+    if (!file) return
+    if (!event?.id) { setMsg({ type: 'error', text: 'Save the event first before adding photos.' }); return }
+    if (file.size > 5 * 1024 * 1024) { setMsg({ type: 'error', text: 'Photo must be under 5MB.' }); return }
+    setPhotoUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `events/${event.id}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
+    if (error) {
+      setMsg({ type: 'error', text: `Photo upload failed: ${error.message}` })
+      setPhotoUploading(false)
+      return
+    }
+    const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
+    setForm(f => ({ ...f, photo_urls: [...(f.photo_urls ?? []), publicUrl] }))
+    setPhotoUploading(false)
+  }
+
+  function removePhoto(idx) {
+    setForm(f => ({ ...f, photo_urls: (f.photo_urls ?? []).filter((_, i) => i !== idx) }))
+  }
+
+  function movePhoto(idx, direction) {
+    setForm(f => {
+      const arr = [...(f.photo_urls ?? [])]
+      const target = idx + direction
+      if (target < 0 || target >= arr.length) return f
+      ;[arr[idx], arr[target]] = [arr[target], arr[idx]]
+      return { ...f, photo_urls: arr }
+    })
+  }
+
+  // Cover photo — immediate upload + immediate column write, mirroring the team
+  // logo flow (CaptainHub). Old files are left in storage on replace; orphans
+  // are cheap and audit-friendly. Managed independently of the Save button.
+  const COVER_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
+  const COVER_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+
+  async function handleCoverSelect(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!event?.id) { setMsg({ type: 'error', text: 'Save the event first before adding a cover photo.' }); return }
+    if (!COVER_ACCEPTED_TYPES.includes(file.type)) { setMsg({ type: 'error', text: 'Cover photo must be PNG, JPG or WebP.' }); return }
+    if (file.size > COVER_MAX_BYTES) { setMsg({ type: 'error', text: 'Cover photo must be under 5MB.' }); return }
+    setMsg(null)
+    setCoverUploading(true)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${event.id}/${Date.now()}.${ext}`
+      const { data: up, error: upErr } = await supabase.storage
+        .from('event-covers')
+        .upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from('event-covers').getPublicUrl(up.path)
+      const publicUrl = urlData.publicUrl
+      const { error: updErr } = await supabase
+        .from('zltac_events')
+        .update({ cover_photo_url: publicUrl })
+        .eq('id', event.id)
+      if (updErr) throw updErr
+      setForm(f => ({ ...f, cover_photo_url: publicUrl }))
+      setEvent(ev => ({ ...ev, cover_photo_url: publicUrl }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setMsg({ type: 'ok', text: 'Cover photo updated.' })
+    } catch (err) {
+      setMsg({ type: 'error', text: `Cover photo upload failed: ${err?.message || 'Please try again.'}` })
+    }
+    setCoverUploading(false)
+    if (coverRef.current) coverRef.current.value = ''
+  }
+
+  async function handleCoverRemove() {
+    if (!event?.id) return
+    setMsg(null)
+    setCoverUploading(true)
+    try {
+      const { error: updErr } = await supabase
+        .from('zltac_events')
+        .update({ cover_photo_url: null })
+        .eq('id', event.id)
+      if (updErr) throw updErr
+      setForm(f => ({ ...f, cover_photo_url: '' }))
+      setEvent(ev => ({ ...ev, cover_photo_url: null }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setMsg({ type: 'ok', text: 'Cover photo removed.' })
+    } catch (err) {
+      setMsg({ type: 'error', text: `Could not remove cover photo: ${err?.message || 'Please try again.'}` })
+    }
+    setCoverUploading(false)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setMsg(null)
+    const logo_url = await uploadLogo()
+    if (msg?.type === 'error') { setSaving(false); return }
+
+    const payload = {
+      name: form.name,
+      year: parseInt(form.year),
+      status: form.status,
+      start_date: form.start_date || null,
+      end_date: form.end_date || null,
+      location: form.location || null,
+      venue: form.venue || null,
+      description: form.description || null,
+      logo_url: logo_url || null,
+      cover_photo_url: form.cover_photo_url || null,
+      hero_text: form.hero_text || null,
+      photo_urls: form.photo_urls ?? [],
+      main_fee: displayToCents(pricing.player_fee),
+      team_fee: displayToCents(pricing.team_fee),
+      dinner_guest_price: displayToCents(pricing.dinner_guest_fee),
+      processing_fee_pct: parseFloat(pricing.processing_fee_pct) || 0,
+      bank_bsb: bank.bsb.trim() || null,
+      bank_account_number: bank.account_number.trim() || null,
+      bank_account_name: bank.account_name.trim() || null,
+      side_events: sideEvents.map(se => ({
+        ...se,
+        price: displayToCents(se.price),
+        max_participants: se.max_participants ? parseInt(se.max_participants) : null,
+      })),
+      timezone: settings.timezone || 'Australia/Melbourne',
+      reg_open_date: parseFromEventTz(settings.reg_open_date, settings.timezone),
+      reg_close_date: parseFromEventTz(settings.reg_close_date, settings.timezone),
+      event_starts_at: parseFromEventTz(settings.event_starts_at, settings.timezone),
+      max_teams: settings.max_teams ? parseInt(settings.max_teams) : null,
+      max_players: settings.max_players ? parseInt(settings.max_players) : null,
+      max_players_per_team: settings.max_players_per_team ? parseInt(settings.max_players_per_team) : null,
+      require_coc: settings.require_coc,
+      require_ref_test: settings.require_ref_test,
+      require_payment: settings.require_payment,
+      allow_side_events_only: settings.allow_side_events_only,
+      enable_waitlist: settings.enable_waitlist,
+      committee_email: settings.committee_email.trim() || null,
+      payments_override: settings.payments_override || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    let err
+    if (!event) {
+      ;({ error: err } = await supabase.from('zltac_events').insert(payload))
+    } else {
+      ;({ error: err } = await supabase.from('zltac_events').update(payload).eq('id', event.id))
+    }
+    setSaving(false)
+    if (err) setMsg({ type: 'error', text: err.message })
+    else {
+      setMsg({ type: 'ok', text: 'Saved.' })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      loadCurrentEvent()
+    }
+  }
+
+  async function handleChangeStatus(newStatus) {
+    if (!event) return
+    setSaving(true)
+    const { error } = await supabase.from('zltac_events').update({ status: newStatus }).eq('id', event.id)
+    setSaving(false)
+    if (!error) {
+      setEvent(e => ({ ...e, status: newStatus }))
+      setForm(f => ({ ...f, status: newStatus }))
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+    }
+  }
+
+  async function openArchiveModal() {
+    setArchiveError('')
+    setArchiveOpen(true)
+  }
+
+  async function handleArchive() {
+    if (!event) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      const result = await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'archive', eventId: event.id, year: event.year }),
+      })
+      setArchiving(false)
+      setArchiveOpen(false)
+      setMsg({
+        type: 'ok',
+        text: result?.historySkipped
+          ? `Event archived. A history record for ${event.year} already exists and was preserved. Edit it on the ZLTAC Results page, Extras tab.`
+          : 'Event archived.',
+      })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setActiveTab(0)
+      loadCurrentEvent()
+    } catch (err) {
+      console.error('[AdminEvent] handleArchive threw:', err)
+      setArchiveError(err?.message || 'Failed to archive event.')
+      setArchiving(false)
+    }
+  }
+
+  async function openDeleteModal() {
+    if (!event) return
+    setDeleteError('')
+    setDeleteConfirmInput('')
+    setDeleteCounts({ regs: null, teams: null })
+    setDeleteOpen(true)
+    try {
+      const [{ count: regs }, { count: teams }] = await Promise.all([
+        supabase.from('zltac_registrations').select('id', { count: 'exact', head: true }).eq('year', event.year),
+        supabase.from('teams').select('id', { count: 'exact', head: true }).eq('event_id', event.id),
+      ])
+      setDeleteCounts({ regs: regs ?? 0, teams: teams ?? 0 })
+    } catch (err) {
+      console.error('[AdminEvent] openDeleteModal count fetch failed:', err)
+      setDeleteCounts({ regs: 0, teams: 0 })
+    }
+  }
+
+  async function handleDelete() {
+    if (!event || deleteConfirmInput !== String(event.year)) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'delete', eventId: event.id, year: event.year }),
+      })
+      setDeleting(false)
+      setDeleteOpen(false)
+      setMsg({ type: 'ok', text: 'Event deleted.' })
+      window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+      setActiveTab(0)
+      loadCurrentEvent()
+    } catch (err) {
+      console.error('[AdminEvent] handleDelete threw:', err)
+      setDeleteError(err?.message || 'Failed to delete event.')
+      setDeleting(false)
+    }
+  }
+
+  function addCustomSideEvent() {
+    if (!customForm.name.trim()) return
+    const slug = `custom-${customForm.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}-${Date.now()}`
+    setSideEvents(ev => [...ev, { slug, name: customForm.name, description: customForm.description, enabled: true, price: '0.00', max_participants: customForm.max_participants, custom: true }])
+    setCustomForm(EMPTY_CUSTOM)
+    setShowAddCustom(false)
+  }
+
+  const isArchived = event?.status === 'archived'
+  const enabledSides = sideEvents.filter(se => se.enabled)
+
+  // ── NO EVENT YET ──────────────────────────────────────────────────────────
+  if (!loading && !event) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="text-5xl mb-4">🎯</div>
+        <h1 className="text-2xl font-black text-white mb-2">No Active Event</h1>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6 max-w-xs">No current or upcoming event found. Create one to get started.</p>
+        <button
+          onClick={async () => {
+            const year = new Date().getFullYear() + 1
+            const { data } = await supabase.from('zltac_events').insert({ name: `ZLTAC ${year}`, year, status: 'draft', main_fee: 0, team_fee: 0, dinner_guest_price: 6500 }).select().single()
+            if (data) { setEvent(data); populateForm(data) }
+          }}
+          className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
+        >
+          + Create New Event
+        </button>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+  }
+
+  return (
+    <div>
+      {/* Archive confirmation modal */}
+      {archiveOpen && (
+        <Dialog open onClose={() => { setArchiveOpen(false); setArchiveError('') }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Archive {event?.name} {event?.year}?</Dialog.Title>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
+              This event will be moved to history and no longer appear on the current event page.
+              All registrations and team data are preserved for the record.
+              A history record will be created on the public ZLTAC page where you can later add champion, MVP, and photos.
+            </p>
+            {archiveError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{archiveError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleArchive}
+                disabled={archiving}
+                className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {archiving ? 'Archiving…' : 'Archive event'}
+              </button>
+              <button
+                onClick={() => { setArchiveOpen(false); setArchiveError('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep editing
+              </button>
+            </div>
+        </Dialog>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteOpen && (
+        <Dialog open onClose={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</Dialog.Title>
+            <p className="text-[#e5e5e5]/60 text-sm mb-3">
+              This permanently deletes the event and ALL associated data:{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.regs ?? '…'} registration{deleteCounts.regs === 1 ? '' : 's'}
+              </span>,{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.teams ?? '…'} team{deleteCounts.teams === 1 ? '' : 's'}
+              </span>, plus all payments, forms, and checklist items for this year.
+              This cannot be undone. Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmInput}
+              onChange={e => setDeleteConfirmInput(e.target.value)}
+              placeholder={`Type ${event?.year ?? ''}`}
+              autoFocus
+              className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-red-400 transition-colors mb-4"
+            />
+            {deleteError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{deleteError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDelete}
+                disabled={deleting || deleteConfirmInput !== String(event?.year)}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {deleting ? 'Deleting…' : 'Delete event permanently'}
+              </button>
+              <button
+                onClick={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Keep event
+              </button>
+            </div>
+        </Dialog>
+      )}
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-white">{form.name} {form.year}</h1>
+          <p className="text-[#e5e5e5]/60 text-sm mt-1">Current event configuration</p>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => navigate('/admin/registrations?new=1')}
+            className="text-xs bg-surface border border-line hover:border-brand text-brand font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            + Add manual registration
+          </button>
+          {!isArchived && (
+            <>
+              <button
+                onClick={openArchiveModal}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold transition-colors"
+              >
+                Archive Event
+              </button>
+              <button
+                onClick={openDeleteModal}
+                className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"
+              >
+                Delete Event
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Status banner */}
+      <StatusBanner status={form.status} onChangeStatus={handleChangeStatus} saving={saving} archived={isArchived} />
+
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-line mb-6 overflow-x-auto">
+        {TABS.map((t, i) => (
+          <button key={t} onClick={() => handleTabClick(i)}
+            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
+              activeTab === i ? 'border-brand text-brand' : 'border-transparent text-[#e5e5e5]/60 hover:text-white'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB 0: Details ───────────────────────────────────────────────── */}
+      {activeTab === 0 && (
+        <div className="space-y-5 max-w-xl">
+          {[
+            { label: 'Event Name', key: 'name', type: 'text' },
+            { label: 'Year', key: 'year', type: 'number' },
+            { label: 'Location (City, State)', key: 'location', type: 'text' },
+            { label: 'Venue', key: 'venue', type: 'text' },
+          ].map(({ label, key, type }) => (
+            <div key={key}>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+              <input type={type} value={form[key] ?? ''} disabled={isArchived}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors disabled:opacity-40"
+              />
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3">
+            {[{ label: 'Start Date', key: 'start_date' }, { label: 'End Date', key: 'end_date' }].map(({ label, key }) => (
+              <div key={key}>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <input type="date" value={form[key] ?? ''} disabled={isArchived}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Status</label>
+            <select value={form.status ?? 'draft'} disabled={isArchived}
+              onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+            >
+              {['draft', 'open', 'closed', 'archived'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Description</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">Short summary (1-2 sentences). Used in event history records when archived.</p>
+            <textarea rows={3} value={form.description ?? ''} disabled={isArchived}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors resize-none disabled:opacity-40"
+            />
+          </div>
+
+          {/* Logo upload */}
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Event Logo</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">PNG or JPG, max 2MB.</p>
+            <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
+            {logoPreview ? (
+              <div className="flex items-center gap-4">
+                <img src={logoPreview} alt="Logo" className="h-16 w-16 object-contain rounded-lg border border-line bg-base p-1" />
+                {!isArchived && (
+                  <div className="flex flex-col gap-2">
+                    <button type="button" onClick={() => logoRef.current.click()}
+                      className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      Change
+                    </button>
+                    <button type="button" onClick={() => { setLogoFile(null); setLogoPreview(null); setForm(f => ({ ...f, logo_url: '' })) }}
+                      className="text-xs text-red-400/50 hover:text-red-400 transition-colors">
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : !isArchived ? (
+              <button type="button" onClick={() => logoRef.current.click()}
+                className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group">
+                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/60 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">Click to upload logo</span>
+              </button>
+            ) : <p className="text-xs text-[#e5e5e5]/60">No logo uploaded</p>}
+          </div>
+
+          {/* Cover photo upload — immediate save, shown as a banner on the public event page */}
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Cover Photo</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">PNG, JPG or WebP, max 5MB (recommended: 4096 x 1716px). Shown as a banner on the public event page.</p>
+            <input ref={coverRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCoverSelect} className="hidden" />
+            {form.cover_photo_url ? (
+              <div className="space-y-2">
+                <img src={maskStorageUrl(form.cover_photo_url)} alt="Cover" className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base" />
+                {!isArchived && (
+                  <div className="flex gap-2">
+                    <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
+                      className="text-xs bg-line hover:bg-[#374056] disabled:opacity-50 text-[#e5e5e5]/70 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      {coverUploading ? 'Uploading…' : 'Replace cover photo'}
+                    </button>
+                    <button type="button" disabled={coverUploading} onClick={handleCoverRemove}
+                      className="text-xs text-red-400/50 hover:text-red-400 disabled:opacity-50 font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : !isArchived ? (
+              <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
+                className="w-full border border-dashed border-line hover:border-brand disabled:opacity-50 rounded-xl py-6 text-center transition-colors group">
+                <svg className="w-6 h-6 mx-auto mb-2 text-[#e5e5e5]/60 group-hover:text-brand transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">
+                  {coverUploading ? 'Uploading…' : 'Click to upload cover photo'}
+                </span>
+              </button>
+            ) : <p className="text-xs text-[#e5e5e5]/60">No cover photo uploaded</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 1: Side Events ───────────────────────────────────────────── */}
+      {activeTab === 1 && (
+        <div className="space-y-3 max-w-2xl">
+          {sideEvents.map((se, i) => (
+            <div key={se.slug} className={`rounded-xl border p-4 transition-colors ${se.enabled ? 'bg-surface border-line' : 'bg-base border-line opacity-60'}`}>
+              <div className="flex items-start gap-3">
+                <Toggle value={se.enabled} disabled={isArchived} onChange={v => setSideEvents(ev => ev.map((e, j) => j === i ? { ...e, enabled: v } : e))} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-semibold text-white text-sm">{se.name}</p>
+                    {se.custom && !isArchived && (
+                      <button onClick={() => setSideEvents(ev => ev.filter((_, j) => j !== i))}
+                        className="text-xs text-red-400/50 hover:text-red-400 transition-colors ml-2">Remove</button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs text-[#e5e5e5]/60 mb-1">Description</label>
+                      <input type="text" value={se.description ?? ''} disabled={isArchived}
+                        onChange={e => setSideEvents(ev => ev.map((s, j) => j === i ? { ...s, description: e.target.value } : s))}
+                        className="w-full bg-base border border-line rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                      />
+                    </div>
+                    <div className="w-40">
+                      <label className="block text-xs text-[#e5e5e5]/60 mb-1">Max Participants</label>
+                      <input type="number" value={se.max_participants ?? ''} placeholder="Unlimited" disabled={isArchived}
+                        onChange={e => setSideEvents(ev => ev.map((s, j) => j === i ? { ...s, max_participants: e.target.value } : s))}
+                        className="w-full bg-base border border-line rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {!isArchived && (
+            showAddCustom ? (
+              <div className="bg-base border border-brand/20 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-white uppercase tracking-wider">New Side Event</p>
+                {[{ label: 'Event Name', key: 'name', type: 'text' }, { label: 'Description', key: 'description', type: 'text' }, { label: 'Max Participants', key: 'max_participants', type: 'number' }].map(({ label, key, type }) => (
+                  <div key={key}>
+                    <label className="block text-xs text-[#e5e5e5]/60 mb-1">{label}</label>
+                    <input type={type} value={customForm[key]} placeholder={key === 'max_participants' ? 'Unlimited' : ''}
+                      onChange={e => setCustomForm(f => ({ ...f, [key]: e.target.value }))}
+                      className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20"
+                    />
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button onClick={addCustomSideEvent} disabled={!customForm.name.trim()}
+                    className="text-sm bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-4 py-2 rounded-xl transition-all">Add</button>
+                  <button onClick={() => { setShowAddCustom(false); setCustomForm(EMPTY_CUSTOM) }}
+                    className="text-sm border border-line text-[#e5e5e5]/60 hover:text-white px-4 py-2 rounded-xl transition-colors">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddCustom(true)}
+                className="w-full border border-dashed border-line hover:border-brand text-[#e5e5e5]/60 hover:text-brand text-sm font-semibold py-3 rounded-xl transition-colors">
+                + Add custom side event
+              </button>
+            )
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 2: Pricing ───────────────────────────────────────────────── */}
+      {activeTab === 2 && (
+        <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
+          <div className="space-y-4">
+            <DollarInput label="Player Registration Fee (AUD)" hint="Per player entry fee" value={pricing.player_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, player_fee: v }))} />
+            <DollarInput label="Team Registration Fee (Per Player)" hint="Charged per player when they're on a team, on top of the main entry fee." value={pricing.team_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, team_fee: v }))} />
+            <DollarInput label="Dinner Guest Fee (AUD)" hint="Per additional dinner guest" value={pricing.dinner_guest_fee} disabled={isArchived} onChange={v => setPricing(p => ({ ...p, dinner_guest_fee: v }))} />
+
+            <div>
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Processing Fee (%)</label>
+              <p className="text-xs text-[#e5e5e5]/60 mb-1.5">Added to total at checkout</p>
+              <div className="relative">
+                <input type="number" min="0" step="0.1" value={pricing.processing_fee_pct} disabled={isArchived}
+                  onChange={e => setPricing(p => ({ ...p, processing_fee_pct: e.target.value }))}
+                  className="w-full bg-base border border-line rounded-lg px-3 pr-8 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm">%</span>
+              </div>
+            </div>
+
+            {enabledSides.length > 0 && (
+              <div>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Side Event Prices (AUD per participant)</label>
+                <div className="space-y-3">
+                  {enabledSides.map(se => {
+                    const idx = sideEvents.findIndex(s => s.slug === se.slug)
+                    return (
+                      <div key={se.slug}>
+                        <label className="block text-xs text-[#e5e5e5]/60 mb-1">{se.name}</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e5e5]/60 text-sm font-semibold">$</span>
+                          <input type="number" min="0" step="0.01" value={sideEvents[idx]?.price ?? '0.00'} disabled={isArchived}
+                            onChange={e => setSideEvents(ev => ev.map((s, j) => j === idx ? { ...s, price: e.target.value } : s))}
+                            className="w-full bg-base border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Payments availability gate ── */}
+            <div className="pt-4 border-t border-line">
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Payments</label>
+              {(() => {
+                // settings.reg_close_date is an event-local input string; convert
+                // to a UTC instant so the payment gate and the displayed times are
+                // computed the same way they will be for players.
+                const lockUtc = parseFromEventTz(settings.reg_close_date, settings.timezone)
+                const ps = arePaymentsOpen({
+                  payments_override: settings.payments_override || null,
+                  reg_close_date: lockUtc,
+                })
+                let status
+                if (ps.open && ps.reason === 'auto_open') {
+                  status = `Currently: OPEN. Bank details visible to players. Opened automatically when registration locked on ${formatInEventTz(lockUtc, settings.timezone, 'longWithTime')}.`
+                } else if (ps.open && ps.reason === 'override_open') {
+                  status = 'Currently: OPEN (manually forced open). Bank details visible to players.'
+                } else if (!ps.open && ps.reason === 'auto_closed') {
+                  status = `Currently: CLOSED. Will open automatically on ${formatInEventTz(ps.opensAt, settings.timezone, 'longWithTime')}.`
+                } else if (!ps.open && ps.reason === 'override_closed') {
+                  status = 'Currently: CLOSED (manually forced closed).'
+                } else {
+                  status = 'Currently: CLOSED. No registration lock date set on the Registration tab.'
+                }
+                return <p className={`text-sm font-semibold ${ps.open ? 'text-brand' : 'text-white'}`}>{status}</p>
+              })()}
+              <p className="text-xs text-[#e5e5e5]/60 mt-1 mb-3">The lock date is set on the Registration tab.</p>
+
+              <div className="space-y-2">
+                {[
+                  { label: 'Auto (open when registration locks)', value: '' },
+                  { label: 'Force OPEN', value: 'open' },
+                  { label: 'Force CLOSED', value: 'closed' },
+                ].map(opt => (
+                  <label key={opt.value || 'auto'} className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="payments_override"
+                      checked={settings.payments_override === opt.value}
+                      disabled={isArchived}
+                      onChange={() => setSettings(s => ({ ...s, payments_override: opt.value }))}
+                      className="accent-[#00FF41]"
+                    />
+                    <span className="text-sm text-white">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-line">
+              <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Bank Details</label>
+              <p className="text-xs text-[#e5e5e5]/60 mb-1">Shown to players on their payment screen. Leave blank to display "Bank details will be released soon."</p>
+              <p className="text-xs text-[#e5e5e5]/60 mb-3">Bank details below are only visible to players when payments are open.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">BSB</label>
+                  <input type="text" value={bank.bsb} disabled={isArchived} placeholder="123-456"
+                    onChange={e => setBank(b => ({ ...b, bsb: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Account Number</label>
+                  <input type="text" value={bank.account_number} disabled={isArchived}
+                    onChange={e => setBank(b => ({ ...b, account_number: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 mb-1">Account Name</label>
+                  <input type="text" value={bank.account_name} disabled={isArchived}
+                    onChange={e => setBank(b => ({ ...b, account_name: e.target.value }))}
+                    className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          <div className="bg-base border border-line rounded-xl p-5 h-fit">
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-4">Price Preview</p>
+            <div className="space-y-2.5">
+              {[
+                { label: 'Player Entry', val: pricing.player_fee },
+                { label: 'Team Fee', val: pricing.team_fee },
+                { label: 'Dinner Guest', val: pricing.dinner_guest_fee },
+              ].map(({ label, val }) => (
+                <div key={label} className="flex justify-between text-sm">
+                  <span className="text-[#e5e5e5]/60">{label}</span>
+                  <span className="text-white font-semibold">${parseFloat(val || 0).toFixed(2)}</span>
+                </div>
+              ))}
+              {enabledSides.map(se => (
+                <div key={se.slug} className="flex justify-between text-sm">
+                  <span className="text-[#e5e5e5]/60">{se.name}</span>
+                  <span className="text-white font-semibold">${parseFloat(se.price || 0).toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="border-t border-line pt-2.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#e5e5e5]/60">Processing Fee</span>
+                  <span className="text-[#e5e5e5]/60">{pricing.processing_fee_pct}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 3: Registration Settings ─────────────────────────────────── */}
+      {activeTab === 3 && (
+        <div className="space-y-5 max-w-xl">
+          {/* Event timezone. Drives how every date on this tab (and the payment
+              status on the Pricing tab) is entered and displayed. Stored as the
+              IANA name; the dates stay UTC timestamptz under the hood. */}
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Event Timezone</label>
+            <select
+              value={settings.timezone ?? 'Australia/Melbourne'}
+              disabled={isArchived}
+              onChange={e => setSettings(s => ({ ...s, timezone: e.target.value }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+            >
+              {TIMEZONE_OPTIONS.map(tz => (
+                <option key={tz.value} value={tz.value} className="text-white bg-base">{tz.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1.5 leading-snug">
+              All dates on this event use the timezone above. Times saved before this update may show differently now because they are interpreted in the event timezone. Please check each date and save once to confirm.
+            </p>
+          </div>
+
+          {/* Phase boundaries. reg_close_date is the open→locked threshold
+              (was a label-only field before — now enforced server-side via
+              the phase guard); event_starts_at is the locked→closed
+              threshold. Both nullable: a null threshold means the boundary
+              is never crossed. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Registration Opens', key: 'reg_open_date',  hint: 'When players can first register (informational).' },
+              { label: 'Registration Lock and Payment Opens', key: 'reg_close_date',  hint: 'When this passes, registrations lock and payment information becomes visible to players (unless overridden on the Pricing tab).' },
+              { label: 'Registration closes',  key: 'event_starts_at', hint: 'After this, registration is fully closed (including payments).' },
+            ].map(({ label, key, hint }) => {
+              // Abbreviation reflects the field's own instant (so DST is correct
+              // for that date); falls back to "now" while the field is empty.
+              const abbr = getTzAbbr(
+                settings.timezone,
+                settings[key] ? parseFromEventTz(settings[key], settings.timezone) : new Date(),
+              )
+              return (
+              <div key={key}>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}{abbr ? ` (${abbr})` : ''}</label>
+                <input type="datetime-local" value={settings[key] ?? ''} disabled={isArchived}
+                  onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
+                  className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
+                />
+                {hint && <p className="text-[10px] text-[#e5e5e5]/60 mt-1 leading-snug">{hint}</p>}
+              </div>
+            )})}
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Committee Email</label>
+            <input type="email" value={settings.committee_email ?? ''} disabled={isArchived} placeholder="committee@lasersport.org.au"
+              onChange={e => setSettings(s => ({ ...s, committee_email: e.target.value || '' }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+            />
+            <p className="text-[10px] text-[#e5e5e5]/60 mt-1 leading-snug">Email shown to players for change requests after lock. Leave blank to use committee@lasersport.org.au.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Max teams (leave blank for no cap)',  key: 'max_teams',   hint: 'Event-wide cap on total teams' },
+              { label: 'Max players (leave blank for no cap)', key: 'max_players', hint: 'Event-wide cap on total players' },
+            ].map(({ label, key, hint }) => (
+              <div key={key}>
+                <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">{label}</label>
+                <p className="text-xs text-[#e5e5e5]/60 mb-1.5">{hint}</p>
+                <input type="number" value={settings[key] ?? ''} placeholder="No cap" disabled={isArchived}
+                  onChange={e => setSettings(s => ({ ...s, [key]: e.target.value || '' }))}
+                  className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Max players per team (leave blank for no cap)</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-1.5">Team composition limit — applies to each team individually</p>
+            <input type="number" value={settings.max_players_per_team ?? ''} placeholder="No cap" disabled={isArchived}
+              onChange={e => setSettings(s => ({ ...s, max_players_per_team: e.target.value || '' }))}
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand placeholder-[#e5e5e5]/20 disabled:opacity-40"
+            />
+          </div>
+
+          {/* TODO: re-introduce 'Allow Side Events Only' and 'Enable Waitlist'
+              toggles here once the side-events-only registration flow and the
+              waitlist sign-up flow are built. The underlying columns
+              (allow_side_events_only, enable_waitlist) are still saved by
+              this form so any existing values are preserved on the DB. */}
+          <div className="space-y-3 pt-1">
+            {[
+              { label: 'Require Code of Conduct', sub: 'Players must sign CoC before registration is complete', key: 'require_coc' },
+              { label: 'Require Rules Test', sub: 'All team members must pass the rules test', key: 'require_ref_test' },
+              { label: 'Require Payment', sub: 'Registration is only confirmed once the event fee is paid — turn off for free or on-the-day-paid events', key: 'require_payment' },
+            ].map(({ label, sub, key }) => (
+              <label key={key} className="flex items-start gap-3 cursor-pointer bg-surface border border-line rounded-xl p-4">
+                <Toggle value={settings[key]} disabled={isArchived} onChange={v => setSettings(s => ({ ...s, [key]: v }))} />
+                <div>
+                  <p className="text-sm font-semibold text-white">{label}</p>
+                  <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{sub}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 4: Hero & Photos ─────────────────────────────────────────── */}
+      {activeTab === 4 && (
+        <div className="space-y-8 max-w-2xl">
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Hero Text</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-2">Longer marketing block shown on the public event page below the title.</p>
+            <textarea rows={8} value={form.hero_text ?? ''} disabled={isArchived}
+              onChange={e => setForm(f => ({ ...f, hero_text: e.target.value }))}
+              placeholder="Tell players what makes this event special, what to expect, and why they should register…"
+              className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors resize-y disabled:opacity-40"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Photo Gallery</label>
+            <p className="text-xs text-[#e5e5e5]/60 mb-3">PNG, JPG, or WebP. Max 5MB per photo. Use ↑ / ↓ to reorder, × to remove.</p>
+
+            <input ref={photoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+              onChange={e => { const file = e.target.files?.[0]; if (file) uploadPhoto(file); e.target.value = '' }}
+            />
+
+            {!event?.id && (
+              <p className="text-xs text-yellow-400/70 mb-3">Save the event first before adding photos.</p>
+            )}
+
+            {(form.photo_urls ?? []).length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                {(form.photo_urls ?? []).map((url, i) => (
+                  <div key={url + i} className="relative group rounded-xl overflow-hidden border border-line bg-base aspect-square">
+                    <img src={maskStorageUrl(url)} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    {!isArchived && (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, -1)}
+                          disabled={i === 0}
+                          title="Move up"
+                          className="bg-black/80 text-white text-xs w-8 h-8 rounded-full flex items-center justify-center hover:bg-brand hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => movePhoto(i, 1)}
+                          disabled={i === (form.photo_urls ?? []).length - 1}
+                          title="Move down"
+                          className="bg-black/80 text-white text-xs w-8 h-8 rounded-full flex items-center justify-center hover:bg-brand hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(i)}
+                          title="Remove"
+                          className="bg-black/80 text-red-400 text-base w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                    <span className="absolute top-2 left-2 bg-black/70 text-[#e5e5e5]/70 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      {i + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isArchived && (
+              <button
+                type="button"
+                onClick={() => photoRef.current?.click()}
+                disabled={!event?.id || photoUploading}
+                className="w-full border border-dashed border-line hover:border-brand rounded-xl py-6 text-center transition-colors group disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="text-xs text-[#e5e5e5]/60 group-hover:text-brand transition-colors">
+                  {photoUploading ? 'Uploading…' : '+ Add Photo'}
+                </span>
+              </button>
+            )}
+
+            {(form.photo_urls ?? []).length === 0 && !isArchived && (
+              <p className="text-xs text-[#e5e5e5]/60 mt-3">No photos yet. Add a few to bring your event page to life.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Save footer */}
+      {!isArchived && (
+        <div className="flex items-center gap-3 mt-8 pt-6 border-t border-line">
+          <button onClick={handleSave} disabled={saving || uploadingLogo}
+            className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-all">
+            {saving || uploadingLogo ? 'Saving…' : 'Save Changes'}
+          </button>
+          {msg && <span className={`text-sm ${msg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{msg.text}</span>}
+        </div>
+      )}
+    </div>
+  )
+}

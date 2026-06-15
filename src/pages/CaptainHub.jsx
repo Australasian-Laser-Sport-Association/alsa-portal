@@ -1,0 +1,1163 @@
+﻿import { useState, useEffect, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../lib/useAuth'
+import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/apiFetch.js'
+import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
+import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
+import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
+import CommitteeBadge from '../components/CommitteeBadge'
+import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import LockedNotice from '../components/LockedNotice'
+import { TeamShieldIcon } from '../components/icons.jsx'
+import { maskStorageUrl } from '../lib/assetUrl'
+import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
+import { TEAM_COLOURS } from '../lib/teamColours'
+
+function isUnder18(dob, eventYear) {
+  if (!dob) return false
+  const cutoff = new Date(`${eventYear}-07-01`)
+  const eighteenth = new Date(dob)
+  eighteenth.setFullYear(eighteenth.getFullYear() + 18)
+  return eighteenth > cutoff
+}
+function initials(name = '') { return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?' }
+
+function Tick({ ok }) {
+  return (
+    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-black ${ok ? 'text-black' : 'text-red-400 border border-red-400/40 bg-red-400/10'}`}
+      style={ok ? { background: '#00FF41' } : {}}>
+      {ok ? '✓' : '✗'}
+    </div>
+  )
+}
+
+// ── Status helpers ──────────────────────────────────────────────────────────
+//
+// derivePaymentStatus(reg, amountPaidCents) — single source of truth for the
+// player payment chip state. Returns 'unpaid' | 'partial' | 'paid' | 'overpaid'
+// from the registration's amount_owing (the cost of registration) minus the
+// sum of payment_records.amount for that registration (the running ledger).
+//
+//   balance < 0  → 'overpaid'
+//   balance == 0 → 'paid'
+//   balance > 0  AND any payment recorded → 'partial'
+//   balance > 0  AND no payments          → 'unpaid'
+//
+// The PaymentChip below reads only the returned status string; this helper
+// is the single point of change if the formula ever evolves.
+function derivePaymentStatus(reg, amountPaidCents) {
+  if (!reg || reg.amount_owing == null) return 'unpaid'
+  const owing = reg.amount_owing
+  const paid = amountPaidCents ?? 0
+  const balance = owing - paid
+  if (balance < 0) return 'overpaid'
+  if (balance === 0) return 'paid'
+  if (paid > 0) return 'partial'
+  return 'unpaid'
+}
+
+// deriveSideEventsStatus(reg, doublesPairs, triplesTeams) — boolean per player.
+// Requires (a) the player has confirmed their side-event selections, and
+// (b) for each partner-based event the player chose, the relevant
+// doubles_pairs / triples_teams row is confirmed.
+function deriveSideEventsStatus(reg, doublesPairs, triplesTeams) {
+  if (!reg) return false
+  if (!reg.has_confirmed_side_events) return false
+  const slugs = new Set(reg.side_events ?? [])
+  const uid = reg.user_id
+  if (slugs.has('doubles')) {
+    const pair = (doublesPairs ?? []).find(p => p.player1_id === uid || p.player2_id === uid)
+    if (!pair || !pair.confirmed) return false
+  }
+  if (slugs.has('triples')) {
+    const trip = (triplesTeams ?? []).find(t => t.player1_id === uid || t.player2_id === uid || t.player3_id === uid)
+    if (!trip || !trip.confirmed) return false
+  }
+  return true
+}
+
+// ── Status chips ────────────────────────────────────────────────────────────
+// Generic binary/N/A chip used for CoC, Ref Test, Media, Side Events, Extras.
+function StatusChip({ state, label, title }) {
+  // state: 'complete' | 'incomplete' | 'na'
+  const meta = state === 'complete'
+    ? { cls: 'bg-brand/10 text-brand border-brand/30', icon: '✓' }
+    : state === 'na'
+      ? { cls: 'bg-line/40 text-[#e5e5e5]/60 border-line', icon: '—' }
+      : { cls: 'bg-red-500/10 text-red-400 border-red-500/30', icon: '✗' }
+  return (
+    <span
+      title={title ?? label}
+      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${meta.cls}`}
+    >
+      <span aria-hidden>{meta.icon}</span>
+      <span>{label}</span>
+    </span>
+  )
+}
+
+// PaymentChip — takes a status string. Helper above is the only place that
+// inspects amount_owing. Add new states ('partial' etc.) by extending both.
+const PAYMENT_META = {
+  unpaid:   { cls: 'bg-red-500/10 text-red-400 border-red-500/30',     icon: '✗', label: 'Unpaid' },
+  partial:  { cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: '◐', label: 'Partial' },
+  paid:     { cls: 'bg-brand/10 text-brand border-brand/30',           icon: '✓', label: 'Paid' },
+  overpaid: { cls: 'bg-blue-500/10 text-blue-400 border-blue-500/30',  icon: '+', label: 'Overpaid' },
+  na:       { cls: 'bg-line/40 text-[#e5e5e5]/60 border-line',         icon: '—', label: 'N/A' },
+}
+function PaymentChip({ status }) {
+  const meta = PAYMENT_META[status] ?? PAYMENT_META.unpaid
+  return (
+    <span
+      title={`Payment: ${meta.label}`}
+      className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${meta.cls}`}
+    >
+      <span aria-hidden>{meta.icon}</span>
+      <span>{meta.label}</span>
+    </span>
+  )
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    draft:    'bg-line text-[#e5e5e5]/60 border-line',
+    pending:  'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    approved: 'bg-brand/10 text-brand border-brand/20',
+    rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
+  }
+  return (
+    <span className={`text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border ${map[status] ?? map.pending}`}>
+      {status}
+    </span>
+  )
+}
+
+const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+
+// Minimum canonical-roster size to submit a ZLTAC team for approval. Mirrors
+// the server-side gate in api/captain.js (submit-team); the server re-checks.
+const MIN_PLAYERS = 5
+
+export default function CaptainHub() {
+  const { user, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
+
+  const [loading, setLoading] = useState(true)
+  const [team, setTeam] = useState(null)
+  const [event, setEvent] = useState(null)
+  const [roster, setRoster] = useState([])
+  const [completionMap, setCompletionMap] = useState({})
+  const [filter, setFilter] = useState('all')
+
+  // Player search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchDone, setSearchDone] = useState(false)
+  const searchTimer = useRef(null)
+
+  // Remove confirmation
+  const [removeConfirm, setRemoveConfirm] = useState(null) // { regId, alias }
+
+  // Disband confirmation
+  const [disbandOpen, setDisbandOpen] = useState(false)
+  const [disbanding, setDisbanding] = useState(false)
+  const [disbandError, setDisbandError] = useState('')
+
+  // Submit team for approval
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+
+  // Toast
+  const [toast, setToast] = useState(null)
+
+  // Team settings
+  const [editingSettings, setEditingSettings] = useState(false)
+  const [settingsForm, setSettingsForm] = useState({ name: '', state: '', home_venue: '', colour: '#00E6FF' })
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsErr, setSettingsErr] = useState('')
+
+  // Logo upload
+  const logoInputRef = useRef(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState('')
+
+  useEffect(() => {
+    if (!authLoading && !user) { navigate('/login'); return }
+    if (!user) return
+    load()
+  }, [authLoading, user]) // eslint-disable-line
+
+  function showToast(msg) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  // ── Load data ─────────────────────────────────────────────────────────────
+  async function load() {
+    const [{ data: ev }, { data: t }] = await Promise.all([
+      supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment, reg_close_date, event_starts_at, committee_email').eq('status', 'open').maybeSingle(),
+      supabase.from('teams').select('id, name, state, home_venue, colour, status, rejection_reason, logo_url').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
+    ])
+    setEvent(ev)
+    if (!t) { setLoading(false); return }
+    setTeam(t)
+    setSettingsForm({ name: t.name ?? '', state: t.state ?? '', home_venue: t.home_venue ?? '', colour: t.colour ?? '#00E6FF' })
+    if (ev?.year) await loadRoster(t, ev.year)
+    setLoading(false)
+  }
+
+  async function loadRoster(t, eventYear) {
+    const { data: regsData } = await supabase
+      .from('zltac_registrations')
+      .select('id, user_id, side_events, dinner_guests, status, emergency_contact_name')
+      .eq('team_id', t.id)
+      .eq('year', eventYear)
+
+    const rows = regsData ?? []
+
+    if (rows.length > 0) {
+      const userIds = rows.map(r => r.user_id).filter(Boolean)
+      const { profiles: profData } = await apiFetch('/api/profiles', {
+        method: 'POST',
+        body: JSON.stringify({ ids: userIds }),
+      })
+      const profMap = Object.fromEntries((profData ?? []).map(p => [p.id, p]))
+      const enriched = rows.map(r => ({ ...r, profiles: profMap[r.user_id] ?? null }))
+      setRoster(enriched)
+      await loadCompletions(enriched.map(r => r.user_id), eventYear)
+    } else {
+      setRoster([])
+      setCompletionMap({})
+    }
+  }
+
+  async function loadCompletions(playerIds, eventYear) {
+    if (!playerIds.length) return
+    const {
+      coc_sigs, ref_results, u18_subs, media_subs,
+      regs_status, doubles_pairs, triples_teams,
+      paid_cents_by_user, overrides,
+    } = await apiFetch(
+      '/api/captain',
+      { method: 'POST', body: JSON.stringify({ action: 'team-completions', playerIds, eventYear }) },
+    )
+    const cocSet   = new Set((coc_sigs  ?? []).map(c => c.user_id))
+    const testMap  = Object.fromEntries((ref_results ?? []).map(t => [t.user_id, t]))
+    const u18Set   = new Set((u18_subs  ?? []).map(u => u.user_id))
+    const mediaSet = new Set((media_subs ?? []).map(m => m.user_id))
+    const regsByUser = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, r]))
+    const paidByUser = paid_cents_by_user ?? {}
+    const overridesByUser = overrides ?? {}
+
+    // Audit suffix for chip tooltips when the committee has overridden a
+    // concern. Includes the date + reason so the captain can see why a
+    // teammate was waived, without exposing which admin recorded it.
+    const overrideSuffix = (setAt, reason) => {
+      const parts = []
+      if (setAt) {
+        const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+        parts.push(`on ${d}`)
+      }
+      if (reason) parts.push(`Reason: ${reason}`)
+      return parts.length > 0 ? ` ${parts.join('. ')}.` : ''
+    }
+
+    const comp = {}
+    playerIds.forEach(uid => {
+      const reg = regsByUser[uid]
+      // Committee manual overrides are tri-state: null = follow real completion,
+      // true = force complete, false = force incomplete. A concern reads
+      // satisfied per the effective rule (ov == null ? real : ov === true), so a
+      // force-incomplete reads NOT satisfied even when the real record exists.
+      // The OVR badge + audit detail stay force-complete-only (truthy ov.*).
+      const ov = overridesByUser[uid] ?? {}
+      // Rules Test section breakdown for the chip tooltip. Real result → section
+      // scores (or legacy note for pre-section rows); override → audit note.
+      const tRow = testMap[uid]
+      const testDetail = tRow
+        ? (tRow.safety_total != null
+            ? `Safety ${tRow.safety_correct ?? 0}/${tRow.safety_total}, General ${tRow.general_correct ?? 0}/${tRow.general_total ?? 0}`
+            : 'Legacy result — no section breakdown')
+        : (ov.ref_test
+            ? `Committee override.${overrideSuffix(ov.ref_test_set_at, ov.ref_test_reason)}`
+            : null)
+      comp[uid] = {
+        coc:           ov.coc == null ? cocSet.has(uid) : ov.coc === true,
+        cocOverride:   !!ov.coc,
+        cocOverrideDetail: ov.coc
+          ? `Committee override.${overrideSuffix(ov.coc_set_at, ov.coc_reason)}`
+          : null,
+        test:          ov.ref_test == null ? testMap[uid]?.passed === true : ov.ref_test === true,
+        testOverride:  !!ov.ref_test,
+        testScore:     testMap[uid]?.score,
+        testDetail,
+        u18:           ov.u18 == null ? u18Set.has(uid) : ov.u18 === true,
+        u18Override:   !!ov.u18,
+        u18OverrideDetail: ov.u18
+          ? `Committee override.${overrideSuffix(ov.u18_set_at, ov.u18_reason)}`
+          : null,
+        media:         ov.media == null ? mediaSet.has(uid) : ov.media === true,
+        mediaOverride: !!ov.media,
+        mediaOverrideDetail: ov.media
+          ? `Committee override.${overrideSuffix(ov.media_set_at, ov.media_reason)}`
+          : null,
+        sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
+        extras:        !!reg?.has_confirmed_extras,
+        paymentStatus: derivePaymentStatus(reg, paidByUser[uid] ?? 0),
+      }
+    })
+    setCompletionMap(comp)
+  }
+
+  // ── Player search ─────────────────────────────────────────────────────────
+  function onSearchChange(val) {
+    setSearchQuery(val)
+    setSearchResults([])
+    setSearchDone(false)
+    clearTimeout(searchTimer.current)
+    if (val.trim().length < 3) return
+    searchTimer.current = setTimeout(() => runSearch(val.trim()), 350)
+  }
+
+  async function runSearch(term) {
+    if (!event?.year || !team) return
+    setSearching(true)
+
+    // Get registered user_ids with no team for current event, excluding the captain
+    const { data: unassigned } = await supabase
+      .from('zltac_registrations')
+      .select('user_id')
+      .eq('year', event.year)
+      .is('team_id', null)
+      .neq('user_id', user.id)
+
+    const unassignedIds = (unassigned ?? []).map(r => r.user_id).filter(Boolean)
+
+    if (unassignedIds.length === 0) {
+      setSearchResults([])
+      setSearchDone(true)
+      setSearching(false)
+      return
+    }
+
+    const { profiles: allProfiles } = await apiFetch('/api/profiles', {
+      method: 'POST',
+      body: JSON.stringify({ ids: unassignedIds }),
+    })
+    const q = term.toLowerCase()
+    const matches = (allProfiles ?? []).filter(p =>
+      (p.first_name ?? '').toLowerCase().includes(q) ||
+      (p.last_name ?? '').toLowerCase().includes(q) ||
+      (p.alias ?? '').toLowerCase().includes(q)
+    ).slice(0, 10)
+
+    setSearchResults(matches)
+    setSearchDone(true)
+    setSearching(false)
+  }
+
+  async function addPlayer(profile) {
+    if (!team || !event?.year) return
+
+    try {
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'add-player', playerId: profile.id, teamId: team.id, year: event.year }),
+      })
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+      return
+    }
+
+    // Optimistically add to roster
+    const newRow = { id: `tmp-${profile.id}`, user_id: profile.id, profiles: profile, side_events: null, dinner_guests: 0, status: 'pending' }
+    setRoster(r => [...r, newRow])
+    setSearchResults(r => r.filter(p => p.id !== profile.id))
+    setSearchQuery('')
+    setSearchDone(false)
+    showToast(`${profile.alias || profile.first_name} added to your team`)
+
+    if (team && event?.year) loadRoster(team, event.year)
+  }
+
+  // ── Remove player ─────────────────────────────────────────────────────────
+  async function confirmRemove() {
+    if (!removeConfirm) return
+    try {
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'remove-player',
+          playerId: removeConfirm.userId,
+          teamId: team?.id,
+          year: event?.year,
+        }),
+      })
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+      setRemoveConfirm(null)
+      return
+    }
+
+    setRoster(r => r.filter(p => p.id !== removeConfirm.regId))
+    showToast(`${removeConfirm.alias} removed from your team`)
+    setRemoveConfirm(null)
+  }
+
+  // ── Disband team ──────────────────────────────────────────────────────────
+  async function disbandTeam() {
+    if (!team?.id || !event?.year) return
+    setDisbanding(true)
+    setDisbandError('')
+    try {
+      await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'disband-team', teamId: team.id, year: event.year }),
+      })
+      navigate('/player-hub')
+    } catch (err) {
+      console.error('[CaptainHub] disbandTeam threw:', err)
+      setDisbandError(err?.message || 'Failed to disband team. Please try again.')
+      setDisbanding(false)
+    }
+  }
+
+  // ── Submit team for approval ──────────────────────────────────────────────
+  // Service-role endpoint (bypasses the Batch-1 status trigger) that re-checks
+  // captaincy, ZLTAC, draft/rejected status, and the >=5 roster count. We don't
+  // swallow errors — they surface in submitError.
+  async function submitTeam() {
+    if (!team?.id) return
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const res = await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'submit-team', teamId: team.id }),
+      })
+      setTeam(t => ({ ...t, status: res?.status ?? 'pending', rejection_reason: null }))
+      showToast('Team submitted for approval')
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not submit the team. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── Team settings ─────────────────────────────────────────────────────────
+  // ── Logo upload ──────────────────────────────────────────────────────────
+  // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
+  // team_logos_captain_team_write RLS policy (see 20260520000000 migration).
+  // We do not delete the old file when replacing; orphan cleanup is handled
+  // separately. Active document formats such as SVG are deliberately rejected.
+  const LOGO_ACCEPTED_TYPES = RASTER_IMAGE_TYPES
+  const LOGO_MAX_BYTES = 2 * 1024 * 1024 // 2 MB
+
+  function pickLogo() {
+    setLogoError('')
+    logoInputRef.current?.click()
+  }
+
+  async function onLogoFileChosen(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoError('')
+
+    if (!LOGO_ACCEPTED_TYPES.includes(file.type)) {
+      setLogoError('Unsupported file type. Use PNG, JPEG, or WebP.')
+      e.target.value = ''
+      return
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(2)
+      setLogoError(`File is ${mb} MB — max 2 MB.`)
+      e.target.value = ''
+      return
+    }
+    if (!team?.id) {
+      setLogoError('Team is not loaded yet.')
+      e.target.value = ''
+      return
+    }
+
+    setLogoUploading(true)
+    try {
+      const ext = extensionForMime(file.type)
+      const path = `${team.id}/${Date.now()}.${ext}`
+
+      const { data: up, error: upErr } = await supabase.storage
+        .from('team-logos')
+        .upload(path, file, { upsert: false, contentType: file.type })
+      if (upErr) throw upErr
+
+      const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
+      const publicUrl = urlData.publicUrl
+
+      const { error: updErr } = await supabase
+        .from('teams')
+        .update({ logo_url: publicUrl })
+        .eq('id', team.id)
+      if (updErr) throw updErr
+
+      setTeam(t => ({ ...t, logo_url: publicUrl }))
+      showToast('Logo updated')
+    } catch (err) {
+      setLogoError(err?.message || 'Logo upload failed. Please try again.')
+    } finally {
+      setLogoUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  async function saveSettings() {
+    if (!settingsForm.name.trim()) { setSettingsErr('Team name is required.'); return }
+    setSavingSettings(true); setSettingsErr('')
+    const { error } = await supabase.from('teams').update({
+      name: settingsForm.name.trim(),
+      state: settingsForm.state || null,
+      home_venue: settingsForm.home_venue.trim() || null,
+      colour: settingsForm.colour,
+    }).eq('id', team.id)
+    setSavingSettings(false)
+    if (error) { setSettingsErr(error.message); return }
+    setTeam(t => ({ ...t, ...settingsForm }))
+    setEditingSettings(false)
+  }
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+  function exportRosterCSV() {
+    if (!roster.length) return
+    const rows = roster.map(r => ({
+      name: `${r.profiles?.first_name ?? ''} ${r.profiles?.last_name ?? ''}`.trim(),
+      alias: r.profiles?.alias ?? '',
+      state: r.profiles?.state ?? '',
+      dob: r.profiles?.dob ?? '',
+      side_event_entries: (r.side_events ?? []).join('; '),
+      dinner_guests: r.dinner_guests ?? 0,
+      status: r.status ?? '',
+      coc:         !isCocRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.coc    ? 'Yes' : 'No',
+      rules_test:  !isRefTestRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.test   ? 'Yes' : 'No',
+      media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
+      side_events_complete: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
+      extras:      completionMap[r.user_id]?.extras    ? 'Yes' : 'No',
+      payment:     !isPaymentRequired(event)
+                    ? 'N/A'
+                    : completionMap[r.user_id]?.paymentStatus ?? 'unpaid',
+    }))
+    const keys = Object.keys(rows[0])
+    const csv = [keys.join(','), ...rows.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'roster.csv'; a.click()
+  }
+
+  function isPlayerReady(uid) {
+    const c = completionMap[uid]
+    if (!c) return false
+    const row = roster.find(r => r.user_id === uid)
+    const u18needed = isUnder18(row?.profiles?.dob, event?.year)
+    const refRequired = isRefTestRequired(event)
+    const cocRequired = isCocRequired(event)
+    const paymentRequired = isPaymentRequired(event)
+    return (
+      (!cocRequired || c.coc) &&
+      (!refRequired || c.test) &&
+      c.media && c.sideEvents && c.extras &&
+      (!paymentRequired || c.paymentStatus !== 'unpaid') &&
+      (!u18needed || c.u18)
+    )
+  }
+
+  // ── Guards ────────────────────────────────────────────────────────────────
+  if (authLoading || loading) {
+    return <div className="min-h-screen bg-base flex items-center justify-center"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+  }
+  if (!team) {
+    return (
+      <div className="min-h-screen bg-base flex flex-col">
+        {/* Welcome */}
+        <div className="max-w-4xl mx-auto px-6 pt-10 w-full">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-shrink-0">
+              <TeamShieldIcon size={56} />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
+              <p className="text-[#e5e5e5]/60 text-sm mt-1">
+                Your hub for managing roster, tracking team readiness, and approving players.
+              </p>
+            </div>
+          </div>
+        </div>
+        {/* No-team placeholder */}
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+          <div className="text-4xl mb-4">👑</div>
+          <h2 className="text-2xl font-black text-white mb-2">No Team Found</h2>
+          <p className="text-[#e5e5e5]/60 text-sm mb-6">You haven't registered a team yet.</p>
+          <Link to={event ? `/events/${event.year}/captain-register` : '/'} className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
+            Register a Team →
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  const eventYear = event?.year
+  // Once registration locks, the roster is frozen: captains can't add/remove
+  // players or disband. Server-side add-player / disband-team are already
+  // phase-guarded (api/captain.js); this gates the UI so controls don't
+  // invite a click that 403s. Cosmetic team settings (name/logo/venue) stay
+  // editable — they don't affect registration, fees, or eligibility.
+  const phase = eventPhase(event)
+  const locked = phase !== 'open'
+  // Team-status lock (Batch 2): once a ZLTAC team is submitted (pending) or
+  // approved, name + roster are frozen and changes go via the committee. The
+  // server trigger enforces this; the UI mirrors it. Cosmetic logo/colour stay
+  // open. draft/rejected leave the build controls open so captains can fix and
+  // (re-)submit.
+  const statusLocked = team.status === 'pending' || team.status === 'approved'
+  const canSubmit = team.status === 'draft' || team.status === 'rejected'
+  const committeeEmail = event?.committee_email || COMMITTEE_EMAIL
+  const filteredRoster = roster.filter(r => {
+    if (filter === 'ready') return isPlayerReady(r.user_id)
+    if (filter === 'incomplete') return !isPlayerReady(r.user_id)
+    if (filter === 'unpaid') return completionMap[r.user_id]?.paymentStatus === 'unpaid'
+    return true
+  })
+
+  return (
+    <div className="min-h-screen bg-base text-white">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-brand text-black text-sm font-bold px-5 py-3 rounded-xl shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      {/* Remove confirmation modal */}
+      {removeConfirm && (
+        <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove player?</Dialog.Title>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">Remove <span className="text-white font-semibold">{removeConfirm.alias}</span> from your team? Their registration will remain but they'll be unassigned.</p>
+            <div className="flex gap-3">
+              <button onClick={confirmRemove} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove</button>
+              <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
+            </div>
+        </Dialog>
+      )}
+
+      {/* Disband team confirmation modal */}
+      {disbandOpen && (
+        <Dialog
+          open
+          onClose={() => { setDisbandOpen(false); setDisbandError('') }}
+          variant="center"
+          size="sm"
+          closeOnBackdrop={false}
+          className="p-6"
+        >
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Disband team?</Dialog.Title>
+            <p className="text-[#e5e5e5]/60 text-sm mb-5">
+              This permanently deletes <span className="text-white font-semibold">{team?.name}</span> and removes all <span className="text-white font-semibold">{roster.length}</span> member{roster.length !== 1 ? 's' : ''} from the team.
+              They will remain registered for <span className="text-white font-semibold">{event?.name ?? `ZLTAC ${event?.year ?? ''}`}</span> but will need to create or join another team. This cannot be undone. Continue?
+            </p>
+            {disbandError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+                <p className="text-red-400 text-xs">{disbandError}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={disbandTeam}
+                disabled={disbanding}
+                className="bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                {disbanding ? 'Disbanding…' : 'Disband team'}
+              </button>
+              <button
+                onClick={() => { setDisbandOpen(false); setDisbandError('') }}
+                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+        </Dialog>
+      )}
+
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        {event && (
+          <Link to={`/events/${eventYear}`} className="text-[#e5e5e5]/60 hover:text-brand text-xs transition-colors mb-5 inline-block">
+            ← {event.name}
+          </Link>
+        )}
+
+        {/* Welcome */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-shrink-0">
+            <TeamShieldIcon size={56} />
+          </div>
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black text-white leading-tight">Welcome to Team Hub</h1>
+            <p className="text-[#e5e5e5]/60 text-sm mt-1">
+              Your hub for managing roster, tracking team readiness, and approving players.
+            </p>
+          </div>
+        </div>
+
+        {/* Header */}
+        <div className="flex items-start gap-5 mb-6">
+          <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0" style={{ background: team.colour ?? '#00E6FF' }}>
+            {team.logo_url
+              ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain rounded-xl" />
+              : initials(team.name)
+            }
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 flex-wrap mb-1">
+              <h1 className="text-2xl font-black text-white">{team.name}</h1>
+              <StatusBadge status={team.status} />
+            </div>
+            <p className="text-[#e5e5e5]/60 text-xs">
+              {team.state && <span>{team.state} · </span>}
+              {team.home_venue && <span>{team.home_venue} · </span>}
+              <span>ZLTAC {eventYear ?? '—'} · Team Hub</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Status banners */}
+        {/* Submitted (pending) or approved: name + roster are frozen; changes
+            go via the committee. Amber lock banner mirrors LockedRegistrationBanner. */}
+        {statusLocked && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 mb-5 flex items-start gap-3">
+            <span className="text-lg flex-shrink-0 leading-none mt-0.5" aria-hidden>🔒</span>
+            <div className="min-w-0 text-sm">
+              <p className="text-yellow-300 font-semibold">
+                Team and roster changes are locked while your team is {team.status === 'approved' ? 'approved' : 'under review'}.
+              </p>
+              <p className="text-yellow-200/80 mt-1 leading-relaxed">
+                Email the committee at{' '}
+                <a href={`mailto:${committeeEmail}`} className="underline hover:text-yellow-100">{committeeEmail}</a>
+                {' '}to make any adjustments.
+              </p>
+            </div>
+          </div>
+        )}
+        {team.status === 'rejected' && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
+            <p className="text-red-400 text-sm font-semibold">✗ Team registration was not approved</p>
+            {team.rejection_reason && <p className="text-[#e5e5e5]/60 text-xs mt-1">Reason: {team.rejection_reason}</p>}
+            <p className="text-[#e5e5e5]/60 text-xs mt-1">Adjust your team or roster below, then re-submit for approval.</p>
+          </div>
+        )}
+
+        {/* Submit for approval — shown only while the build is open (draft or
+            rejected). Enabled at >= MIN_PLAYERS; the server re-checks. */}
+        {canSubmit && (
+          <div className="bg-surface border border-line rounded-2xl p-5 mb-5">
+            <h2 className="text-white font-bold mb-1">Submit Team for Approval</h2>
+            <p className="text-[#e5e5e5]/60 text-xs leading-relaxed mb-3">
+              Your team and roster will be reviewed by the committee and approved if it meets the ZLTAC rules &amp; regulations. Once approved, all team and roster changes must be made via the committee by email.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={submitTeam}
+                disabled={submitting || roster.length < MIN_PLAYERS}
+                className="bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black font-bold px-5 py-2.5 rounded-xl text-sm transition-all"
+              >
+                {submitting ? 'Submitting…' : 'Submit Team for Approval'}
+              </button>
+              {roster.length < MIN_PLAYERS && (
+                <span className="text-[#e5e5e5]/60 text-xs">
+                  {roster.length} / {MIN_PLAYERS} players — add {MIN_PLAYERS - roster.length} more to submit
+                </span>
+              )}
+            </div>
+            {submitError && <p role="alert" className="text-red-400 text-xs mt-2">{submitError}</p>}
+          </div>
+        )}
+
+        {/* Registration lock banner — roster changes go via the committee. */}
+        {locked && <LockedRegistrationBanner phase={phase} email={event?.committee_email} className="mb-5" />}
+
+        <div className="space-y-5">
+
+          {/* ── Add Players ───────────────────────────────────────────────── */}
+          <div className="bg-surface border border-line rounded-2xl p-5">
+            <h2 className="text-white font-bold mb-1">Add Players to Team</h2>
+            <p className="text-[#e5e5e5]/60 text-xs mb-4">Search for players who have registered for ZLTAC {eventYear} but are not yet on a team.</p>
+
+            {/* How players get onto a team now that invite codes are gone. */}
+            <div className="bg-base border border-line rounded-xl px-4 py-3 mb-4">
+              <p className="text-[#e5e5e5]/70 text-xs leading-relaxed">
+                Players need to be added here with the search tool. Players must be signed up to the ALSA portal and registered to the current event to be added.
+              </p>
+            </div>
+
+            {(locked || statusLocked) ? (
+              <LockedNotice email={event?.committee_email} />
+            ) : (
+              <>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => onSearchChange(e.target.value)}
+                    placeholder="Search by name or alias…"
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors"
+                  />
+                  {searching && (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Search feedback */}
+                {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
+                  <p className="text-[#e5e5e5]/60 text-xs mt-3">Type at least 3 characters to search</p>
+                )}
+
+                {searchDone && !searching && searchResults.length === 0 && searchQuery.trim().length >= 3 && (
+                  <p className="text-[#e5e5e5]/60 text-xs mt-3">
+                    No registered ZLTAC {eventYear} players found matching that search. They may not have signed up to the ALSA portal and registered for ZLTAC {eventYear} yet. Players must do both before they can be added here.
+                  </p>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="mt-2 border border-line rounded-xl overflow-hidden">
+                    {searchResults.map((p, i) => {
+                      const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'
+                      return (
+                        <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${i !== 0 ? 'border-t border-line' : ''} hover:bg-line/30 transition-colors`}>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>
+                            {initials(name)}
+                          </div>
+                          <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                            <span className="text-white text-sm font-semibold">{name}</span>
+                            {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
+                            <CommitteeBadge roles={p.roles} size="xs" />
+                            {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
+                          </div>
+                          <button
+                            onClick={() => addPlayer(p)}
+                            className="flex-shrink-0 text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            Add to Team
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── Roster ────────────────────────────────────────────────────── */}
+          <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-white font-bold">Team Roster</h2>
+                <p className="text-[#e5e5e5]/60 text-xs mt-0.5">{roster.length} player{roster.length !== 1 ? 's' : ''} on your team</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {['all', 'ready', 'incomplete', 'unpaid'].map(f => (
+                  <button key={f} onClick={() => setFilter(f)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'bg-brand text-black' : 'bg-line text-[#e5e5e5]/60 hover:text-white'}`}>
+                    {f}
+                  </button>
+                ))}
+                <button onClick={exportRosterCSV} className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/60 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
+                  CSV
+                </button>
+              </div>
+            </div>
+
+            {filteredRoster.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-[#e5e5e5]/60 text-sm">
+                  {roster.length === 0
+                    ? (locked
+                        ? 'Registrations are locked. Players can no longer be added.'
+                        : 'No players on your team yet. Use the search above to add registered ZLTAC players to your team.')
+                    : 'No players match this filter.'}
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-line">
+                {filteredRoster.map(r => {
+                  const name = [r.profiles?.first_name, r.profiles?.last_name].filter(Boolean).join(' ') || '—'
+                  const alias = r.profiles?.alias
+                  const pState = r.profiles?.state
+                  const dob = r.profiles?.dob
+                  const avatarUrl = r.profiles?.avatar_url
+                  const u18 = isUnder18(dob, eventYear)
+                  const comp = completionMap[r.user_id] ?? {}
+                  const ready = isPlayerReady(r.user_id)
+                  const isMe = r.user_id === user.id
+
+                  return (
+                    <div key={r.id} className="px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        {avatarUrl
+                          ? <img src={maskStorageUrl(avatarUrl)} alt={name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                          : <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>{initials(name)}</div>
+                        }
+
+                        <div className="flex-1 min-w-0">
+                          {/* Name row */}
+                          <div className="flex items-center gap-2 flex-wrap mb-2">
+                            <span className="text-white font-semibold text-sm">{name}</span>
+                            {alias && <span className="text-brand text-xs">"{alias}"</span>}
+                            <CommitteeBadge roles={r.profiles?.roles} size="xs" />
+                            {pState && <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">{pState}</span>}
+                            {u18 && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full font-bold">U18</span>}
+                            {isMe && <span className="text-[10px] text-[#e5e5e5]/60 font-semibold">(You)</span>}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ready ? 'bg-brand/10 text-brand' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                              {ready ? 'Ready' : 'Incomplete'}
+                            </span>
+                          </div>
+
+                          {/* Completion chips — read-only.
+                              On narrow viewports the strip wraps; each chip
+                              still carries its full status word. */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* CoC chip renders N/A when the event has the
+                                requirement disabled. */}
+                            {(() => {
+                              const cocRequired = isCocRequired(event)
+                              const cocState = !cocRequired
+                                ? 'na'
+                                : comp.coc ? 'complete' : 'incomplete'
+                              const cocTitle = !cocRequired
+                                ? 'Code of Conduct: not required for this event'
+                                : comp.cocOverride
+                                  ? `Code of Conduct: ${comp.cocOverrideDetail}`
+                                  : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
+                              const cocLabel = comp.cocOverride ? 'CoC OVR' : 'CoC'
+                              return <StatusChip state={cocState} label={cocLabel} title={cocTitle} />
+                            })()}
+                            {/* Rules Test chip renders N/A when the event has
+                                disabled the requirement; otherwise reflects
+                                the player's own pass/fail state. Tooltip carries
+                                the Safety/General section breakdown when present. */}
+                            {(() => {
+                              const refRequired = isRefTestRequired(event)
+                              const refState = !refRequired
+                                ? 'na'
+                                : comp.test ? 'complete' : 'incomplete'
+                              const detailSuffix = comp.testDetail ? ` — ${comp.testDetail}` : ''
+                              const refTitle = !refRequired
+                                ? 'Rules Test: not required for this event'
+                                : comp.test
+                                  ? `Rules Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}${detailSuffix}`
+                                  : 'Rules Test: not yet passed'
+                              const baseLabel = !refRequired
+                                ? 'Rules'
+                                : (comp.test && comp.testScore != null ? `Rules ${comp.testScore}%` : 'Rules')
+                              const refLabel = comp.testOverride ? `${baseLabel} OVR` : baseLabel
+                              return <StatusChip state={refState} label={refLabel} title={refTitle} />
+                            })()}
+                            <StatusChip
+                              state={comp.media ? 'complete' : 'incomplete'}
+                              label={comp.mediaOverride ? 'Media OVR' : 'Media'}
+                              title={comp.mediaOverride
+                                ? `Media Release: ${comp.mediaOverrideDetail}`
+                                : (comp.media ? 'Media Release: signed' : 'Media Release: not yet signed')}
+                            />
+                            <StatusChip
+                              state={comp.sideEvents ? 'complete' : 'incomplete'}
+                              label="Side"
+                              title={comp.sideEvents
+                                ? 'Side events: confirmed (and any doubles/triples partners confirmed)'
+                                : 'Side events: not confirmed, or a doubles/triples partner has not confirmed yet'}
+                            />
+                            <StatusChip
+                              state={comp.extras ? 'complete' : 'incomplete'}
+                              label="Extras"
+                              title={comp.extras ? 'Extras: confirmed' : 'Extras: not yet confirmed'}
+                            />
+                            {/* Payment chip renders N/A when the event has
+                                the requirement disabled. */}
+                            <PaymentChip status={isPaymentRequired(event) ? comp.paymentStatus : 'na'} />
+                          </div>
+                        </div>
+
+                        {/* Remove button — frozen once registration locks. */}
+                        {!isMe && (
+                          <button
+                            onClick={() => setRemoveConfirm({ regId: r.id, userId: r.user_id, alias: alias || name })}
+                            disabled={locked || statusLocked}
+                            title={(locked || statusLocked) ? 'Locked — contact the committee to change the roster' : undefined}
+                            className="flex-shrink-0 text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-red-400/50 disabled:cursor-default"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Team Settings ─────────────────────────────────────────────── */}
+          <div className="bg-surface border border-line rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-bold">Team Settings</h2>
+              {!editingSettings && (
+                <button onClick={() => setEditingSettings(true)} className="text-xs text-brand/60 hover:text-brand transition-colors">Edit</button>
+              )}
+            </div>
+
+            {/* Logo row — always visible. Read-only display + upload control. */}
+            <div className="flex items-center gap-4 mb-5 pb-5 border-b border-line">
+              <div
+                className="w-20 h-20 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0 overflow-hidden"
+                style={{ background: team.colour ?? '#00E6FF' }}
+              >
+                {/* SAFETY: do not inline-render SVG logos — always use <img src>. */}
+                {team.logo_url
+                  ? <img src={maskStorageUrl(team.logo_url)} alt={`${team.name} logo`} className="w-full h-full object-contain" />
+                  : <span aria-hidden>{initials(team.name)}</span>
+                }
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Team Logo</p>
+                <p className="text-xs text-[#e5e5e5]/60 mb-2 leading-relaxed">
+                  PNG, JPEG, WebP, or SVG · max 2 MB
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    onChange={onLogoFileChosen}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={pickLogo}
+                    disabled={logoUploading}
+                    className="text-xs bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    {logoUploading
+                      ? 'Uploading…'
+                      : team.logo_url
+                        ? 'Replace logo'
+                        : 'Upload logo'}
+                  </button>
+                  {logoUploading && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-[#e5e5e5]/60">
+                      <span className="w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+                      Uploading…
+                    </span>
+                  )}
+                </div>
+                {logoError && <p className="text-red-400 text-xs mt-2">{logoError}</p>}
+              </div>
+            </div>
+
+            {editingSettings ? (
+              <div className="space-y-4">
+                {statusLocked && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2">
+                    <p className="text-yellow-300/90 text-xs leading-relaxed">
+                      Name, state, and home venue are locked while your team is {team.status === 'approved' ? 'approved' : 'under review'} — email the committee to change them. Logo and colour stay editable.
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Team Name</label>
+                  <input type="text" value={settingsForm.name} onChange={e => setSettingsForm(f => ({ ...f, name: e.target.value }))}
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <select value={settingsForm.state} onChange={e => setSettingsForm(f => ({ ...f, state: e.target.value }))}
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed">
+                    <option value="">Select…</option>
+                    {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Home Venue</label>
+                  <input type="text" value={settingsForm.home_venue} onChange={e => setSettingsForm(f => ({ ...f, home_venue: e.target.value }))}
+                    placeholder="e.g. Zone300 Sydney"
+                    disabled={statusLocked}
+                    className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/20 focus:outline-none focus:border-brand disabled:opacity-40 disabled:cursor-not-allowed" />
+                </div>
+                {/* Team colour — mirrors CaptainRegister.jsx picker exactly. */}
+                <div>
+                  <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">Team Colour</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {TEAM_COLOURS.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSettingsForm(f => ({ ...f, colour: c }))}
+                        className="w-8 h-8 rounded-full border-2 transition-all"
+                        style={{ background: c, borderColor: settingsForm.colour === c ? '#fff' : 'transparent' }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={settingsForm.colour}
+                      onChange={e => setSettingsForm(f => ({ ...f, colour: e.target.value }))}
+                      className="w-8 h-8 rounded-full border border-line bg-surface cursor-pointer p-0.5"
+                      title="Custom colour"
+                    />
+                    <span className="text-xs text-[#e5e5e5]/60 font-mono ml-1">{settingsForm.colour}</span>
+                  </div>
+                </div>
+                {settingsErr && <p className="text-red-400 text-xs">{settingsErr}</p>}
+                <div className="flex gap-3">
+                  <button onClick={saveSettings} disabled={savingSettings}
+                    className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-all">
+                    {savingSettings ? 'Saving…' : 'Save Changes'}
+                  </button>
+                  <button onClick={() => { setEditingSettings(false); setSettingsErr('') }}
+                    className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">Team Name</span><span className="text-white font-semibold">{team.name}</span></div>
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">State</span><span className="text-white">{team.state ?? '—'}</span></div>
+                <div className="flex justify-between"><span className="text-[#e5e5e5]/60">Home Venue</span><span className="text-white">{team.home_venue ?? '—'}</span></div>
+              </div>
+            )}
+
+            {!editingSettings && (
+              <div className="mt-5 pt-4 border-t border-line">
+                {(locked || statusLocked) ? (
+                  <LockedNotice email={event?.committee_email} />
+                ) : (
+                  <button
+                    onClick={() => { setDisbandError(''); setDisbandOpen(true) }}
+                    className="text-red-400 hover:text-red-300 text-xs font-semibold transition-colors"
+                  >
+                    Disband team
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+      <Footer />
+    </div>
+  )
+}

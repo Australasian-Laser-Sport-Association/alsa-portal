@@ -1,0 +1,1006 @@
+﻿import { useState, useEffect } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import { useAuth } from '../lib/useAuth'
+import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/apiFetch.js'
+import { formatInEventTz } from '../lib/eventTimezone'
+import { isCommittee } from '../lib/roles'
+import Footer from '../components/Footer'
+import Dialog from '../components/Dialog'
+import RegistrationTimeline from '../components/RegistrationTimeline'
+import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
+import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
+import { eventPhase } from '../lib/eventPhase'
+import { maskStorageUrl, storageImageUrl } from '../lib/assetUrl'
+import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
+
+function initials(name = '') {
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+}
+
+const SIDE_EVENT_SLUG_ORDER = ['lord-of-the-rings', 'solos', 'doubles', 'triples']
+
+function sortSideEvents(events) {
+  return [...events].sort((a, b) => {
+    const ai = SIDE_EVENT_SLUG_ORDER.indexOf(a.slug)
+    const bi = SIDE_EVENT_SLUG_ORDER.indexOf(b.slug)
+    if (ai === -1 && bi === -1) return 0
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+}
+
+// ── Team Card ──────────────────────────────────────────────────────────────
+// `team.profiles` is the captain's profile when fetched via the authenticated
+// path. The captain is shown by alias only (never a real name), matching the
+// masked roster. For anonymous viewers we deliberately don't fetch captain
+// profile data, so the alias is absent and we show "—".
+function TeamCard({ team, players }) {
+  // Captain shown by alias only — never a real name — matching the masked
+  // roster. Anon has no captain profile, so this falls back to the dash.
+  const captainName = team.profiles?.alias || '—'
+  const teamState = team.profiles?.state ?? null
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-6">
+        <div className="flex items-start gap-4 mb-4">
+          <div
+            className="w-14 h-14 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0 overflow-hidden"
+            style={{ background: '#00FF41' }}
+          >
+            {team.logo_url
+              ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain" />
+              : initials(team.name)
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-white font-black text-lg leading-tight">{team.name}</h3>
+            {teamState && (
+              <span className="inline-block text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded-full font-bold mt-1.5">
+                {teamState}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[#e5e5e5]/60 text-sm mb-4">
+          <span className="text-[#e5e5e5]/60 text-xs font-bold uppercase tracking-wider">Captain </span>
+          {captainName}
+        </p>
+      </div>
+
+      {players.length > 0 && (
+        <div className="border-t border-line px-6 py-4 space-y-1">
+          <p className="text-[#e5e5e5]/60 text-xs font-bold uppercase tracking-wider mb-3">
+            Roster · {players.length} Player{players.length !== 1 ? 's' : ''}
+          </p>
+          {players.map(p => {
+            // Anon viewers get profile rows with alias + state only (no real
+            // name, no user_id). Prefer alias as primary in that case;
+            // otherwise show real name with alias quoted alongside.
+            const realName = [p.profiles?.first_name, p.profiles?.last_name]
+              .filter(Boolean).join(' ') || null
+            const alias = p.profiles?.alias
+            const state = p.profiles?.state
+            const primary = realName || alias || '—'
+            const secondary = realName ? alias : null
+            const confirmed = p.status === 'confirmed'
+            return (
+              <div key={p.id ?? p._key} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-white text-sm font-semibold">{primary}</span>
+                    {secondary && (
+                      <span className="text-brand text-xs font-semibold">"{secondary}"</span>
+                    )}
+                    {state && (
+                      <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">
+                        {state}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {confirmed && (
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: '#00FF41' }}
+                    title="Fully confirmed"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 5l2 2 4-4" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Side Event Panel ────────────────────────────────────────────────────────
+function SideEventPanel({ sideEvent, entries }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="bg-surface border border-line rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-line/20 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <h3 className="text-white font-bold text-sm">{sideEvent.name}</h3>
+          <span className="text-xs text-[#e5e5e5]/60 font-semibold bg-line/40 px-2 py-0.5 rounded-full">
+            {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+          </span>
+        </div>
+        <svg
+          className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="border-t border-line px-5 py-4">
+          {entries.length === 0 ? (
+            <p className="text-[#e5e5e5]/60 text-sm">No entries yet</p>
+          ) : (
+            <div className="space-y-1">
+              {entries.map(reg => {
+                const realName = [reg.profiles?.first_name, reg.profiles?.last_name]
+                  .filter(Boolean).join(' ') || null
+                const alias = reg.profiles?.alias
+                const primary = realName || alias || '—'
+                const secondary = realName ? alias : null
+                return (
+                  <div key={reg.id ?? reg._key} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-white text-sm font-semibold">{primary}</span>
+                      {secondary && (
+                        <span className="text-brand text-xs font-semibold">"{secondary}"</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Registered Teams Section ────────────────────────────────────────────────
+function RegisteredTeamsSection({ teams, regs, loading = false }) {
+  const regsByTeam = {}
+  regs.forEach(r => {
+    if (r.team_id) {
+      if (!regsByTeam[r.team_id]) regsByTeam[r.team_id] = []
+      regsByTeam[r.team_id].push(r)
+    }
+  })
+
+  const teamsWithRegs = teams.filter(t => regsByTeam[t.id]?.length > 0)
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-16">
+      <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Teams</p>
+      <h2 className="text-3xl font-black text-white text-center mb-10">Registered Teams</h2>
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 text-[#e5e5e5]/60 text-sm">
+          <span className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+          Loading registered teams...
+        </div>
+      ) : teamsWithRegs.length === 0 ? (
+        <p className="text-center text-[#e5e5e5]/60 text-sm">
+          No teams registered yet — registrations open soon.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {teamsWithRegs.map(team => (
+            <TeamCard
+              key={team.id}
+              team={team}
+              players={regsByTeam[team.id] ?? []}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── Doubles Entries Section ──────────────────────────────────────────────────
+function DoublesEntriesSection({ pairs, profileMap }) {
+  const confirmed = pairs.filter(p => p.confirmed)
+  if (!confirmed.length && !pairs.length) return null
+
+  function PlayerChip({ playerId }) {
+    // Alias only, matching the masked roster — never a real name.
+    const alias = profileMap[playerId]?.alias || '—'
+    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
+    return (
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="w-8 h-8 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-xs font-black flex-shrink-0">
+          {inits}
+        </div>
+        <div className="min-w-0">
+          <p className="text-white text-sm font-semibold truncate">{alias}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <section className="bg-surface border-t border-line">
+      <div className="max-w-5xl mx-auto px-6 py-16">
+        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Side Events</p>
+        <h2 className="text-3xl font-black text-white text-center mb-2">Doubles Entries</h2>
+        <p className="text-[#e5e5e5]/60 text-sm text-center mb-10">{confirmed.length} pair{confirmed.length !== 1 ? 's' : ''} entered</p>
+        {confirmed.length === 0 ? (
+          <p className="text-center text-[#e5e5e5]/60 text-sm">No doubles pairs registered yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {confirmed.map(pair => (
+              <div key={pair.id} className="bg-base border border-line rounded-2xl p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <PlayerChip playerId={pair.player1_id} />
+                  <span className="text-brand font-black text-base flex-shrink-0">&amp;</span>
+                  <PlayerChip playerId={pair.player2_id} />
+                </div>
+                <div className="flex justify-end">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border bg-green-500/15 text-green-400 border-green-500/30">
+                    Confirmed
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Triples Entries Section ──────────────────────────────────────────────────
+function TriplesEntriesSection({ teams, profileMap }) {
+  const confirmed = teams.filter(t => t.confirmed)
+  if (!confirmed.length && !teams.length) return null
+
+  function PlayerRow({ playerId }) {
+    if (!playerId) return null
+    // Alias only, matching the masked roster — never a real name.
+    const alias = profileMap[playerId]?.alias || '—'
+    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
+    return (
+      <div className="flex items-center gap-3 py-1.5">
+        <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
+          {inits}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-semibold">{alias}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <section className="bg-surface border-t border-line">
+      <div className="max-w-5xl mx-auto px-6 py-16">
+        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Side Events</p>
+        <h2 className="text-3xl font-black text-white text-center mb-2">Triples Entries</h2>
+        <p className="text-[#e5e5e5]/60 text-sm text-center mb-10">{confirmed.length} team{confirmed.length !== 1 ? 's' : ''} entered</p>
+        {confirmed.length === 0 ? (
+          <p className="text-center text-[#e5e5e5]/60 text-sm">No triples teams registered yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {confirmed.map(team => (
+              <div key={team.id} className="bg-base border border-line rounded-2xl p-5">
+                <div className="divide-y divide-line/50 mb-3">
+                  <PlayerRow playerId={team.player1_id} />
+                  <PlayerRow playerId={team.player2_id} />
+                  <PlayerRow playerId={team.player3_id} />
+                </div>
+                <div className="flex justify-end">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border bg-green-500/15 text-green-400 border-green-500/30">
+                    Confirmed
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Side Event Entries Section ──────────────────────────────────────────────
+function SideEventEntriesSection({ enabledSideEvents, regs, teams }) {
+  const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]))
+  // Doubles/triples are shown only as confirmed team cards (DoublesEntriesSection
+  // / TriplesEntriesSection), so exclude their slugs here to avoid listing their
+  // players a second time as flat individual entries. Dinner stays excluded too.
+  const sorted = sortSideEvents(enabledSideEvents.filter(se =>
+    se.slug !== 'presentation-dinner' && se.slug !== 'doubles' && se.slug !== 'triples'
+  ))
+
+  // Attach teamName to each registration
+  const regsWithTeam = regs.map(r => ({
+    ...r,
+    teamName: r.team_id ? (teamMap[r.team_id] ?? null) : null,
+  }))
+
+  return (
+    <section className="bg-surface border-t border-line">
+      <div className="max-w-4xl mx-auto px-6 py-16">
+        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Entries</p>
+        <h2 className="text-3xl font-black text-white text-center mb-10">Side Event Entries</h2>
+        <div className="space-y-3">
+          {sorted.map(se => {
+            const entries = regsWithTeam.filter(r =>
+              Array.isArray(r.side_events) && r.side_events.includes(se.slug)
+            )
+            return (
+              <SideEventPanel key={se.slug} sideEvent={se} entries={entries} />
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Side Event Login Notice ─────────────────────────────────────────────────
+// Side event entries are login-only. Anonymous viewers get this card in place
+// of the entries list, with a login link that returns here after sign in.
+function SideEventLoginNotice({ year }) {
+  const loginPath = `/login?redirect=${encodeURIComponent(`/events/${year}`)}`
+  return (
+    <section className="bg-surface border-t border-line">
+      <div className="max-w-4xl mx-auto px-6 py-16">
+        <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3 text-center">Entries</p>
+        <h2 className="text-3xl font-black text-white text-center mb-6">Side event entries</h2>
+        <div className="max-w-md mx-auto bg-base border border-line rounded-xl px-5 py-5 text-center">
+          <p className="text-[#e5e5e5]/60 text-sm mb-3">Log in to view side event entries.</p>
+          <Link to={loginPath} className="text-brand text-sm font-bold hover:underline">Log in</Link>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Hub Pill ────────────────────────────────────────────────────────────────
+// Horizontal pill linking to a hub page. Tints background/border/shadow from
+// the supplied hex `color`; passes that same color through to the icon stroke.
+function HubPill({ to, color, label, description, Icon }) {
+  const r = parseInt(color.slice(1, 3), 16)
+  const g = parseInt(color.slice(3, 5), 16)
+  const b = parseInt(color.slice(5, 7), 16)
+  const tint = (a) => `rgba(${r}, ${g}, ${b}, ${a})`
+
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-4 rounded-2xl border py-5 px-6 transition-all"
+      style={{ backgroundColor: tint(0.10), borderColor: tint(0.40) }}
+      onMouseEnter={e => {
+        e.currentTarget.style.backgroundColor = tint(0.20)
+        e.currentTarget.style.boxShadow = `0 0 20px ${tint(0.4)}`
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.backgroundColor = tint(0.10)
+        e.currentTarget.style.boxShadow = 'none'
+      }}
+    >
+      <div className="flex-shrink-0">
+        <Icon size={48} stroke={color} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-black text-lg leading-tight">{label}</p>
+        <p className="text-[#a0a0a0] text-sm leading-snug mt-0.5">{description}</p>
+      </div>
+      <div className="flex-shrink-0 text-white/60 text-xl">→</div>
+    </Link>
+  )
+}
+
+// ── Main Component ──────────────────────────────────────────────────────────
+export default function EventPage() {
+  const { year } = useParams()
+  const { user } = useAuth()
+  const [event, setEvent] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [teams, setTeams] = useState([])
+  const [regs, setRegs] = useState([])
+  const [rosterLoading, setRosterLoading] = useState(true)
+  // Masked roster (alias/state only, all rows) that drives the Registered Teams
+  // section for authenticated viewers — sourced from the same public_event_roster
+  // view the anon path uses, so every logged-in user sees all approved teams (not
+  // just their own). `regs` stays the RLS-limited base table for myReg + side events.
+  const [teamRoster, setTeamRoster] = useState([])
+  const [doublesPairs, setDoublesPairs] = useState([])
+  const [triplesTeams, setTriplesTeams] = useState([])
+  const [pairProfileMap, setPairProfileMap] = useState({})
+
+  // Photo lightbox
+  const [lightboxUrl, setLightboxUrl] = useState(null)
+
+  useEffect(() => {
+    async function loadAuthenticatedRoster(yearInt) {
+      const [{ data: teamsData }, { data: regsData }, { data: rosterData }] = await Promise.all([
+        supabase
+          .from('teams')
+          .select('id, name, status, logo_url, captain_id, manager_id')
+          .eq('status', 'approved')
+          .order('name'),
+        supabase
+          .from('zltac_registrations')
+          .select('id, user_id, team_id, side_events, status')
+          .eq('year', yearInt),
+        supabase
+          .from('public_event_roster')
+          .select('team_id, year, side_events, alias, state')
+          .eq('year', yearInt),
+      ])
+      const rawTeams = teamsData ?? []
+      const rawRegs = regsData ?? []
+
+      // Render the core event data immediately. Profile details are optional
+      // enrichment and must not make the registered-team list disappear when
+      // that API or its rate-limit store is temporarily unavailable.
+      setTeams(rawTeams.map(t => ({ ...t, profiles: null })))
+      setRegs(rawRegs.map(r => ({ ...r, profiles: null })))
+
+      // Registered Teams section is driven by the masked, all-rows roster (same
+      // shape and masking as the anon path) so it shows every approved team, not
+      // just the rows this user's RLS exposes on the base table.
+      setTeamRoster((rosterData ?? []).map((r, idx) => ({
+        id: `roster-${r.team_id ?? 'none'}-${idx}`,
+        _key: `roster-${idx}`,
+        team_id: r.team_id,
+        side_events: r.side_events,
+        status: null,
+        profiles: { alias: r.alias, state: r.state },
+      })))
+
+      const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
+      const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
+      const allIds = [...new Set([...playerIds, ...captainIds])]
+
+      let profileMap = {}
+      if (allIds.length > 0) {
+        try {
+          const { profiles: profileData } = await apiFetch('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ ids: allIds }),
+          })
+          profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
+        } catch (err) {
+          console.error('EventPage: profile enrichment unavailable:', err)
+        }
+      }
+
+      setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
+      setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
+
+      let doublesData = []
+      let triplesData = []
+      try {
+        const result = await apiFetch(`/api/public?resource=event&year=${yearInt}`)
+        doublesData = result.doubles ?? []
+        triplesData = result.triples ?? []
+      } catch (err) {
+        console.error('EventPage: /api/public?resource=event failed, falling back to empty doubles/triples:', err)
+      }
+      setDoublesPairs(doublesData)
+      setTriplesTeams(triplesData)
+
+      const pairIds = new Set()
+      doublesData.forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
+      triplesData.forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
+      const missingIds = [...pairIds].filter(id => !profileMap[id])
+      let fullPairMap = { ...profileMap }
+      if (missingIds.length > 0) {
+        try {
+          const { profiles: extraProfs } = await apiFetch('/api/profiles', {
+            method: 'POST',
+            body: JSON.stringify({ ids: missingIds }),
+          })
+          ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
+        } catch (err) {
+          console.error('EventPage: side-event profile enrichment unavailable:', err)
+        }
+      }
+      setPairProfileMap(fullPairMap)
+    }
+
+    async function loadPublicRoster(yearInt) {
+      // Anonymous fetch: teams (RLS allows public read) and the masked
+      // public_event_roster view (alias + state only). DoublesEntriesSection
+      // and TriplesEntriesSection are hidden client-side for anon viewers
+      // because the spec excludes partner pairings.
+      const [{ data: teamsData }, { data: rosterData }] = await Promise.all([
+        supabase
+          .from('teams')
+          .select('id, name, status, logo_url, captain_id, manager_id')
+          .eq('status', 'approved')
+          .order('name'),
+        supabase
+          .from('public_event_roster')
+          .select('team_id, year, side_events, alias, state')
+          .eq('year', yearInt),
+      ])
+
+      const rawTeams = teamsData ?? []
+      const rawRoster = rosterData ?? []
+
+      // Synthesize a roster-row shape compatible with the existing render
+      // code: { id, team_id, side_events, status:null, profiles:{ alias, state } }.
+      // status is null so the "confirmed" tick is hidden for anon — by design
+      // (completion status is private).
+      const synthRegs = rawRoster.map((r, idx) => ({
+        id: `anon-${r.team_id ?? 'none'}-${idx}`,
+        _key: `anon-${idx}`,
+        team_id: r.team_id,
+        side_events: r.side_events,
+        status: null,
+        profiles: { alias: r.alias, state: r.state },
+      }))
+
+      // Captain profile is intentionally not fetched (real names hidden).
+      setTeams(rawTeams.map(t => ({ ...t, profiles: null })))
+      setRegs(synthRegs)
+      setDoublesPairs([])
+      setTriplesTeams([])
+      setPairProfileMap({})
+    }
+
+    async function load() {
+      setLoading(true)
+      setRosterLoading(true)
+      try {
+        const yearInt = parseInt(year)
+        const [
+          { data: ev },
+          profileResult,
+        ] = await Promise.all([
+          supabase
+            .from('zltac_events')
+            .select('*')
+            .eq('year', yearInt)
+            .maybeSingle(),
+          user
+            ? supabase.from('profiles').select('roles').eq('id', user.id).single()
+            : Promise.resolve({ data: null }),
+        ])
+        setEvent(ev)
+        setIsAdmin(isCommittee(profileResult?.data))
+        setLoading(false)
+
+        // Load registration data for non-draft events
+        if (ev && ev.status !== 'draft') {
+          if (user) {
+            // Authenticated path — fetches richer profile data (first_name,
+            // last_name, etc.) and the confirmed doubles/triples pairings.
+            await loadAuthenticatedRoster(yearInt)
+          } else {
+            // Anonymous path — fetches only the masked public_event_roster
+            // (alias + state). Captain real names, partner pairings,
+            // completion data, and personal contact info are all withheld.
+            await loadPublicRoster(yearInt)
+          }
+        }
+      } catch (err) {
+        console.error('EventPage load failed:', err)
+      } finally {
+        setLoading(false)
+        setRosterLoading(false)
+      }
+    }
+    load()
+  }, [year, user])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-base flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!event) {
+    return (
+      <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
+        <p className="text-6xl mb-4">🎯</p>
+        <h1 className="text-2xl font-black text-white mb-2">Event Not Found</h1>
+        <p className="text-[#e5e5e5]/60 text-sm mb-6">No event found for {year}.</p>
+        <Link to="/zltac" className="text-brand hover:text-brand-hover text-sm font-semibold transition-colors">
+          ← Back to ZLTAC
+        </Link>
+      </div>
+    )
+  }
+
+  const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled)
+  const showRegistrationSections = event.status !== 'draft'
+
+  // ── Archived view ──────────────────────────────────────────────────────────
+  if (event.status === 'archived') {
+    return (
+      <div className="bg-base text-white">
+        <section
+          className="relative py-20 border-b border-line overflow-hidden"
+          style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,255,65,0.04) 0%, transparent 60%), #0F0F0F' }}
+        >
+          <div className="relative text-center px-6">
+            {event.logo_url
+              ? <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-16 mx-auto mb-5 object-contain opacity-70" />
+              : <div className="text-4xl mb-4 opacity-50">🏆</div>
+            }
+            <span className="inline-block text-xs bg-[#2D2D2D] text-[#e5e5e5]/60 px-3 py-1 rounded-full font-bold uppercase tracking-widest mb-4">Archived</span>
+            <h1 className="text-4xl md:text-5xl font-black text-white mb-4">{event.name}</h1>
+            {event.location && (
+              <p className="text-[#e5e5e5]/70 font-semibold mb-2" style={{ fontSize: '20px' }}>
+                {event.location}
+              </p>
+            )}
+            {(event.reg_open_date || event.reg_close_date) && (
+              <p className="text-[#e5e5e5]/60" style={{ fontSize: '18px' }}>
+                {event.reg_open_date && formatInEventTz(event.reg_open_date, event.timezone)}
+                {event.reg_open_date && event.reg_close_date && ' — '}
+                {event.reg_close_date && formatInEventTz(event.reg_close_date, event.timezone)}
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="max-w-3xl mx-auto px-6 py-12">
+          <div className="bg-surface border border-line rounded-xl p-6 text-center mb-8">
+            <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Champion</p>
+            <p className="text-2xl font-black text-brand">TBC</p>
+            <p className="text-xs text-[#e5e5e5]/60 mt-1">Results will be published here after the event</p>
+          </div>
+        </section>
+
+        <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} loading={rosterLoading} />
+        {enabledSideEvents.length > 0 && (user ? (
+          <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={teamRoster} teams={teams} />
+        ) : (
+          <SideEventLoginNotice year={year} />
+        ))}
+        {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
+          <>
+            <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
+            <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />
+          </>
+        )}
+        <Footer />
+      </div>
+    )
+  }
+
+  // ── Draft (non-admin): coming soon ─────────────────────────────────────────
+  if (event.status === 'draft' && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-base flex flex-col">
+        <section
+          className="flex-1 flex flex-col items-center justify-center text-center px-6 py-24"
+          style={{ background: 'radial-gradient(ellipse at 50% 60%, rgba(0,255,65,0.05) 0%, transparent 60%), #0F0F0F' }}
+        >
+          <div className="text-5xl mb-4">🚧</div>
+          <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">{event.name}</p>
+          <h1 className="text-4xl md:text-5xl font-black text-white mb-4">Coming Soon</h1>
+          <p className="text-[#e5e5e5]/60 text-base max-w-md mx-auto">
+            Registration for {event.name} is not yet open. Check back soon.
+          </p>
+          {event.reg_open_date && (
+            <p className="mt-4 text-sm text-brand/70">Opens {formatInEventTz(event.reg_open_date, event.timezone)}</p>
+          )}
+          <Link to="/zltac" className="mt-8 text-sm text-[#e5e5e5]/60 hover:text-white transition-colors">
+            ← Back to ZLTAC
+          </Link>
+        </section>
+        <Footer />
+      </div>
+    )
+  }
+
+  // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
+  const myReg = user ? regs.find(r => r.user_id === user.id) : null
+  const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
+  const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
+  // Mask the gallery URLs once so thumbnails and the lightbox stay consistent.
+  const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
+
+  return (
+    <div className="bg-base text-white">
+      {/* Photo lightbox */}
+      {lightboxUrl && (
+        <Dialog open onClose={() => setLightboxUrl(null)} variant="lightbox" closeOnBackdrop label="Photo viewer" className="contents">
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl transition-colors"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </Dialog>
+      )}
+
+      {/* Hero */}
+      <section
+        className="relative py-24 border-b border-line overflow-hidden"
+        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(0,255,65,0.07) 0%, transparent 60%), #0F0F0F' }}
+      >
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px)`,
+            backgroundSize: '72px 72px',
+          }}
+        />
+        {isAdmin && event.status === 'draft' && (
+          <div className="relative text-center mb-4">
+            <span className="inline-block text-xs bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-3 py-1 rounded-full font-bold uppercase tracking-wider">
+              Draft — only visible to admins
+            </span>
+          </div>
+        )}
+        <div className="relative text-center px-6">
+          {event.logo_url ? (
+            <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-20 mx-auto mb-6 object-contain" />
+          ) : (
+            <div className="text-5xl mb-4">🎯</div>
+          )}
+          <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">
+            {event.status === 'open' ? 'Registration Open' : event.status === 'closed' ? 'Registration Closed' : event.status}
+          </p>
+          <h1 className="text-4xl md:text-6xl font-black text-white mb-5">{event.name}</h1>
+          {event.location && (
+            <p className="text-white/80 font-semibold mb-3" style={{ fontSize: '20px' }}>
+              📍 {event.location}
+            </p>
+          )}
+          {(event.reg_open_date || event.reg_close_date) && (
+            <p className="text-[#e5e5e5]/60 font-medium" style={{ fontSize: '18px' }}>
+              {event.reg_open_date && `Registration opens ${formatInEventTz(event.reg_open_date, event.timezone)}`}
+              {event.reg_open_date && event.reg_close_date && ' · '}
+              {event.reg_close_date && `locks ${formatInEventTz(event.reg_close_date, event.timezone)}`}
+            </p>
+          )}
+          {myReg && (
+            <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mt-4">
+              Registered as Player{myTeam ? ` + Team (${myTeam.name})` : ' · Side Events Only'}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Cover photo banner — constrained to content width, above the lifecycle boxes when set */}
+      {event.cover_photo_url && (
+        <section className="max-w-5xl mx-auto px-6 pt-8">
+          <img
+            src={storageImageUrl(event.cover_photo_url, { width: 1280, quality: 70 })}
+            srcSet={[
+              `${storageImageUrl(event.cover_photo_url, { width: 768, quality: 70 })} 768w`,
+              `${storageImageUrl(event.cover_photo_url, { width: 1280, quality: 70 })} 1280w`,
+              `${storageImageUrl(event.cover_photo_url, { width: 1600, quality: 70 })} 1600w`,
+            ].join(', ')}
+            sizes="(max-width: 1024px) calc(100vw - 3rem), 1024px"
+            alt={event.name}
+            width="4096"
+            height="1716"
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
+            className="w-full h-auto rounded-2xl"
+          />
+        </section>
+      )}
+
+      {/* Event lifecycle countdown — public, shown right after the hero */}
+      <section className="max-w-5xl mx-auto px-6 pt-10">
+        <EventLifecycleCountdown event={event} />
+      </section>
+
+      {/* Hero text — shows hero_text if set, otherwise falls back to description */}
+      {(event.hero_text || event.description) && (
+        <section className="max-w-3xl mx-auto px-6 py-12 text-center">
+          <p className="text-[#e5e5e5]/60 text-lg leading-relaxed whitespace-pre-wrap">
+            {event.hero_text || event.description}
+          </p>
+        </section>
+      )}
+
+      {/* Photo gallery — hidden when empty */}
+      {Array.isArray(event.photo_urls) && event.photo_urls.length > 0 && (
+        <section className="max-w-5xl mx-auto px-6 pb-12">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {maskedPhotoUrls.map((url, i) => (
+              <button
+                key={url + i}
+                onClick={() => setLightboxUrl(url)}
+                className="aspect-square rounded-xl overflow-hidden border border-line bg-base hover:border-brand/40 transition-colors group"
+              >
+                <img
+                  src={url}
+                  alt={`${event.name} photo ${i + 1}`}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Registration timeline — static "How it works" illustration, shown to everyone */}
+      <RegistrationTimeline eventName={event.name} />
+
+      {/* Locked-phase banner — shown above the CTA when the event has moved
+          past 'open'. Renders nothing for 'open'. */}
+      {(() => {
+        const phase = eventPhase(event)
+        return phase !== 'open' ? (
+          <section className="max-w-5xl mx-auto px-6 pt-6">
+            <LockedRegistrationBanner phase={phase} email={event.committee_email} />
+          </section>
+        ) : null
+      })()}
+
+      {/* Register CTA banner — full-width, shown to non-registered users when registration is open */}
+      {event.status === 'open' && eventPhase(event) === 'open' && !myReg && (
+        <section className="max-w-7xl mx-auto px-6 py-8">
+            <div
+              className="relative overflow-hidden rounded-2xl border border-line border-l-4 border-l-brand p-8 md:p-12"
+              style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #131313 100%)' }}
+            >
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(0,255,65,0.06) 0%, transparent 60%)' }}
+                aria-hidden
+              />
+              <div className="relative grid md:grid-cols-5 gap-6 md:gap-10 md:items-center">
+                <div className="md:col-span-3">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="flex-shrink-0">
+                      <TargetIcon size={56} />
+                    </div>
+                    <div>
+                      <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">Register now</p>
+                      <h2 className="text-2xl md:text-3xl font-black text-white leading-tight">
+                        Ready to compete in {event.name}?
+                      </h2>
+                    </div>
+                  </div>
+                  <p className="text-white/90 text-base leading-relaxed">
+                    Sign up to compete in {event.name}. Once registered, you can create a team and add your players, or ask your captain to add you to theirs. Side events, team management, and event progress all live in your Player Hub.
+                  </p>
+                </div>
+                <div className="md:col-span-2 flex flex-col items-stretch md:items-end gap-3">
+                  <Link
+                    to={`/events/${year}/player-register`}
+                    className="block w-full md:w-auto bg-brand hover:bg-brand-hover text-black font-black px-8 py-4 rounded-xl text-base text-center transition-all hover:shadow-[0_0_24px_rgba(0,255,65,0.5)]"
+                  >
+                    Register for {event.name}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+      )}
+
+      {/* CTA cards (open events only) — state-aware */}
+      {event.status === 'open' && myReg && (() => {
+        const cardStyle = {
+          background: '#191919',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderTopColor: '#00FF41',
+          borderTopWidth: '3px',
+        }
+        const onHoverEnter = e => {
+          e.currentTarget.style.boxShadow = '0 0 24px rgba(0,255,65,0.2), inset 0 0 0 1px rgba(0,255,65,0.15)'
+        }
+        const onHoverLeave = e => {
+          e.currentTarget.style.boxShadow = 'none'
+        }
+
+        const playerHubPill = (
+          <HubPill
+            to="/player-hub"
+            color="#FF6B00"
+            label="Player Hub"
+            description="View your checklist, pay your fees and sign the Code of Conduct."
+            Icon={DashboardGridIcon}
+          />
+        )
+
+        // ── State C: registered, not on a team ───────────────────────────────
+        if (!myReg.team_id) {
+          return (
+            <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
+              <div
+                className="rounded-2xl p-10 text-center mb-6"
+                style={cardStyle}
+                onMouseEnter={onHoverEnter}
+                onMouseLeave={onHoverLeave}
+              >
+                <h2 className="text-white font-black text-2xl mb-3 leading-tight">Captains: Create your team</h2>
+                <p className="text-white text-sm leading-relaxed mb-6 max-w-md mx-auto">
+                  Are you a Captain? Create your team now and invite your players.
+                </p>
+                <Link
+                  to={`/events/${year}/captain-register`}
+                  className="inline-block bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-xl text-sm text-center transition-all hover:shadow-[0_0_20px_rgba(0,255,65,0.4)]"
+                >
+                  Create Team
+                </Link>
+                <p className="text-[#a0a0a0] text-sm leading-relaxed mt-6 max-w-md mx-auto">
+                  If you are a player, get your captain to create a team and invite you to it.
+                </p>
+              </div>
+              {playerHubPill}
+            </section>
+          )
+        }
+
+        // ── State D: registered and on a team ────────────────────────────────
+        return (
+          <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
+            {isCaptainOrManager ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <HubPill
+                  to="/captain-hub"
+                  color="#E24B4A"
+                  label="Team Hub"
+                  description="Manage your team roster, approve players, and track readiness."
+                  Icon={TeamShieldIcon}
+                />
+                {playerHubPill}
+              </div>
+            ) : (
+              playerHubPill
+            )}
+          </section>
+        )
+      })()}
+
+      {/* Registered Teams */}
+      {showRegistrationSections && (
+        <>
+          <div className="border-t border-line" />
+          <RegisteredTeamsSection teams={teams} regs={user ? teamRoster : regs} loading={rosterLoading} />
+          {enabledSideEvents.length > 0 && (user ? (
+            <SideEventEntriesSection enabledSideEvents={enabledSideEvents} regs={teamRoster} teams={teams} />
+          ) : (
+            <SideEventLoginNotice year={year} />
+          ))}
+          {/* Partner pairings (doubles/triples) are intentionally hidden from
+              anonymous viewers — spec calls them out as private. */}
+          {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
+            <>
+              <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
+              <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />
+            </>
+          )}
+        </>
+      )}
+
+      <Footer />
+    </div>
+  )
+}
