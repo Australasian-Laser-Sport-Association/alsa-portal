@@ -17,6 +17,10 @@ Verified on 2026-06-15 before the rollout:
 Emergency code rollback is to promote this deployment back to production.
 Do not redeploy it from source during an incident.
 
+```powershell
+vercel rollback dpl_AY7YWr8yaAWtAR92zaten8s2dbfa --yes
+```
+
 The deployment build log also shows Sentry release/source-map upload failures
 with HTTP 401 due to an invalid Sentry token. The application build still
 completed, so this is not a database-rollout blocker, but production stack
