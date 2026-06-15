@@ -1373,7 +1373,11 @@ export default function AdminRegistrations() {
       ) : tab === 'doubles' ? (
 
         /* ── Doubles tab ── */
-        <div className="bg-surface border border-line rounded-xl overflow-hidden">
+        <div className="space-y-4">
+          <div className="bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 rounded-xl px-4 py-3 text-sm">
+            To edit a doubles pair, open the Players tab and click Edit on either player you want to adjust.
+          </div>
+          <div className="bg-surface border border-line rounded-xl overflow-hidden">
           {doubles.length === 0 ? (
             <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No doubles pairs found</p>
           ) : (
@@ -1424,12 +1428,17 @@ export default function AdminRegistrations() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
 
       ) : (
 
         /* ── Triples tab ── */
-        <div className="bg-surface border border-line rounded-xl overflow-hidden">
+        <div className="space-y-4">
+          <div className="bg-yellow-500/15 border border-yellow-500/30 text-yellow-300 rounded-xl px-4 py-3 text-sm">
+            To edit a triples team, open the Players tab and click Edit on any member you want to adjust.
+          </div>
+          <div className="bg-surface border border-line rounded-xl overflow-hidden">
           {triples.length === 0 ? (
             <p className="text-center py-12 text-[#e5e5e5]/60 text-sm">No triples teams found</p>
           ) : (
@@ -1482,6 +1491,7 @@ export default function AdminRegistrations() {
               </tbody>
             </table>
           )}
+          </div>
         </div>
       )}
     </div>
