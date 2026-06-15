@@ -176,7 +176,7 @@ async function handleRegistrations(req, res, user) {
     if (evLookupErr) return res.status(500).json({ error: evLookupErr.message })
     const eventId = ev?.id ?? null
     const teamsQuery = eventId
-      ? supabaseAdmin.from('teams').select('id, name, state, status, captain_id, created_at, event_id').eq('event_id', eventId)
+      ? supabaseAdmin.from('teams').select('id, name, entry_type, state, status, captain_id, created_at, event_id').eq('event_id', eventId)
       : Promise.resolve({ data: [], error: null })
 
     const [

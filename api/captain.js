@@ -5,6 +5,7 @@ import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTe
 import { enforceRateLimit } from './_lib/rateLimit.js'
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
+const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
 
 async function denyIfLocked(res, year) {
   const guard = await requireOpenPhase(year)
@@ -31,6 +32,7 @@ export default async function handler(req, res) {
   if (action === 'create-team') {
     const year = Number.parseInt(body.year, 10)
     const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const entryType = typeof body.entryType === 'string' ? body.entryType.trim() : ''
     const state = typeof body.state === 'string' ? body.state.trim() : ''
     const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
     const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
@@ -38,6 +40,7 @@ export default async function handler(req, res) {
 
     if (!Number.isInteger(year)) return res.status(400).json({ error: 'year is required' })
     if (!name || name.length > 80) return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
+    if (!TEAM_ENTRY_TYPES.has(entryType)) return res.status(400).json({ error: 'Select State Association Team or Direct Entry Team.' })
     if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
     if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
     if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
@@ -49,6 +52,7 @@ export default async function handler(req, res) {
       p_user_id: user.id,
       p_year: year,
       p_name: name,
+      p_entry_type: entryType,
       p_state: state,
       p_home_venue: homeVenue || null,
       p_colour: colour || null,

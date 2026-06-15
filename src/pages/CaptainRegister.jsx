@@ -9,6 +9,10 @@ import { TEAM_COLOURS } from '../lib/teamColours'
 import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+const TEAM_ENTRY_TYPES = [
+  { value: 'state_association', label: 'State Association Team' },
+  { value: 'direct_entry', label: 'Direct Entry Team' },
+]
 
 export default function CaptainRegister() {
   const { year } = useParams()
@@ -25,6 +29,7 @@ export default function CaptainRegister() {
 
   // Form fields
   const [teamName, setTeamName] = useState('')
+  const [entryType, setEntryType] = useState('')
   const [teamState, setTeamState] = useState('')
   const [homeVenue, setHomeVenue] = useState('')
   const [colour, setColour] = useState('#00E6FF')
@@ -66,6 +71,7 @@ export default function CaptainRegister() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!teamName.trim()) { setError('Team name is required.'); return }
+    if (!entryType) { setError('Please select whether this is a State Association Team or Direct Entry Team.'); return }
     if (!teamState) { setError('Please select your home state.'); return }
     if (!agreed) { setError('You must agree to the captain responsibilities.'); return }
 
@@ -99,6 +105,7 @@ export default function CaptainRegister() {
           action: 'create-team',
           year: parseInt(year),
           name: teamName.trim(),
+          entryType,
           state: teamState,
           homeVenue: homeVenue.trim() || null,
           colour,
@@ -222,6 +229,37 @@ export default function CaptainRegister() {
               placeholder="e.g. Midnight Force"
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
             />
+          </div>
+
+          {/* Entry type */}
+          <div>
+            <fieldset>
+              <legend className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-2">
+                Are you registering as a State Association Team or Direct Entry Team? *
+              </legend>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {TEAM_ENTRY_TYPES.map(type => (
+                  <label
+                    key={type.value}
+                    className={`cursor-pointer rounded-xl border px-4 py-3 transition-colors ${
+                      entryType === type.value
+                        ? 'border-brand bg-brand/10 text-white'
+                        : 'border-line bg-surface text-[#e5e5e5]/80 hover:border-brand/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name={`${uid}-entry-type`}
+                      value={type.value}
+                      checked={entryType === type.value}
+                      onChange={e => setEntryType(e.target.value)}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-bold">{type.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
 
           {/* State */}

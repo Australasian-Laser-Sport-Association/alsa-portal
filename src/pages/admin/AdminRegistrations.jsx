@@ -206,6 +206,10 @@ function LinkPlaceholderModal({ placeholder, summaryCounts, onClose, onLinked })
 // submit gate (CaptainHub / api/captain submit-team); shown here as context for
 // the committee while reviewing.
 const MIN_ROSTER = 5
+const TEAM_ENTRY_LABELS = {
+  state_association: 'State Association',
+  direct_entry: 'Direct Entry',
+}
 
 function StatusBadge({ status }) {
   const styles = {
@@ -941,7 +945,7 @@ export default function AdminRegistrations() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line">
-                  {['Team', 'State', 'Status', 'Captain', 'Players', 'Registered', 'Actions'].map(h => (
+                  {['Team', 'State', 'Entry', 'Status', 'Captain', 'Players', 'Registered', 'Actions'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -975,6 +979,11 @@ export default function AdminRegistrations() {
                             ? <span className="text-xs bg-brand/10 text-brand border border-brand/20 px-2 py-0.5 rounded font-medium">{t.state}</span>
                             : <span className="text-[#e5e5e5]/60 text-xs">—</span>}
                         </td>
+                        <td className="px-4 py-3">
+                          {t.entry_type
+                            ? <span className="text-xs bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded font-medium">{TEAM_ENTRY_LABELS[t.entry_type] ?? t.entry_type}</span>
+                            : <span className="text-[#e5e5e5]/60 text-xs">Not set</span>}
+                        </td>
                         <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                         <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">
                           {captain ? [captain.first_name, captain.last_name].filter(Boolean).join(' ') || captain.alias || '—' : '—'}
@@ -992,7 +1001,7 @@ export default function AdminRegistrations() {
                       </tr>
                       {isExpanded && (
                         <tr className="border-b border-line last:border-0 bg-base/40">
-                          <td colSpan={7} className="px-4 py-4">
+                          <td colSpan={8} className="px-4 py-4">
                             <p className="text-xs text-[#e5e5e5]/60 font-semibold mb-3">
                               Roster: <span className="text-white">{roster.length}</span> / {MIN_ROSTER} players
                             </p>
@@ -1008,6 +1017,9 @@ export default function AdminRegistrations() {
                                     <div key={p.id} className="flex items-center gap-2 flex-wrap">
                                       <span className="text-white text-xs font-medium">{pname}</span>
                                       {p.profile?.alias && <span className="text-brand text-xs">"{p.profile.alias}"</span>}
+                                      {p.profile?.state
+                                        ? <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-300 border-blue-500/20">{p.profile.state}</span>
+                                        : <span className="text-[10px] text-[#e5e5e5]/50">State not set</span>}
                                       {isCap && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-brand/10 text-brand border-brand/20">Captain</span>}
                                       <EligibilityChips p={p} cocRequired={cocRequired} refRequired={refRequired} paymentRequired={paymentRequired} />
                                     </div>
