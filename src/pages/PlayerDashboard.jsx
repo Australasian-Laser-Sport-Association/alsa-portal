@@ -115,13 +115,13 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
       dob: dob || null,
-      state: state || null,
       home_arena: homeArena.trim() || null,
       phone: phone.trim() || null,
       emergency_contact_name: ecName.trim() || null,
       emergency_contact_phone: ecPhone.trim() || null,
     }
     if (!aliasLocked) payload.alias = alias.trim() || null
+    if (!aliasLocked) payload.state = state || null
     const { error } = await supabase.from('profiles').update(payload).eq('id', userId)
     setSaving(false)
     if (error) {
@@ -219,13 +219,24 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
             )}
             <div className="grid grid-cols-2 gap-4">
               <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
-              <div>
-                <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
-                <select id={`${uid}-state`} value={state} onChange={e => setState(e.target.value)} className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors">
-                  <option value="">Select…</option>
-                  {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
+              {aliasLocked ? (
+                <div>
+                  <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <select id={`${uid}-state`} value={state} disabled className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/60 cursor-not-allowed focus:outline-none">
+                    <option value="">Select…</option>
+                    {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-1.5 text-xs text-yellow-200/80">Your state/territory is locked because you've registered for a competition. To change it, email <a href={`mailto:${COMMITTEE_EMAIL}`} className="text-yellow-300 hover:text-yellow-100 underline">{COMMITTEE_EMAIL}</a>.</div>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
+                  <select id={`${uid}-state`} value={state} onChange={e => setState(e.target.value)} className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-brand transition-colors">
+                    <option value="">Select…</option>
+                    {STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
             <Input label="Home Arena" value={homeArena} onChange={setHomeArena} placeholder="e.g. Zone Laser Force Sydney" />
             <Input label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="04XX XXX XXX" />

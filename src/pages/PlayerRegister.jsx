@@ -124,14 +124,14 @@ export default function PlayerRegister() {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       dob: dob || null,
-      state: state || null,
       emergency_contact_name: emergencyName.trim() || null,
       emergency_contact_phone: emergencyPhone.trim() || null,
     }
     // Alias is locked once the player has registered for any competition. Omit
     // it so this update never trips enforce_alias_lock; the existing alias is
-    // carried forward unchanged.
+    // carried forward unchanged. State/territory is locked the same way.
     if (!aliasLocked) profileUpdate.alias = alias.trim() || null
+    if (!aliasLocked) profileUpdate.state = state || null
     const { error: profErr } = await supabase
       .from('profiles')
       .update(profileUpdate)
@@ -332,11 +332,15 @@ export default function PlayerRegister() {
                     id={`${uid}-state`}
                     value={state}
                     onChange={e => setState(e.target.value)}
-                    className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-brand transition-colors"
+                    disabled={aliasLocked}
+                    className={`w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand transition-colors ${aliasLocked ? 'text-white/60 cursor-not-allowed' : 'text-white'}`}
                   >
                     <option value="">Select…</option>
                     {STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
+                  {aliasLocked && (
+                    <p className="text-xs text-white/60 mt-1.5">Your state/territory is locked because you have registered for a competition. Contact the committee to change it.</p>
+                  )}
                 </div>
               </div>
             </div>
