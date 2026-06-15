@@ -64,7 +64,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
-  const [avatarUploading, setAvatarUploading] = useState(false)
 
   // Edit form state
   const [firstName, setFirstName] = useState('')
@@ -89,19 +88,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
     setEcPhone(profile?.emergency_contact_phone ?? '')
     setMsg(null)
     setEditing(true)
-  }
-
-  async function handleAvatarUpload(file) {
-    if (!file) return
-    setAvatarUploading(true)
-    const ext = file.name.split('.').pop()
-    const { error } = await supabase.storage.from('avatars').upload(`${userId}/avatar.${ext}`, file, { upsert: true })
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(`${userId}/avatar.${ext}`)
-      await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId)
-      onUpdated()
-    }
-    setAvatarUploading(false)
   }
 
   async function save() {
@@ -160,12 +146,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
               ? <img src={maskStorageUrl(avatarUrl)} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-line" />
               : <div className="w-16 h-16 rounded-full bg-brand/20 border-2 border-brand/30 flex items-center justify-center text-brand font-black text-xl">{initials}</div>
             }
-            {editing && (
-              <label className="absolute inset-0 rounded-full flex items-center justify-center bg-black/60 cursor-pointer text-white text-xs font-bold">
-                {avatarUploading ? '…' : 'Change'}
-                <input type="file" accept="image/*" className="hidden" onChange={e => handleAvatarUpload(e.target.files[0])} />
-              </label>
-            )}
           </div>
           <div>
             <p className="text-white font-bold text-lg">{[profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || '—'}</p>

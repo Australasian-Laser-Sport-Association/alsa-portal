@@ -40,3 +40,6 @@ lint-output.txt
 
 # Sentry Config File
 .env.sentry-build-plugin
+audits/
+ 
+ 
