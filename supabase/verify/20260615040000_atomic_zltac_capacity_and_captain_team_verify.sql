@@ -3,6 +3,8 @@
 DO $$
 DECLARE
   v_trigger_count integer;
+  v_insert_order text[];
+  v_update_order text[];
 BEGIN
   IF has_function_privilege(
     'authenticated',
@@ -29,6 +31,37 @@ BEGIN
     );
   IF v_trigger_count <> 4 THEN
     RAISE EXCEPTION 'Expected 4 ZLTAC capacity triggers, found %', v_trigger_count;
+  END IF;
+
+  SELECT array_agg(t.tgname ORDER BY t.tgname)
+    INTO v_insert_order
+    FROM pg_trigger t
+   WHERE t.tgrelid = 'public.zltac_registrations'::regclass
+     AND NOT t.tgisinternal
+     AND (t.tgtype & 2) = 2
+     AND (t.tgtype & 4) = 4;
+  IF v_insert_order IS DISTINCT FROM ARRAY[
+    'trg_enforce_zltac_roster_lock',
+    'zltac_registrations_enforce_event_capacity',
+    'zltac_registrations_enforce_roster_capacity_insert',
+    'zltac_registrations_set_payment_reference'
+  ]::text[] THEN
+    RAISE EXCEPTION 'Unexpected registration BEFORE INSERT trigger order: %', v_insert_order;
+  END IF;
+
+  SELECT array_agg(t.tgname ORDER BY t.tgname)
+    INTO v_update_order
+    FROM pg_trigger t
+   WHERE t.tgrelid = 'public.zltac_registrations'::regclass
+     AND NOT t.tgisinternal
+     AND (t.tgtype & 2) = 2
+     AND (t.tgtype & 16) = 16;
+  IF v_update_order IS DISTINCT FROM ARRAY[
+    'trg_enforce_zltac_roster_lock',
+    'trg_protect_registration_admin_fields',
+    'zltac_registrations_enforce_roster_capacity_update'
+  ]::text[] THEN
+    RAISE EXCEPTION 'Unexpected registration BEFORE UPDATE trigger order: %', v_update_order;
   END IF;
 
   RAISE NOTICE 'PASS: ZLTAC caps are serialized and captain creation is service-only';

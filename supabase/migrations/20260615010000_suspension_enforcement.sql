@@ -1,6 +1,6 @@
 -- Enforce account suspension at every application boundary:
 --   * role helpers fail closed for suspended profiles
---   * all authenticated writes require an active profile
+--   * existing authenticated write paths require an active profile
 --   * direct execution of the privileged placeholder-claim RPC is removed
 
 BEGIN;
@@ -64,9 +64,10 @@ AS $$
   );
 $$;
 
--- Add restrictive write policies to every current RLS-enabled public table.
--- Existing permissive ownership/role policies must still pass as before; these
--- policies add the non-negotiable active-account condition.
+-- Add restrictive policies only where an authenticated write path already
+-- exists. A permissive policy for PUBLIC also applies to authenticated users.
+-- Read-only and service-role-only tables remain free of misleading write
+-- policies, reducing the blast radius of this migration.
 DO $$
 DECLARE
   table_row record;
@@ -83,18 +84,47 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS active_user_update ON %I.%I', table_row.schema_name, table_row.table_name);
     EXECUTE format('DROP POLICY IF EXISTS active_user_delete ON %I.%I', table_row.schema_name, table_row.table_name);
 
-    EXECUTE format(
-      'CREATE POLICY active_user_insert ON %I.%I AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (public.is_active_user())',
-      table_row.schema_name, table_row.table_name
-    );
-    EXECUTE format(
-      'CREATE POLICY active_user_update ON %I.%I AS RESTRICTIVE FOR UPDATE TO authenticated USING (public.is_active_user()) WITH CHECK (public.is_active_user())',
-      table_row.schema_name, table_row.table_name
-    );
-    EXECUTE format(
-      'CREATE POLICY active_user_delete ON %I.%I AS RESTRICTIVE FOR DELETE TO authenticated USING (public.is_active_user())',
-      table_row.schema_name, table_row.table_name
-    );
+    IF EXISTS (
+      SELECT 1 FROM pg_policies p
+      WHERE p.schemaname = table_row.schema_name
+        AND p.tablename = table_row.table_name
+        AND p.permissive = 'PERMISSIVE'
+        AND p.cmd IN ('INSERT', 'ALL')
+        AND p.roles && ARRAY['public', 'authenticated']::name[]
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY active_user_insert ON %I.%I AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (public.is_active_user())',
+        table_row.schema_name, table_row.table_name
+      );
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM pg_policies p
+      WHERE p.schemaname = table_row.schema_name
+        AND p.tablename = table_row.table_name
+        AND p.permissive = 'PERMISSIVE'
+        AND p.cmd IN ('UPDATE', 'ALL')
+        AND p.roles && ARRAY['public', 'authenticated']::name[]
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY active_user_update ON %I.%I AS RESTRICTIVE FOR UPDATE TO authenticated USING (public.is_active_user()) WITH CHECK (public.is_active_user())',
+        table_row.schema_name, table_row.table_name
+      );
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM pg_policies p
+      WHERE p.schemaname = table_row.schema_name
+        AND p.tablename = table_row.table_name
+        AND p.permissive = 'PERMISSIVE'
+        AND p.cmd IN ('DELETE', 'ALL')
+        AND p.roles && ARRAY['public', 'authenticated']::name[]
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY active_user_delete ON %I.%I AS RESTRICTIVE FOR DELETE TO authenticated USING (public.is_active_user())',
+        table_row.schema_name, table_row.table_name
+      );
+    END IF;
   END LOOP;
 END $$;
 
@@ -121,4 +151,3 @@ REVOKE EXECUTE ON FUNCTION public.claim_placeholder_profile(uuid, uuid) FROM aut
 GRANT EXECUTE ON FUNCTION public.claim_placeholder_profile(uuid, uuid) TO service_role;
 
 COMMIT;
-

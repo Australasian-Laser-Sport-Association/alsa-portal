@@ -243,6 +243,7 @@ export default function AdminLayout() {
   const role = isSuperAdmin ? 'superadmin'
     : userRoles.includes('alsa_committee') ? 'alsa_committee'
     : userRoles.includes('zltac_committee') ? 'zltac_committee'
+    : userRoles.includes('advisor') ? 'advisor'
     : null
 
   // Fetch my-competitions so non-committee competition managers can reach

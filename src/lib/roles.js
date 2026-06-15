@@ -1,11 +1,10 @@
 // Roles that can enter committee tooling and exercise privileged API/RLS paths.
-// `advisor` is intentionally excluded: the current admin UI is mutation-heavy
-// and does not provide a trustworthy read-only mode.
-export const COMMITTEE_ROLES = ['superadmin', 'alsa_committee', 'zltac_committee']
+// Advisor is intentionally hidden from public committee rosters, but retains
+// full committee authority inside authenticated tooling.
+export const COMMITTEE_ROLES = ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor']
 
-// Roles only a superadmin may assign or remove. Advisor is non-operational but
-// still a privileged governance designation.
-export const PRIVILEGED_ROLES = [...COMMITTEE_ROLES, 'advisor']
+// Roles only a superadmin may assign or remove.
+export const PRIVILEGED_ROLES = [...COMMITTEE_ROLES]
 
 // Roles safe to disclose to other users (e.g. CommitteeBadge). Deliberately
 // excludes superadmin/advisor, which must never leak via /api/profiles.

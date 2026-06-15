@@ -82,6 +82,9 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS zltac_registrations_enforce_event_capacity ON public.zltac_registrations;
+-- PostgreSQL orders BEFORE INSERT triggers by name. The existing roster-lock
+-- guard (`trg_...`) runs first, these capacity guards run next, and payment
+-- reference generation (`...set_payment_reference`) runs last.
 CREATE TRIGGER zltac_registrations_enforce_event_capacity
   BEFORE INSERT ON public.zltac_registrations
   FOR EACH ROW EXECUTE FUNCTION public.enforce_zltac_registration_capacity();
@@ -140,6 +143,9 @@ DROP TRIGGER IF EXISTS zltac_registrations_enforce_roster_capacity_update ON pub
 CREATE TRIGGER zltac_registrations_enforce_roster_capacity_insert
   BEFORE INSERT ON public.zltac_registrations
   FOR EACH ROW EXECUTE FUNCTION public.enforce_zltac_roster_capacity();
+-- On UPDATE, the existing roster-lock and protected-admin-field guards both
+-- run first by name. This trigger only validates a changed team_id/year and
+-- does not mutate or duplicate either guard's protected fields.
 CREATE TRIGGER zltac_registrations_enforce_roster_capacity_update
   BEFORE UPDATE OF team_id, year ON public.zltac_registrations
   FOR EACH ROW EXECUTE FUNCTION public.enforce_zltac_roster_capacity();
