@@ -112,7 +112,7 @@ INSERT INTO public.zltac_events (
   '20000000-0000-0000-0000-000000000001',
   'Verification Event',
   2099,
-  'open',
+  'closed',
   now() - interval '1 day',
   now() + interval '1 day',
   10,
