@@ -813,7 +813,7 @@ export default function PlayerHub() {
       { data: settingsData },
     ] = await Promise.all([
       supabase.from('zltac_registrations')
-        .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+        .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
         .eq('user_id', user.id).eq('year', eventYear).maybeSingle(),
       supabase.from('legal_documents')
         .select('id, document_type, version, file_path, original_filename, effective_date, requires_reacceptance')
@@ -1019,7 +1019,7 @@ export default function PlayerHub() {
     }
     await recomputeOwing(updated.id)
     const { data: reread } = await supabase.from('zltac_registrations')
-      .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+      .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
       .eq('id', updated.id).maybeSingle()
     setRegistration(reread ?? updated)
     setSavingConfirm(false)
@@ -1040,7 +1040,7 @@ export default function PlayerHub() {
     }
     await recomputeOwing(updated.id)
     const { data: reread } = await supabase.from('zltac_registrations')
-      .select('*, teams(id, name, captain_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+      .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
       .eq('id', updated.id).maybeSingle()
     setRegistration(reread ?? updated)
     setDinnerGuests(dinnerGuestsDraft)
@@ -1178,6 +1178,8 @@ export default function PlayerHub() {
   // Team state
   const hasTeam = !!registration?.team_id
   const isTeamCaptain = team?.captain_id === user.id
+  const isTeamManager = team?.manager_id === user.id
+  const canManageTeam = isTeamCaptain || isTeamManager
 
   // Checklist / confirm button states
   const sideEventsConfirmed = registration?.has_confirmed_side_events === true
@@ -1712,7 +1714,7 @@ export default function PlayerHub() {
                 </div>
               )}
               {/* Team header */}
-              <div className="p-5 flex items-center gap-4">
+              <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
                 {team.logo_url ? (
                   <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                 ) : (
@@ -1733,9 +1735,17 @@ export default function PlayerHub() {
                   {team.state && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand/10 text-brand/80 border border-brand/20">{team.state}</span>}
                   {team.home_venue && <p className="text-[#e5e5e5]/60 text-xs mt-1">{team.home_venue}</p>}
                   <p className="text-[#e5e5e5]/60 text-xs mt-0.5">
-                    {isTeamCaptain ? '👑 You are the captain' : `Captain: ${team.profiles ? `${team.profiles.first_name} ${team.profiles.last_name}` : '—'}`}
+                    {isTeamCaptain ? 'You are the captain' : isTeamManager ? 'You manage this team' : `Captain: ${team.profiles ? `${team.profiles.first_name} ${team.profiles.last_name}` : '—'}`}
                   </p>
                 </div>
+                {canManageTeam && (
+                  <Link
+                    to="/captain-hub"
+                    className="w-full sm:w-auto text-center bg-[#E24B4A] hover:bg-[#D13F3E] text-white font-bold py-2.5 px-5 rounded-xl text-sm transition-colors"
+                  >
+                    Manage Team & Roster
+                  </Link>
+                )}
               </div>
               {/* Roster */}
               {teamRoster.length > 0 && (

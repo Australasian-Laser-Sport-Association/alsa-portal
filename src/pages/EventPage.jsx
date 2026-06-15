@@ -427,6 +427,7 @@ export default function EventPage() {
   // view the anon path uses, so every logged-in user sees all approved teams (not
   // just their own). `regs` stays the RLS-limited base table for myReg + side events.
   const [teamRoster, setTeamRoster] = useState([])
+  const [ownedTeam, setOwnedTeam] = useState(null)
   const [doublesPairs, setDoublesPairs] = useState([])
   const [triplesTeams, setTriplesTeams] = useState([])
   const [pairProfileMap, setPairProfileMap] = useState({})
@@ -435,8 +436,8 @@ export default function EventPage() {
   const [lightboxUrl, setLightboxUrl] = useState(null)
 
   useEffect(() => {
-    async function loadAuthenticatedRoster(yearInt) {
-      const [{ data: teamsData }, { data: regsData }, { data: rosterData }] = await Promise.all([
+    async function loadAuthenticatedRoster(yearInt, eventId) {
+      const [{ data: teamsData }, { data: regsData }, { data: rosterData }, { data: ownedTeamData }] = await Promise.all([
         supabase
           .from('teams')
           .select('id, name, status, logo_url, captain_id, manager_id')
@@ -450,9 +451,18 @@ export default function EventPage() {
           .from('public_event_roster')
           .select('team_id, year, side_events, alias, state')
           .eq('year', yearInt),
+        supabase
+          .from('teams')
+          .select('id, name, status, logo_url, captain_id, manager_id')
+          .eq('event_id', eventId)
+          .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ])
       const rawTeams = teamsData ?? []
       const rawRegs = regsData ?? []
+      setOwnedTeam(ownedTeamData ?? null)
 
       // Render the core event data immediately. Profile details are optional
       // enrichment and must not make the registered-team list disappear when
@@ -542,6 +552,7 @@ export default function EventPage() {
 
       const rawTeams = teamsData ?? []
       const rawRoster = rosterData ?? []
+      setOwnedTeam(null)
 
       // Synthesize a roster-row shape compatible with the existing render
       // code: { id, team_id, side_events, status:null, profiles:{ alias, state } }.
@@ -591,7 +602,7 @@ export default function EventPage() {
           if (user) {
             // Authenticated path — fetches richer profile data (first_name,
             // last_name, etc.) and the confirmed doubles/triples pairings.
-            await loadAuthenticatedRoster(yearInt)
+            await loadAuthenticatedRoster(yearInt, ev.id)
           } else {
             // Anonymous path — fetches only the masked public_event_roster
             // (alias + state). Captain real names, partner pairings,
@@ -716,7 +727,7 @@ export default function EventPage() {
 
   // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
   const myReg = user ? regs.find(r => r.user_id === user.id) : null
-  const myTeam = myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null
+  const myTeam = (myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null) ?? ownedTeam
   const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
   // Mask the gallery URLs once so thumbnails and the lightbox stay consistent.
   const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
@@ -930,7 +941,7 @@ export default function EventPage() {
         )
 
         // ── State C: registered, not on a team ───────────────────────────────
-        if (!myReg.team_id) {
+        if (!myReg.team_id && !ownedTeam) {
           return (
             <section className="max-w-5xl mx-auto px-6 pt-16 pb-12">
               <div
