@@ -18,5 +18,5 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'profile_change_audit committee read policy is missing';
   END IF;
-  RAISE NOTICE 'PASS: profile alias changes are service-only and audited';
+  RAISE NOTICE 'PASS: alias RPC execution and audit-table writes are service-only';
 END $$;

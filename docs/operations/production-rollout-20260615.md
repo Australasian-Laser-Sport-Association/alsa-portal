@@ -71,8 +71,11 @@ and repair migration history before continuing.
    active write fails, run the suspension rollback immediately and stop.
 6. Repair `20260615010000` only after the verifier and smoke test pass.
 7. Apply and verify `20260615030000_profile_alias_audit.sql`, then repair
-   `20260615030000`. It blocks direct authenticated alias writes, but the
-   existing application alias path already uses the service-role API.
+   `20260615030000`. This migration is additive and the application admin paths
+   already use its service-role RPC. The earlier alias-lock trigger blocks
+   direct authenticated alias changes for registered profiles. Unregistered
+   profiles remain directly writable under the existing self/committee policy,
+   so their audit trail is not guaranteed complete.
 8. Apply and verify `20260615040000_atomic_zltac_capacity_and_captain_team.sql`,
    then repair `20260615040000`.
 9. Apply and verify `20260615050000_private_backup_storage.sql`, then repair
