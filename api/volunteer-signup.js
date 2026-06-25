@@ -56,6 +56,7 @@ export default async function handler(req, res) {
     limit: 30,
     window: '1 m',
     prefix: 'volunteer-mutations',
+    requireDistributed: true,
   })) return
 
   const registrationId = req.query.registration_id

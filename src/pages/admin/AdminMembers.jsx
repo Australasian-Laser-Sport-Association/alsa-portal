@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
 import Dialog from '../../components/Dialog'
+import { ConfirmDialog, InlineAlert } from '../../components/Feedback'
 
 function isCurrent(period) {
   if (!period) return false
@@ -97,7 +98,7 @@ function PeriodModal({ open, period, onClose, onSaved }) {
             </div>
           </div>
         </div>
-        {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+        <InlineAlert className="mt-3 text-xs">{error}</InlineAlert>
         <div className="flex gap-2 mt-5">
           <button onClick={save} disabled={saving || !label.trim() || !startsAt || !endsAt}
             className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg text-xs">
@@ -192,7 +193,7 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
             />
           </div>
         </div>
-        {error && <p className="text-red-400 text-xs mt-3">{error}</p>}
+        <InlineAlert className="mt-3 text-xs">{error}</InlineAlert>
         <div className="flex gap-2 mt-5">
           <button onClick={grant} disabled={saving || !periodId}
             className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg text-xs">
@@ -339,6 +340,11 @@ export default function AdminMembers() {
   const [editingPeriod, setEditingPeriod] = useState(null)
   const [grantTarget, setGrantTarget] = useState(null)
   const [removeConfirm, setRemoveConfirm] = useState(null)
+  const [removeMembershipBusy, setRemoveMembershipBusy] = useState(false)
+  const [removeMembershipError, setRemoveMembershipError] = useState('')
+  const [deletePeriodConfirm, setDeletePeriodConfirm] = useState(null)
+  const [deletePeriodBusy, setDeletePeriodBusy] = useState(false)
+  const [deletePeriodError, setDeletePeriodError] = useState('')
   const [error, setError] = useState(null)
 
   useEffect(() => { loadAll() }, [])
@@ -395,12 +401,17 @@ export default function AdminMembers() {
   function openEditPeriod(p) { setEditingPeriod(p); setPeriodModalOpen(true) }
 
   async function removeMembership(row) {
+    if (!row?.id) return
+    setRemoveMembershipBusy(true)
+    setRemoveMembershipError('')
     try {
       await apiFetch(`/api/admin/alsa?resource=members&id=${row.id}`, { method: 'DELETE' })
       setRemoveConfirm(null)
       await loadAll()
     } catch (e) {
-      setError(e.message)
+      setRemoveMembershipError(e.message)
+    } finally {
+      setRemoveMembershipBusy(false)
     }
   }
 
@@ -428,12 +439,17 @@ export default function AdminMembers() {
   }
 
   async function deletePeriod(p) {
-    if (!confirm(`Delete period "${p.label}"? This is blocked if any memberships still reference it.`)) return
+    if (!p?.id) return
+    setDeletePeriodBusy(true)
+    setDeletePeriodError('')
     try {
       await apiFetch(`/api/admin/alsa?resource=periods&id=${p.id}`, { method: 'DELETE' })
+      setDeletePeriodConfirm(null)
       await loadAll()
     } catch (e) {
-      setError(e.message)
+      setDeletePeriodError(e.message)
+    } finally {
+      setDeletePeriodBusy(false)
     }
   }
 
@@ -444,11 +460,7 @@ export default function AdminMembers() {
         <p className="text-[#e5e5e5]/60 text-sm mt-1">Paid annual membership of the incorporated association.</p>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
-          <p className="text-red-400 text-sm">{error}</p>
-        </div>
-      )}
+      <InlineAlert className="mb-5">{error}</InlineAlert>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -514,7 +526,10 @@ export default function AdminMembers() {
                         className="text-[10px] text-[#e5e5e5]/60 hover:text-white px-2 py-1 rounded">
                         Edit
                       </button>
-                      <button onClick={() => deletePeriod(p)}
+                      <button onClick={() => {
+                        setDeletePeriodConfirm(p)
+                        setDeletePeriodError('')
+                      }}
                         className="text-[10px] text-red-400/50 hover:text-red-400 px-2 py-1 rounded">
                         Delete
                       </button>
@@ -604,26 +619,40 @@ export default function AdminMembers() {
         onGranted={() => loadAll()}
       />
 
-      {/* Remove confirm */}
-      {removeConfirm && (
-        <Dialog open onClose={() => setRemoveConfirm(null)} variant="center" size="sm" closeOnBackdrop className="p-6">
-          <Dialog.Title as="p" className="text-white font-bold mb-2">Remove membership?</Dialog.Title>
-            <p className="text-[#e5e5e5]/60 text-sm mb-5">
-              Remove <span className="text-white font-semibold">{memberName(removeConfirm.profiles ?? {})}</span>'s
-              {' '}membership for <span className="text-white font-semibold">{removeConfirm.period?.label}</span>?
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => removeMembership(removeConfirm)}
-                className="bg-red-500 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg text-xs">
-                Yes, remove
-              </button>
-              <button onClick={() => setRemoveConfirm(null)}
-                className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg text-xs">
-                Cancel
-              </button>
-            </div>
-        </Dialog>
-      )}
+      <ConfirmDialog
+        open={!!deletePeriodConfirm}
+        title="Delete membership period?"
+        confirmLabel="Delete period"
+        busyLabel="Deleting..."
+        busy={deletePeriodBusy}
+        destructive
+        error={deletePeriodError}
+        onConfirm={() => deletePeriod(deletePeriodConfirm)}
+        onCancel={() => {
+          setDeletePeriodConfirm(null)
+          setDeletePeriodError('')
+        }}
+      >
+        Delete period <span className="text-white font-semibold">{deletePeriodConfirm?.label}</span>? This is blocked if any memberships still reference it.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!removeConfirm}
+        title="Remove membership?"
+        confirmLabel="Yes, remove"
+        busyLabel="Removing..."
+        busy={removeMembershipBusy}
+        destructive
+        error={removeMembershipError}
+        onConfirm={() => removeMembership(removeConfirm)}
+        onCancel={() => {
+          setRemoveConfirm(null)
+          setRemoveMembershipError('')
+        }}
+      >
+        Remove <span className="text-white font-semibold">{memberName(removeConfirm?.profiles ?? {})}</span>'s membership for{' '}
+        <span className="text-white font-semibold">{removeConfirm?.period?.label}</span>?
+      </ConfirmDialog>
     </div>
   )
 }

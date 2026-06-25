@@ -1,6 +1,7 @@
 import { useEffect, useState, useId } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from '../lib/passwordPolicy'
 
 // Landing page for the password-reset email link. Supabase's reset email
 // directs the user here with a hash fragment that the JS client parses on
@@ -57,8 +58,9 @@ export default function ResetPassword() {
       setError('New passwords do not match.')
       return
     }
-    if (newPw.length < 6) {
-      setError('Password must be at least 6 characters.')
+    const passwordError = validatePassword(newPw)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
     setSaving(true)
@@ -105,7 +107,8 @@ export default function ResetPassword() {
                 type="password"
                 value={newPw}
                 onChange={e => setNewPw(e.target.value)}
-                placeholder="••••••••"
+                placeholder={PASSWORD_REQUIREMENT_TEXT}
+                minLength={PASSWORD_MIN_LENGTH}
                 required
                 autoFocus
                 className="w-full bg-base text-white rounded-lg px-4 py-2 border border-line focus:outline-none focus:border-brand"
@@ -118,7 +121,8 @@ export default function ResetPassword() {
                 type="password"
                 value={confirmPw}
                 onChange={e => setConfirmPw(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Repeat new password"
+                minLength={PASSWORD_MIN_LENGTH}
                 required
                 className="w-full bg-base text-white rounded-lg px-4 py-2 border border-line focus:outline-none focus:border-brand"
               />

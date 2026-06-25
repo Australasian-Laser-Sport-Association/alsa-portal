@@ -3,6 +3,7 @@ import { verifyUser, getActiveEventYear } from './_lib/auth.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
 import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
+import { validateUuidList } from './_lib/idValidation.js'
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
@@ -25,6 +26,7 @@ export default async function handler(req, res) {
     limit: 60,
     window: '1 m',
     prefix: 'captain-mutations',
+    requireDistributed: true,
   })) return
 
   const { action, ...body } = req.body ?? {}
@@ -152,6 +154,8 @@ export default async function handler(req, res) {
     if (!Array.isArray(playerIds) || playerIds.length === 0) {
       return res.json({ coc_sigs: [], payments: [], ref_results: [], u18_subs: [], media_subs: [] })
     }
+    const playerIdValidation = validateUuidList(playerIds, { name: 'playerIds', max: 500 })
+    if (playerIdValidation.error) return res.status(400).json({ error: playerIdValidation.error })
 
     const eventYear = bodyEventYear ?? await getActiveEventYear()
     if (!eventYear) return res.status(400).json({ error: 'eventYear is required (no active event)' })

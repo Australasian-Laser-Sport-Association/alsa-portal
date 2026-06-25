@@ -28,22 +28,36 @@ export default function Resources({ scope }) {
   const [categories, setCategories] = useState([])
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [{ data: cats }, { data: docs }] = await Promise.all([
-        supabase.from('document_categories').select('*').eq('scope', scope),
-        supabase.from('documents').select('*').eq('scope', scope),
-      ])
-      if (cancelled) return
-      setCategories((cats ?? []).slice().sort(byOrder))
-      setDocuments((docs ?? []).slice().sort(byOrder))
-      setLoading(false)
+      setLoading(true)
+      setError('')
+      try {
+        const [categoryResult, documentResult] = await Promise.all([
+          supabase.from('document_categories').select('*').eq('scope', scope),
+          supabase.from('documents').select('*').eq('scope', scope),
+        ])
+        if (categoryResult.error) throw categoryResult.error
+        if (documentResult.error) throw documentResult.error
+        if (cancelled) return
+        setCategories((categoryResult.data ?? []).slice().sort(byOrder))
+        setDocuments((documentResult.data ?? []).slice().sort(byOrder))
+      } catch {
+        if (cancelled) return
+        setCategories([])
+        setDocuments([])
+        setError("Couldn't load resources. Please try again.")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     load()
     return () => { cancelled = true }
-  }, [scope])
+  }, [scope, reloadKey])
 
   // Group documents under their category; anything without a (known) category
   // lands in "Other", last. Empty categories are hidden.
@@ -75,6 +89,17 @@ export default function Resources({ scope }) {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <p className="text-red-300 text-sm mb-4" role="alert">{error}</p>
+              <button
+                type="button"
+                onClick={() => setReloadKey(k => k + 1)}
+                className="inline-flex items-center justify-center rounded-lg border border-brand/40 px-4 py-2 text-sm font-bold text-brand hover:bg-brand/10 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : groups.length === 0 ? (
             <p className="text-center text-[#e5e5e5]/60 text-sm py-12">Resources will appear here soon.</p>

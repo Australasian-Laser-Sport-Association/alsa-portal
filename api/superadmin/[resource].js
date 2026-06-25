@@ -116,6 +116,9 @@ const COMPETITION_PATCH_FIELDS = [
   'banner_url',
 ]
 
+const MANAGED_COMPETITION_COLUMNS =
+  'id, slug, abbreviation, name, start_date, end_date, registration_open_at, registration_close_at, price_per_player, payment_info_visible, bank_account_name, bank_bsb, bank_account_number, description, links, banner_url, archived_at'
+
 // Phase 2a content-field validation. The SQL constraint only enforces
 // "description ≤ 10k chars, links is an array of ≤ 20 entries". Per-element
 // shape (label non-empty ≤ 80 chars, url http/https ≤ 2048 chars) is
@@ -222,7 +225,7 @@ async function handleCompetitions(req, res) {
     if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
 
     const includeArchived = req.query.include_archived === '1'
-    let q = supabaseAdmin.from('competitions').select('*').order('start_date', { ascending: false })
+    let q = supabaseAdmin.from('competitions').select(MANAGED_COMPETITION_COLUMNS).order('start_date', { ascending: false })
     if (!includeArchived) q = q.is('archived_at', null)
     const { data, error } = await q
     if (error) return res.status(500).json({ error: error.message })
@@ -640,7 +643,7 @@ async function handleMyCompetitions(req, res) {
   if (isSuperadmin) {
     const { data: allComps, error: allErr } = await supabaseAdmin
       .from('competitions')
-      .select('*')
+      .select(MANAGED_COMPETITION_COLUMNS)
       .is('archived_at', null)
       .order('start_date', { ascending: true })
     if (allErr) return res.status(500).json({ error: allErr.message })
@@ -661,7 +664,7 @@ async function handleMyCompetitions(req, res) {
 
   const { data: comps, error: cErr } = await supabaseAdmin
     .from('competitions')
-    .select('*')
+    .select(MANAGED_COMPETITION_COLUMNS)
     .in('id', ids)
     .is('archived_at', null)
     .order('start_date', { ascending: true })

@@ -3,7 +3,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
-import { recomputeOwing } from '../lib/recomputeOwing'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import VolunteerSection from '../components/VolunteerSection'
@@ -148,34 +147,41 @@ export default function PlayerRegister() {
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
     }
 
-    const { data: regRow, error: regError } = await supabase.from('zltac_registrations').upsert({
-      user_id: user.id,
-      year: parseInt(year),
-      team_id: null,
-      side_events: null,
-      dinner_guests: 0,
-      emergency_contact_name: emergencyName.trim() || null,
-      emergency_contact_phone: emergencyPhone.trim() || null,
-      status: 'pending',
-    }, { onConflict: 'user_id,year' }).select('id').single()
-
-    if (regError) {
+    let regRow
+    try {
+      regRow = await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'register',
+          year: parseInt(year),
+          emergency_contact_name: emergencyName.trim() || null,
+          emergency_contact_phone: emergencyPhone.trim() || null,
+        }),
+      })
+      if (regRow?.ok === false && regRow.error === 'placeholder_exists' && regRow.placeholder_id) {
+        setSubmitting(false)
+        setError(regRow.message || 'A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
+        if (claimPromptRef.current?.openForPlaceholder) {
+          claimPromptRef.current.openForPlaceholder(regRow.placeholder_id)
+        }
+        return
+      }
+    } catch (regError) {
       setSubmitting(false)
       // Friendly catch for the payment_reference UNIQUE collision (a
       // placeholder with the same alias has a registration in this year). The
       // precheck above should usually catch this first, but a race between
       // precheck and insert could still let it through — fall back to a
       // human-readable error and keep the claim banner visible.
-      const code = regError.code
       const msg = regError.message ?? ''
-      if (code === '23505' || msg.includes('zltac_registrations_payment_reference_key')) {
+      const lowerMsg = msg.toLowerCase()
+      if (lowerMsg.includes('registration with this alias already exists') || msg.includes('zltac_registrations_payment_reference_key')) {
         setError('A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
         return
       }
-      setError(regError.message)
+      setError(msg || 'Registration failed. Please try again.')
       return
     }
-    if (regRow?.id) await recomputeOwing(regRow.id)
 
     // Persist volunteer opt-in now the registration row exists. Non-fatal:
     // registration already succeeded, and the Player Hub lets them retry.

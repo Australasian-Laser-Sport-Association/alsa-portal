@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useId } from 'react'
 import { supabase } from '../../lib/supabase.js'
-import { maskStorageUrl } from '../../lib/assetUrl'
+import { storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
 
 // Shared competition create/edit form. Used by:
 //   - the admin Create / Edit modal in AdminCompetitions.jsx
@@ -439,8 +439,12 @@ export default function CompetitionEditForm({
           {bannerUrl ? (
             <div className="space-y-3">
               <img
-                src={maskStorageUrl(bannerUrl)}
+                src={storageImageUrl(bannerUrl, { width: 480, quality: 72, resize: 'cover' })}
+                srcSet={storageImageSrcSet(bannerUrl, [240, 480, 720], { quality: 72, resize: 'cover' })}
+                sizes="240px"
                 alt="Banner preview"
+                loading="lazy"
+                decoding="async"
                 className="w-full max-w-[240px] aspect-[4096/1716] object-cover rounded-lg border border-line"
               />
               <div className="flex flex-wrap gap-2">

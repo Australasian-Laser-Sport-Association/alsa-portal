@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { ConfirmDialog, InlineAlert, LoadErrorState } from '../../components/Feedback'
 
 // Committee CRUD for the public Resources pages, shared between ALSA
 // (/admin/alsa-documents) and ZLTAC (/admin/zltac-documents) via the `scope`
@@ -19,6 +20,7 @@ export default function AdminDocuments({ scope }) {
   const [categories, setCategories] = useState([])
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [catDrafts, setCatDrafts] = useState({})
   const [newCatName, setNewCatName] = useState('')
   const [addingDoc, setAddingDoc] = useState(false)
@@ -27,22 +29,37 @@ export default function AdminDocuments({ scope }) {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   // Fetch lives inside the effect; writes trigger a refetch by bumping
   // refreshKey via loadAll().
   useEffect(() => {
     let cancelled = false
     async function load() {
-      const [{ data: cats }, { data: docs }] = await Promise.all([
-        supabase.from('document_categories').select('*').eq('scope', scope),
-        supabase.from('documents').select('*').eq('scope', scope),
-      ])
-      if (cancelled) return
-      const sortedCats = (cats ?? []).slice().sort(byOrder)
-      setCategories(sortedCats)
-      setDocuments((docs ?? []).slice().sort(byOrder))
-      setCatDrafts(Object.fromEntries(sortedCats.map(c => [c.id, { name: c.name, sort_order: c.sort_order }])))
-      setLoading(false)
+      setLoading(true)
+      setLoadError('')
+      try {
+        const [
+          { data: cats, error: catsError },
+          { data: docs, error: docsError },
+        ] = await Promise.all([
+          supabase.from('document_categories').select('*').eq('scope', scope),
+          supabase.from('documents').select('*').eq('scope', scope),
+        ])
+        if (catsError) throw catsError
+        if (docsError) throw docsError
+        if (cancelled) return
+        const sortedCats = (cats ?? []).slice().sort(byOrder)
+        setCategories(sortedCats)
+        setDocuments((docs ?? []).slice().sort(byOrder))
+        setCatDrafts(Object.fromEntries(sortedCats.map(c => [c.id, { name: c.name, sort_order: c.sort_order }])))
+      } catch (error) {
+        if (!cancelled) setLoadError(error.message || 'Could not load documents.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     load()
     return () => { cancelled = true }
@@ -74,11 +91,18 @@ export default function AdminDocuments({ scope }) {
     else { setMsg({ type: 'ok', text: 'Category saved.' }); loadAll() }
   }
 
-  async function deleteCategory(id) {
-    if (!window.confirm('Delete this category? Its documents become uncategorised.')) return
-    const { error } = await supabase.from('document_categories').delete().eq('id', id)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else { setMsg(null); loadAll() }
+  async function deleteCategory(category) {
+    if (!category?.id) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    const { error } = await supabase.from('document_categories').delete().eq('id', category.id)
+    setDeleteBusy(false)
+    if (error) setDeleteError(error.message)
+    else {
+      setPendingDelete(null)
+      setMsg(null)
+      loadAll()
+    }
   }
 
   function setCatDraft(id, field, value) {
@@ -124,11 +148,29 @@ export default function AdminDocuments({ scope }) {
     }
   }
 
-  async function deleteDoc(id) {
-    if (!window.confirm('Delete this document?')) return
-    const { error } = await supabase.from('documents').delete().eq('id', id)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else { setMsg(null); loadAll() }
+  async function deleteDoc(doc) {
+    if (!doc?.id) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    const { error } = await supabase.from('documents').delete().eq('id', doc.id)
+    setDeleteBusy(false)
+    if (error) setDeleteError(error.message)
+    else {
+      setPendingDelete(null)
+      setMsg(null)
+      loadAll()
+    }
+  }
+
+  function openDeleteConfirm(type, item) {
+    setPendingDelete({ type, item })
+    setDeleteError('')
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteBusy) return
+    setPendingDelete(null)
+    setDeleteError('')
   }
 
   // Grouped list for display: categories in order, then uncategorised last.
@@ -147,6 +189,16 @@ export default function AdminDocuments({ scope }) {
     )
   }
 
+  if (loadError) {
+    return (
+      <LoadErrorState
+        title={`Could not load ${scopeLabel} documents.`}
+        message={loadError}
+        onRetry={loadAll}
+      />
+    )
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -162,9 +214,7 @@ export default function AdminDocuments({ scope }) {
         </button>
       </div>
 
-      {msg && (
-        <p className={`text-sm font-semibold mb-4 ${msg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>{msg.text}</p>
-      )}
+      <InlineAlert className="mb-4" tone={msg?.type === 'ok' ? 'success' : 'error'}>{msg?.text}</InlineAlert>
 
       {/* Categories */}
       <div className="bg-surface border border-line rounded-xl p-5 mb-6">
@@ -195,7 +245,7 @@ export default function AdminDocuments({ scope }) {
                     className="text-xs bg-line hover:bg-[#374056] disabled:opacity-50 text-[#e5e5e5]/60 hover:text-white font-semibold px-3 py-2 rounded-lg transition-colors">
                     Save
                   </button>
-                  <button onClick={() => deleteCategory(c.id)}
+                  <button onClick={() => openDeleteConfirm('category', c)}
                     className="text-xs text-red-400/70 hover:text-red-400 font-semibold px-2 py-2 transition-colors">
                     Delete
                   </button>
@@ -303,7 +353,7 @@ export default function AdminDocuments({ scope }) {
                       className="text-xs bg-line hover:bg-[#374056] text-[#e5e5e5]/60 hover:text-white font-semibold px-3 py-1.5 rounded-lg transition-colors">
                       Edit
                     </button>
-                    <button onClick={() => deleteDoc(d.id)}
+                    <button onClick={() => openDeleteConfirm('document', d)}
                       className="text-xs text-red-400/70 hover:text-red-400 font-semibold px-2 py-1.5 transition-colors">
                       Delete
                     </button>
@@ -314,6 +364,31 @@ export default function AdminDocuments({ scope }) {
           </div>
         ))
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={pendingDelete?.type === 'category' ? 'Delete category?' : 'Delete document?'}
+        confirmLabel={pendingDelete?.type === 'category' ? 'Delete category' : 'Delete document'}
+        busyLabel="Deleting..."
+        busy={deleteBusy}
+        destructive
+        error={deleteError}
+        onConfirm={() => {
+          if (pendingDelete?.type === 'category') deleteCategory(pendingDelete.item)
+          else deleteDoc(pendingDelete?.item)
+        }}
+        onCancel={closeDeleteConfirm}
+      >
+        {pendingDelete?.type === 'category' ? (
+          <>
+            Delete category <span className="text-white font-semibold">{pendingDelete.item.name}</span>? Its documents become uncategorised.
+          </>
+        ) : (
+          <>
+            Delete document <span className="text-white font-semibold">{pendingDelete?.item?.name}</span>?
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

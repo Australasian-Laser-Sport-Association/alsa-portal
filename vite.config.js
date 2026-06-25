@@ -72,6 +72,18 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: sentryUploadEnabled,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            if (id.includes('react') || id.includes('react-router-dom')) return 'vendor-react'
+            if (id.includes('@supabase')) return 'vendor-supabase'
+            if (id.includes('@sentry')) return 'vendor-sentry'
+            if (id.includes('lucide-react')) return 'vendor-icons'
+            return 'vendor'
+          },
+        },
+      },
     },
     test: {
       environment: 'node',

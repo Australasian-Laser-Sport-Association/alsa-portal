@@ -11,7 +11,7 @@ import CommitteeBadge from '../components/CommitteeBadge'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
 import { TeamShieldIcon } from '../components/icons.jsx'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { storageImageUrl } from '../lib/assetUrl'
 import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
 import { TEAM_COLOURS } from '../lib/teamColours'
 
@@ -713,7 +713,7 @@ export default function CaptainHub() {
         <div className="flex items-start gap-5 mb-6">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0" style={{ background: team.colour ?? '#00E6FF' }}>
             {team.logo_url
-              ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain rounded-xl" />
+              ? <img src={storageImageUrl(team.logo_url, { width: 128 })} alt={team.name} decoding="async" className="w-full h-full object-contain rounded-xl" />
               : initials(team.name)
             }
           </div>
@@ -907,7 +907,7 @@ export default function CaptainHub() {
                       <div className="flex items-start gap-3">
                         {/* Avatar */}
                         {avatarUrl
-                          ? <img src={maskStorageUrl(avatarUrl)} alt={name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                          ? <img src={storageImageUrl(avatarUrl, { width: 72, resize: 'cover' })} alt={name} loading="lazy" decoding="async" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                           : <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>{initials(name)}</div>
                         }
 
@@ -1026,7 +1026,7 @@ export default function CaptainHub() {
               >
                 {/* SAFETY: do not inline-render SVG logos — always use <img src>. */}
                 {team.logo_url
-                  ? <img src={maskStorageUrl(team.logo_url)} alt={`${team.name} logo`} className="w-full h-full object-contain" />
+                  ? <img src={storageImageUrl(team.logo_url, { width: 160 })} alt={`${team.name} logo`} loading="lazy" decoding="async" className="w-full h-full object-contain" />
                   : <span aria-hidden>{initials(team.name)}</span>
                 }
               </div>

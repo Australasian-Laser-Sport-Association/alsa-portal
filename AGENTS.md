@@ -83,6 +83,15 @@ the committee.
 
 - Schema changes are managed with committed migration files in
   `supabase/migrations/`, named `YYYYMMDDHHMMSS_short_description.sql`.
+- Production and Preview use separate Supabase projects. Vercel Production
+  scope must point at production Supabase; Vercel Preview scope must point at
+  staging Supabase. The split applies to `VITE_SUPABASE_URL`,
+  `VITE_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+- Never put the production `SUPABASE_SERVICE_ROLE_KEY` in the Vercel Preview
+  scope.
+- The local Supabase CLI may be linked to staging during normal development.
+  Before any production migration-history command or production database
+  command, explicitly verify the linked project/ref.
 - Production migrations are applied deliberately by the maintainer. High-risk
   production rollouts may be applied manually in the Supabase SQL Editor so
   each migration can be verified before continuing.

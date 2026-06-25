@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { formatDate } from '../lib/dateFormat'
 import Footer from '../components/Footer'
 import Dialog from '../components/Dialog'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { maskStorageUrl, storageImageSrcSet, storageImageUrl } from '../lib/assetUrl'
 
 const SIDE_EVENT_LABELS = {
   solos:   'Solos',
@@ -17,7 +17,7 @@ const SIDE_EVENT_LABELS = {
 }
 const SIDE_EVENT_ORDER = ['solos', 'doubles', 'triples', 'masters', 'womens', 'juniors', 'lotr']
 
-function PhotoLightbox({ urls, startIndex, onClose }) {
+function PhotoLightbox({ urls, startIndex, onClose, eventName }) {
   const [current, setCurrent] = useState(startIndex)
   useEffect(() => {
     function onKey(e) {
@@ -30,10 +30,12 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
   }, [urls.length, onClose])
 
   return (
-    <Dialog open onClose={onClose} variant="lightbox" closeOnBackdrop label="Photo viewer" className="relative max-w-4xl max-h-full">
-        <img src={urls[current]} alt="" className="max-h-[80vh] max-w-full object-contain rounded-xl" />
+    <Dialog open onClose={onClose} variant="lightbox" closeOnBackdrop label={`${eventName} photo viewer`} className="relative max-w-4xl max-h-full">
+        <img src={urls[current]} alt={`${eventName} photo ${current + 1} of ${urls.length}`} className="max-h-[80vh] max-w-full object-contain rounded-xl" />
         <button
+          type="button"
           onClick={onClose}
+          aria-label="Close photo viewer"
           className="absolute top-3 right-3 w-8 h-8 bg-black/70 text-white rounded-full flex items-center justify-center text-sm hover:bg-black"
         >
           ×
@@ -41,16 +43,20 @@ function PhotoLightbox({ urls, startIndex, onClose }) {
         {urls.length > 1 && (
           <div className="flex items-center justify-between mt-3">
             <button
+              type="button"
               onClick={() => setCurrent(c => Math.max(c - 1, 0))}
               disabled={current === 0}
+              aria-label="Show previous photo"
               className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white rounded-lg text-sm transition-colors"
             >
               ←
             </button>
             <span className="text-white/60 text-sm">{current + 1} / {urls.length}</span>
             <button
+              type="button"
               onClick={() => setCurrent(c => Math.min(c + 1, urls.length - 1))}
               disabled={current === urls.length - 1}
+              aria-label="Show next photo"
               className="px-4 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white rounded-lg text-sm transition-colors"
             >
               →
@@ -140,8 +146,10 @@ export default function ZLTACYearDetail() {
   const hasPodium = !!(teamPodium[1] || teamPodium[2] || teamPodium[3])
   const hasSideEvents = sideEventGroups.length > 0
   const hasPhotos = event.photo_urls?.length > 0
-  // Mask the gallery URLs once so the thumbnails and the lightbox stay consistent.
-  const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
+  // Mask full-size gallery URLs once for the lightbox; thumbnails use
+  // transformed responsive URLs.
+  const photoUrls = event.photo_urls ?? []
+  const maskedPhotoUrls = photoUrls.map(maskStorageUrl)
 
   const dateRange = event.start_date
     ? event.end_date && event.end_date !== event.start_date
@@ -175,8 +183,10 @@ export default function ZLTACYearDetail() {
           <div className="flex items-start gap-8">
             {event.logo_url && (
               <img
-                src={maskStorageUrl(event.logo_url)}
+                src={storageImageUrl(event.logo_url, { width: 256 })}
                 alt={event.name}
+                loading="eager"
+                decoding="async"
                 className="w-24 h-24 md:w-32 md:h-32 object-contain rounded-2xl bg-[#191919] p-3 border border-line flex-shrink-0"
               />
             )}
@@ -305,13 +315,23 @@ export default function ZLTACYearDetail() {
           <section>
             <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-6">Photo Gallery</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {maskedPhotoUrls.map((url, i) => (
+              {photoUrls.map((url, i) => (
                 <button
+                  type="button"
                   key={i}
                   onClick={() => setLightbox(i)}
+                  aria-label={`Open ${event.name || `ZLTAC ${event.year}`} photo ${i + 1} of ${photoUrls.length}`}
                   className="relative aspect-square overflow-hidden rounded-xl bg-[#191919] border border-line hover:border-brand/30 transition-all group"
                 >
-                  <img src={url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <img
+                    src={storageImageUrl(url, { width: 360, quality: 70, resize: 'cover' })}
+                    srcSet={storageImageSrcSet(url, [240, 360, 480], { quality: 70, resize: 'cover' })}
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    alt={`${event.name || `ZLTAC ${event.year}`} photo ${i + 1}`}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
                 </button>
               ))}
             </div>
@@ -336,6 +356,7 @@ export default function ZLTACYearDetail() {
         <PhotoLightbox
           urls={maskedPhotoUrls}
           startIndex={lightbox}
+          eventName={event.name || `ZLTAC ${event.year}`}
           onClose={() => setLightbox(null)}
         />
       )}

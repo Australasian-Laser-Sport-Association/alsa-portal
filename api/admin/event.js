@@ -8,6 +8,9 @@ import { changeProfileAlias } from '../_lib/profileChanges.js'
 import { isAllowedTeamLogoUrl } from '../_lib/captainTeam.js'
 import { buildBackupFiles } from '../_lib/backupStorage.js'
 import { enforceRateLimit } from '../_lib/rateLimit.js'
+import { isUuid } from '../_lib/idValidation.js'
+import { sendServerError } from '../_lib/apiErrors.js'
+import { captureServerException } from '../_lib/serverTelemetry.js'
 import { generateBackupCsvs } from '../../src/lib/backup/generateBackupCsvs.js'
 import { dollars } from '../../src/lib/pricing.js'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../../src/lib/eventSettings.js'
@@ -16,6 +19,50 @@ const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'
 const TEAM_FORMATS = new Set(['team', 'doubles', 'triples'])
 const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
 const TEAM_STATUSES = new Set(['draft', 'pending', 'approved', 'rejected'])
+const UNDER_18_STATUSES = new Set(['pending', 'approved', 'rejected'])
+const EVENT_STATUSES = new Set(['draft', 'open', 'closed', 'archived'])
+const CURRENT_YEAR = new Date().getFullYear()
+const DEFAULT_UNDER_18_YEAR = CURRENT_YEAR + 1
+const DOUBLES_PAIR_COLUMNS = 'id, event_year, player1_id, player2_id, confirmed, created_at'
+const TRIPLES_TEAM_COLUMNS = 'id, event_year, player1_id, player2_id, player3_id, player2_confirmed, player3_confirmed, confirmed, created_at'
+const BACKUP_SETTINGS_COLUMNS = 'id, frequency, weekly_day, recipient_emails, last_backup_at, last_backup_status, created_at, updated_at'
+const EVENT_WRITE_COLUMNS = new Set([
+  'name',
+  'year',
+  'status',
+  'start_date',
+  'end_date',
+  'location',
+  'venue',
+  'description',
+  'logo_url',
+  'cover_photo_url',
+  'hero_text',
+  'photo_urls',
+  'main_fee',
+  'team_fee',
+  'dinner_guest_price',
+  'processing_fee_pct',
+  'bank_bsb',
+  'bank_account_number',
+  'bank_account_name',
+  'side_events',
+  'timezone',
+  'reg_open_date',
+  'reg_close_date',
+  'event_starts_at',
+  'max_teams',
+  'max_players',
+  'max_players_per_team',
+  'require_coc',
+  'require_ref_test',
+  'require_payment',
+  'allow_side_events_only',
+  'enable_waitlist',
+  'committee_email',
+  'payments_override',
+  'updated_at',
+])
 
 // Committee-gated event operations. Dispatches by ?resource=:
 //   ?resource=event            → archive / delete the event (POST + body.action)
@@ -71,8 +118,66 @@ async function handleEvent(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { action, eventId, year } = req.body ?? {}
-  if (!action || !eventId || !year) {
-    return res.status(400).json({ error: 'action, eventId, and year are required' })
+  if (!action) {
+    return res.status(400).json({ error: 'action is required' })
+  }
+
+  if (['archive', 'delete', 'status', 'cover'].includes(action) && !isUuid(eventId)) {
+    return res.status(400).json({ error: 'A valid eventId is required' })
+  }
+
+  if (action === 'save') {
+    const sanitized = sanitizeEventPayload(req.body?.payload)
+    if (!sanitized) return res.status(400).json({ error: 'payload is required' })
+    if (sanitized.error) return res.status(400).json({ error: sanitized.error })
+
+    let result
+    if (eventId) {
+      if (!isUuid(eventId)) return res.status(400).json({ error: 'A valid eventId is required' })
+      result = await supabaseAdmin
+        .from('zltac_events')
+        .update(sanitized.payload)
+        .eq('id', eventId)
+        .select('*')
+        .single()
+    } else {
+      result = await supabaseAdmin
+        .from('zltac_events')
+        .insert(sanitized.payload)
+        .select('*')
+        .single()
+    }
+
+    if (result.error) return sendServerError(res, result.error, 'admin-event-save')
+    return res.json({ ok: true, event: result.data })
+  }
+
+  if (action === 'status') {
+    const status = req.body?.status
+    if (!EVENT_STATUSES.has(status)) return res.status(400).json({ error: 'A valid event status is required.' })
+
+    const { data, error } = await supabaseAdmin
+      .from('zltac_events')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', eventId)
+      .select('id, status')
+      .single()
+    if (error) return sendServerError(res, error, 'admin-event-status')
+    return res.json({ ok: true, event: data })
+  }
+
+  if (action === 'cover') {
+    const coverPhotoUrl = typeof req.body?.coverPhotoUrl === 'string' && req.body.coverPhotoUrl.trim()
+      ? req.body.coverPhotoUrl.trim()
+      : null
+    const { data, error } = await supabaseAdmin
+      .from('zltac_events')
+      .update({ cover_photo_url: coverPhotoUrl, updated_at: new Date().toISOString() })
+      .eq('id', eventId)
+      .select('id, cover_photo_url')
+      .single()
+    if (error) return sendServerError(res, error, 'admin-event-cover')
+    return res.json({ ok: true, event: data })
   }
 
   if (action === 'archive') {
@@ -127,6 +232,7 @@ async function handleEvent(req, res) {
   }
 
   if (action === 'delete') {
+    if (!year) return res.status(400).json({ error: 'year is required' })
     // Destructive cascade — superadmin only. The dispatcher already
     // verifyCommittee'd the request; deletes raise the bar to superadmin.
     const { error: err } = await verifySuperAdmin(req)
@@ -207,8 +313,8 @@ async function handleRegistrations(req, res, user) {
       supabaseAdmin.from('payment_records')
         .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes, zltac_registrations!inner(year)')
         .eq('zltac_registrations.year', year),
-      supabaseAdmin.from('doubles_pairs').select('*').eq('event_year', year).order('created_at', { ascending: false }),
-      supabaseAdmin.from('triples_teams').select('*').eq('event_year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('doubles_pairs').select(DOUBLES_PAIR_COLUMNS).eq('event_year', year).order('created_at', { ascending: false }),
+      supabaseAdmin.from('triples_teams').select(TRIPLES_TEAM_COLUMNS).eq('event_year', year).order('created_at', { ascending: false }),
       supabaseAdmin.from('under_18_approvals').select('user_id, status').eq('event_year', year).eq('status', 'approved'),
     ])
 
@@ -345,6 +451,9 @@ async function handleRegistrations(req, res, user) {
 
     if ('doubles_partner_id' in body) {
       const newPartnerId = body.doubles_partner_id || null
+      if (newPartnerId && !isUuid(newPartnerId)) {
+        return res.status(400).json({ error: 'doubles_partner_id must be a valid UUID' })
+      }
 
       // Capture everyone paired with the user (and, when replacing, with the
       // new partner) BEFORE deleting their rows, so members dropped by this
@@ -399,8 +508,17 @@ async function handleRegistrations(req, res, user) {
     }
 
     if ('triples_partner_ids' in body) {
-      const partnerIds = Array.isArray(body.triples_partner_ids) ? body.triples_partner_ids : []
+      if (!Array.isArray(body.triples_partner_ids)) {
+        return res.status(400).json({ error: 'triples_partner_ids must be an array' })
+      }
+      if (body.triples_partner_ids.length > 2) {
+        return res.status(400).json({ error: 'triples_partner_ids must contain at most two ids' })
+      }
+      const partnerIds = body.triples_partner_ids
       const [p2, p3] = [partnerIds[0] || null, partnerIds[1] || null]
+      if ((p2 && !isUuid(p2)) || (p3 && !isUuid(p3))) {
+        return res.status(400).json({ error: 'triples_partner_ids contains an invalid id' })
+      }
 
       // Capture the user's current team members BEFORE deleting, so members
       // dropped by this reshuffle can be cleaned up afterwards.
@@ -818,7 +936,7 @@ async function handleBackupSettings(req, res, user) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('backup_settings')
-      .select('*')
+      .select(BACKUP_SETTINGS_COLUMNS)
       .eq('id', 1)
       .maybeSingle()
     if (error) return res.status(500).json({ error: error.message })
@@ -904,12 +1022,15 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
       .from('backup_settings')
       .update({ last_backup_at: sentAt ?? new Date().toISOString(), last_backup_status: status })
       .eq('id', 1)
-    if (error) console.error('[backup-run] failed to record outcome:', error.message)
+    if (error) {
+      console.error('[backup-run] failed to record outcome:', error.message)
+      captureServerException(error, 'admin-backup-run-record-outcome')
+    }
   }
 
   const { data: settings, error: settingsErr } = await supabaseAdmin
     .from('backup_settings')
-    .select('*')
+    .select(BACKUP_SETTINGS_COLUMNS)
     .eq('id', 1)
     .maybeSingle()
   if (settingsErr) return res.status(500).json({ error: settingsErr.message })
@@ -942,6 +1063,7 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
   if (runInsertErr) return res.status(500).json({ error: `Could not start backup run: ${runInsertErr.message}` })
 
   const failRun = async message => {
+    captureServerException(new Error(message), 'admin-backup-run', { runId })
     await supabaseAdmin.from('backup_runs').update({
       status: 'failed',
       failure_message: message,
@@ -1031,6 +1153,7 @@ async function handleBackupRun(req, res, { enforceSchedule, triggeredBy }) {
 
   if (sendError) {
     console.error('[backup-run] notification email failed:', sendError)
+    captureServerException(new Error(sendError), 'admin-backup-run-notification', { runId })
   }
 
   const retentionCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
@@ -1396,12 +1519,178 @@ async function handleTeamSettings(req, res) {
   return res.json({ ok: true, team: updated })
 }
 
+function sanitizeEventPayload(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+
+  const payload = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (EVENT_WRITE_COLUMNS.has(key)) payload[key] = value
+  }
+
+  if (!payload.name || typeof payload.name !== 'string' || payload.name.trim().length > 120) {
+    return { error: 'Event name is required and must be 120 characters or fewer.' }
+  }
+  payload.name = payload.name.trim()
+
+  const year = Number(payload.year)
+  if (!Number.isInteger(year) || year < 1999 || year > CURRENT_YEAR + 10) {
+    return { error: 'A valid event year is required.' }
+  }
+  payload.year = year
+
+  if (!EVENT_STATUSES.has(payload.status)) {
+    return { error: 'A valid event status is required.' }
+  }
+
+  if (payload.photo_urls != null && !Array.isArray(payload.photo_urls)) {
+    return { error: 'photo_urls must be an array.' }
+  }
+  if (payload.side_events != null && !Array.isArray(payload.side_events)) {
+    return { error: 'side_events must be an array.' }
+  }
+
+  for (const field of ['main_fee', 'team_fee', 'dinner_guest_price', 'max_teams', 'max_players', 'max_players_per_team']) {
+    if (payload[field] != null && !Number.isInteger(Number(payload[field]))) {
+      return { error: `${field} must be an integer.` }
+    }
+  }
+
+  return { payload }
+}
+
+// ── under-18-approvals ─────────────────────────────────────────────────────
+// Committee workflow for parental-consent approvals. Runs through the
+// service-role API so browser clients do not perform cross-user profile reads
+// or approval writes directly.
+function parseApprovalYear(value) {
+  const year = Number.parseInt(value, 10)
+  if (!Number.isInteger(year) || year < 2000 || year > CURRENT_YEAR + 5) return null
+  return year
+}
+
+function cleanApprovalNotes(value) {
+  if (value == null) return null
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed.slice(0, 2000) : null
+}
+
+async function handleUnder18Approvals(req, res, user) {
+  if (req.method === 'GET') {
+    const yearFilter = req.query.year ?? DEFAULT_UNDER_18_YEAR
+    const statusFilter = req.query.status ?? 'all'
+    if (statusFilter !== 'all' && !UNDER_18_STATUSES.has(statusFilter)) {
+      return res.status(400).json({ error: 'Invalid status filter' })
+    }
+
+    let approvalsQuery = supabaseAdmin
+      .from('under_18_approvals')
+      .select('id, user_id, event_year, status, submitted_at, approved_at, approved_by, notes, created_at, updated_at, player:profiles!user_id(first_name, last_name, alias), approver:profiles!approved_by(first_name, last_name, alias)')
+      .order('event_year', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (yearFilter !== 'all') {
+      const year = parseApprovalYear(yearFilter)
+      if (!year) return res.status(400).json({ error: 'Invalid event year' })
+      approvalsQuery = approvalsQuery.eq('event_year', year)
+    }
+    if (statusFilter !== 'all') approvalsQuery = approvalsQuery.eq('status', statusFilter)
+
+    const [{ data: rows, error: rowsErr }, { data: profiles, error: profilesErr }, { data: yearRows, error: yearsErr }] = await Promise.all([
+      approvalsQuery,
+      supabaseAdmin
+        .from('profiles')
+        .select('id, first_name, last_name, alias')
+        .order('first_name', { ascending: true }),
+      supabaseAdmin
+        .from('under_18_approvals')
+        .select('event_year'),
+    ])
+
+    const err = rowsErr ?? profilesErr ?? yearsErr
+    if (err) return sendServerError(res, err, 'admin:event:under-18-approvals:get')
+
+    const years = Array
+      .from(new Set([DEFAULT_UNDER_18_YEAR, CURRENT_YEAR, ...(yearRows ?? []).map(row => row.event_year)]))
+      .filter(Boolean)
+      .sort((a, b) => b - a)
+
+    return res.json({ rows: rows ?? [], profiles: profiles ?? [], years })
+  }
+
+  if (req.method === 'POST') {
+    const body = req.body ?? {}
+    const userId = body.user_id
+    const eventYear = parseApprovalYear(body.event_year)
+    const status = typeof body.status === 'string' ? body.status : 'approved'
+
+    if (!isUuid(userId)) return res.status(400).json({ error: 'user_id must be a valid UUID' })
+    if (!eventYear) return res.status(400).json({ error: 'Invalid event year' })
+    if (!UNDER_18_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status' })
+
+    const payload = {
+      user_id: userId,
+      event_year: eventYear,
+      status,
+      notes: cleanApprovalNotes(body.notes),
+      approved_at: status === 'approved' ? new Date().toISOString() : null,
+      approved_by: status === 'approved' ? user.id : null,
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('under_18_approvals')
+      .insert(payload)
+      .select('id')
+      .single()
+    if (error) {
+      if (error.code === '23505') return res.status(409).json({ error: 'This player already has an approval record for that year.' })
+      return sendServerError(res, error, 'admin:event:under-18-approvals:create')
+    }
+    return res.status(201).json({ ok: true, id: data.id })
+  }
+
+  if (req.method === 'PATCH') {
+    const body = req.body ?? {}
+    const id = body.id
+    const status = typeof body.status === 'string' ? body.status : null
+    if (!isUuid(id)) return res.status(400).json({ error: 'id must be a valid UUID' })
+    if (!UNDER_18_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status' })
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('under_18_approvals')
+      .select('id, status, approved_at, approved_by')
+      .eq('id', id)
+      .maybeSingle()
+    if (existingErr) return sendServerError(res, existingErr, 'admin:event:under-18-approvals:lookup')
+    if (!existing) return res.status(404).json({ error: 'Approval record not found' })
+
+    const patch = {
+      status,
+      notes: cleanApprovalNotes(body.notes),
+    }
+    if (status === 'approved' && existing.status !== 'approved') {
+      patch.approved_at = new Date().toISOString()
+      patch.approved_by = user.id
+    }
+    if (status !== 'approved' && existing.status === 'approved') {
+      patch.approved_at = null
+      patch.approved_by = null
+    }
+
+    const { error } = await supabaseAdmin
+      .from('under_18_approvals')
+      .update(patch)
+      .eq('id', id)
+    if (error) return sendServerError(res, error, 'admin:event:under-18-approvals:update')
+    return res.json({ ok: true })
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' })
+}
+
 // ── team-roster ─────────────────────────────────────────────────────────────
-// Committee add / remove / move of a player on a ZLTAC team, by setting,
-// clearing, or changing zltac_registrations.team_id directly. Runs on the
-// service role, which is exempt from the roster lock and (after migration
-// 20260616010000) from the per-team capacity cap. amount_owing is recomputed
-// after every change via computeAndWriteAmountOwing, mirroring the PATCH path.
+// Committee add / remove / move of a player on a ZLTAC team. The database RPC
+// keeps zltac_registrations and team_members synchronized in one transaction.
 async function handleTeamRoster(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -1412,40 +1701,31 @@ async function handleTeamRoster(req, res) {
     return res.status(400).json({ error: "action must be 'add', 'remove', or 'move'" })
   }
   if (!userId || !year) return res.status(400).json({ error: 'userId and year are required' })
-
-  const { data: reg, error: regErr } = await supabaseAdmin
-    .from('zltac_registrations').select('id, team_id').eq('user_id', userId).eq('year', year).maybeSingle()
-  if (regErr) return res.status(500).json({ error: regErr.message })
-  if (!reg) return res.status(404).json({ error: 'Player is not registered for this event year.' })
+  if (!isUuid(userId)) return res.status(400).json({ error: 'userId must be a valid UUID' })
 
   let newTeamId = null
   if (action === 'add' || action === 'move') {
     const { teamId } = body
     if (!teamId) return res.status(400).json({ error: 'teamId is required' })
-    const { data: team, error: teamErr } = await supabaseAdmin
-      .from('teams').select('id, event_id').eq('id', teamId).maybeSingle()
-    if (teamErr) return res.status(500).json({ error: teamErr.message })
-    if (!team || !team.event_id) return res.status(400).json({ error: 'Destination team is not a ZLTAC team.' })
-    const { data: ev, error: evErr } = await supabaseAdmin
-      .from('zltac_events').select('year').eq('id', team.event_id).maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
-    if (!ev || ev.year !== year) return res.status(400).json({ error: 'Destination team belongs to a different event year.' })
+    if (!isUuid(teamId)) return res.status(400).json({ error: 'teamId must be a valid UUID' })
     newTeamId = teamId
   }
 
-  const { error: setErr } = await supabaseAdmin
-    .from('zltac_registrations').update({ team_id: newTeamId }).eq('id', reg.id)
-  if (setErr) {
-    // 23503/23514 are the trigger's integrity guards (not a ZLTAC team / wrong
-    // year) — surface as a 400 with the DB message rather than a 500.
-    const code = setErr.code
-    return res.status(code === '23503' || code === '23514' ? 400 : 500).json({ error: setErr.message })
+  const { data, error } = await supabaseAdmin.rpc('committee_set_zltac_team_roster', {
+    p_user_id: userId,
+    p_year: year,
+    p_team_id: newTeamId,
+  })
+  if (error) {
+    // The RPC owns roster validation and amount recomputation; map known
+    // business-rule failures to client errors and keep surprises as 500s.
+    const code = error.code
+    const status = code === 'P0002' ? 404 : code === '22023' || code === '23503' || code === '23514' ? 400 : null
+    if (status == null) return sendServerError(res, error, 'admin:event:team-roster')
+    return res.status(status).json({ error: error.message })
   }
 
-  const { amountOwing, error: recErr } = await computeAndWriteAmountOwing(reg.id)
-  if (recErr) return res.status(500).json({ error: `recompute: ${recErr}` })
-
-  return res.json({ ok: true, registrationId: reg.id, team_id: newTeamId, amountOwing: amountOwing ?? 0 })
+  return res.json({ ok: true, ...(data ?? {}) })
 }
 
 export default async function handler(req, res) {
@@ -1466,6 +1746,7 @@ export default async function handler(req, res) {
     limit,
     window: '1 m',
     prefix: resource === 'profile-search' ? 'admin-profile-search' : 'admin-event',
+    requireDistributed: true,
   })) return
 
   if (resource === 'event')            return handleEvent(req, res)
@@ -1478,5 +1759,6 @@ export default async function handler(req, res) {
   if (resource === 'team-review')      return handleTeamReview(req, res)
   if (resource === 'team-settings')    return handleTeamSettings(req, res)
   if (resource === 'team-roster')      return handleTeamRoster(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", "zltac-dashboard", "team-review", "team-settings", or "team-roster"' })
+  if (resource === 'under-18-approvals') return handleUnder18Approvals(req, res, user)
+  return res.status(400).json({ error: 'resource query param must be "event", "registrations", "payments", "backup-settings", "backup-run", "profile-search", "zltac-dashboard", "team-review", "team-settings", "team-roster", or "under-18-approvals"' })
 }

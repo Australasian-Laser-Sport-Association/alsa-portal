@@ -13,6 +13,8 @@ import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
 const CODE_RE = /^[A-Z0-9]{1,5}$/
 const VALID_STATUS = new Set(['pending', 'approved', 'declined'])
 const DEFAULT_CAVEAT = 'Note: Not all volunteers will be utilised. Selection is based on the operational capacity of the ZLTAC event.'
+const VOLUNTEER_ROLE_COLUMNS = 'id, code, name, short_description, target_count, min_count, requires_experience, experience_notes, is_default, sort_order, is_active, created_at, updated_at'
+const EVENT_VOLUNTEER_SETTINGS_COLUMNS = 'id, event_id, required_per_team, count_per_team, enforcement, caveat_message, created_at, updated_at'
 
 // ── roles helpers ─────────────────────────────────────────────────────────────
 function parseCount(v) {
@@ -72,7 +74,7 @@ async function handleRoles(req, res) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('volunteer_roles')
-      .select('*')
+      .select(VOLUNTEER_ROLE_COLUMNS)
       .order('sort_order', { ascending: true })
       .order('code', { ascending: true })
     if (error) return res.status(500).json({ error: error.message })
@@ -83,7 +85,7 @@ async function handleRoles(req, res) {
     const { payload, error: vErr, field } = validateAndBuild(req.body ?? {}, { partial: false })
     if (vErr) return res.status(400).json({ error: vErr, field })
 
-    const { data, error } = await supabaseAdmin.from('volunteer_roles').insert(payload).select().single()
+    const { data, error } = await supabaseAdmin.from('volunteer_roles').insert(payload).select(VOLUNTEER_ROLE_COLUMNS).single()
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'A role with this code already exists.', field: 'code' })
       return res.status(500).json({ error: error.message })
@@ -101,7 +103,7 @@ async function handleRoles(req, res) {
     if (vErr) return res.status(400).json({ error: vErr, field })
     if (Object.keys(payload).length === 0) return res.status(400).json({ error: 'No fields to update' })
 
-    const { data, error } = await supabaseAdmin.from('volunteer_roles').update(payload).eq('id', id).select().single()
+    const { data, error } = await supabaseAdmin.from('volunteer_roles').update(payload).eq('id', id).select(VOLUNTEER_ROLE_COLUMNS).single()
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'A role with this code already exists.', field: 'code' })
       return res.status(500).json({ error: error.message })
@@ -149,7 +151,7 @@ async function handleSettings(req, res) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('event_volunteer_settings')
-      .select('*')
+      .select(EVENT_VOLUNTEER_SETTINGS_COLUMNS)
       .eq('event_id', eventId)
       .maybeSingle()
     if (error) return res.status(500).json({ error: error.message })
@@ -189,7 +191,7 @@ async function handleSettings(req, res) {
     const { data, error } = await supabaseAdmin
       .from('event_volunteer_settings')
       .upsert(payload, { onConflict: 'event_id' })
-      .select()
+      .select(EVENT_VOLUNTEER_SETTINGS_COLUMNS)
       .single()
     if (error) {
       if (error.code === '23503') return res.status(400).json({ error: 'Unknown event.' })

@@ -4,7 +4,7 @@ import Footer from '../../components/Footer'
 import { useAuth } from '../../lib/useAuth'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDateRange, formatDateTime } from '../../lib/dateFormat'
-import { maskStorageUrl } from '../../lib/assetUrl'
+import { storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
 import { dollars } from '../../lib/pricing.js'
 
 // Public competition detail page. Anon-readable. The registration CTA gates
@@ -320,8 +320,12 @@ export default function CompetitionDetail() {
       {comp.banner_url && (
         <section className="max-w-5xl mx-auto px-6 pt-8">
           <img
-            src={maskStorageUrl(comp.banner_url)}
+            src={storageImageUrl(comp.banner_url, { width: 1280, quality: 72, resize: 'cover' })}
+            srcSet={storageImageSrcSet(comp.banner_url, [768, 1280, 1600], { quality: 72, resize: 'cover' })}
+            sizes="(max-width: 1024px) calc(100vw - 3rem), 1024px"
             alt={`${comp.name} banner`}
+            loading="eager"
+            decoding="async"
             className="w-full aspect-[4096/1716] object-cover rounded-2xl"
           />
         </section>

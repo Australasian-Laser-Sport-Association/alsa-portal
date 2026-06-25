@@ -36,12 +36,13 @@ function eventMatchesSearch(event, q) {
   return false
 }
 
-function Chip({ active, onClick, children }) {
+function Chip({ active, onClick, label, children }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-label={label}
       className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border transition-all ${
         active
           ? 'bg-brand text-black border-brand shadow-[0_0_12px_rgba(0,255,65,0.3)]'
@@ -130,6 +131,7 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
+              aria-label="Search ZLTAC years by player, team, location, or notes"
               type="search"
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -140,32 +142,32 @@ export default function YearExplorer({ events = [], stateFilter, onStateFilterCh
         </div>
 
         {/* Decade chips */}
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center">Decade</p>
+        <fieldset>
+          <legend className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center w-full">Decade</legend>
           <div className="flex flex-wrap justify-center gap-2">
             {DECADES.map(d => (
-              <Chip key={d.key} active={decadeFilter === d.key} onClick={() => setDecadeFilter(d.key)}>
+              <Chip key={d.key} active={decadeFilter === d.key} onClick={() => setDecadeFilter(d.key)} label={`Filter by ${d.label === 'All' ? 'all decades' : d.label}`}>
                 {d.label}
               </Chip>
             ))}
           </div>
-        </div>
+        </fieldset>
 
         {/* State chips */}
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center">Host region</p>
+        <fieldset>
+          <legend className="text-[10px] font-bold uppercase tracking-widest text-[#e5e5e5]/60 mb-2 text-center w-full">Host region</legend>
           <div className="flex flex-wrap justify-center gap-2">
             {STATES.map(s => (
-              <Chip key={s} active={stateFilter === s} onClick={() => onStateFilterChange(s)}>
+              <Chip key={s} active={stateFilter === s} onClick={() => onStateFilterChange(s)} label={`Filter by ${s === 'all' ? 'all host regions' : s}`}>
                 {s === 'all' ? 'All' : s}
               </Chip>
             ))}
           </div>
-        </div>
+        </fieldset>
 
         {/* Status row */}
         <div className="flex items-center justify-between gap-3 pt-1">
-          <p className="text-xs text-[#e5e5e5]/60">
+          <p className="text-xs text-[#e5e5e5]/60" role="status" aria-live="polite">
             {isSearching
               ? `${matchCount} year${matchCount === 1 ? '' : 's'} match "${search.trim()}"`
               : `${historicEvents.length} year${historicEvents.length === 1 ? '' : 's'} shown`}
