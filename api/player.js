@@ -564,6 +564,103 @@ async function handleRegistration(req, res, user) {
     return res.json({ ok: true })
   }
 
+  if (action === 'register') {
+    const eventYear = Number.parseInt(body.year, 10)
+    if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'year is required' })
+    if (await denyIfLocked(res, eventYear)) return
+
+    const emergencyContactName = typeof body.emergency_contact_name === 'string'
+      ? body.emergency_contact_name.trim() || null
+      : null
+    const emergencyContactPhone = typeof body.emergency_contact_phone === 'string'
+      ? body.emergency_contact_phone.trim() || null
+      : null
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('year', eventYear)
+      .maybeSingle()
+    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existing) return res.json({ ok: true, id: existing.id, existing: true })
+
+    const { data: callerProfile, error: callerErr } = await supabaseAdmin
+      .from('profiles')
+      .select('alias')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (callerErr) return res.status(500).json({ error: callerErr.message })
+
+    const callerAlias = (callerProfile?.alias ?? '').trim()
+    if (callerAlias) {
+      const { data: phReg, error: phErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
+        .eq('year', eventYear)
+        .eq('profiles.is_placeholder', true)
+      if (phErr) return res.status(500).json({ error: phErr.message })
+
+      const lowerCaller = callerAlias.toLowerCase()
+      const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
+      if (conflict) {
+        return res.json({
+          ok: false,
+          error: 'placeholder_exists',
+          placeholder_id: conflict.user_id,
+          message: 'There is already a placeholder registration with this alias for this event. Claim it instead.',
+        })
+      }
+    }
+
+    const { data: ev, error: evErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('max_players')
+      .eq('year', eventYear)
+      .maybeSingle()
+    if (evErr) return res.status(500).json({ error: evErr.message })
+
+    const cap = ev?.max_players
+    if (cap) {
+      const { count, error: countErr } = await supabaseAdmin
+        .from('zltac_registrations')
+        .select('id', { count: 'exact', head: true })
+        .eq('year', eventYear)
+      if (countErr) return res.status(500).json({ error: countErr.message })
+      if ((count ?? 0) >= cap) {
+        return res.status(400).json({ error: `Registration cap of ${cap} reached. Contact the committee.` })
+      }
+    }
+
+    const { data: regRow, error: regError } = await supabaseAdmin
+      .from('zltac_registrations')
+      .insert({
+        user_id: user.id,
+        year: eventYear,
+        team_id: null,
+        side_events: null,
+        dinner_guests: 0,
+        emergency_contact_name: emergencyContactName,
+        emergency_contact_phone: emergencyContactPhone,
+        status: 'pending',
+      })
+      .select('id')
+      .single()
+
+    if (regError) {
+      const msg = regError.message ?? ''
+      if (regError.code === '23505' || msg.includes('zltac_registrations_payment_reference_key')) {
+        return res.status(409).json({ error: 'A registration with this alias already exists for this event. If that is you, claim it via the banner above or check your Player Hub.' })
+      }
+      return res.status(500).json({ error: regError.message })
+    }
+
+    const result = await computeAndWriteAmountOwing(regRow.id)
+    if (result.error) return res.status(500).json({ error: result.error })
+
+    return res.status(201).json({ ok: true, id: regRow.id, amountOwing: result.amountOwing })
+  }
+
   if (action === 'cancel') {
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })

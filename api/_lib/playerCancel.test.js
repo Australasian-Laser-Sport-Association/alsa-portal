@@ -38,6 +38,7 @@ vi.mock('./placeholders.js', () => ({
 }))
 
 const { default: handler } = await import('../player.js')
+const { computeAndWriteAmountOwing } = await import('./computeAmountOwing.js')
 
 const USER_ID = '123e4567-e89b-42d3-a456-426614174000'
 
@@ -75,12 +76,12 @@ function sideEventRows(rows) {
   }
 }
 
-function req() {
+function req(body = { action: 'cancel', year: 2026 }) {
   return {
     method: 'POST',
     query: { resource: 'registration' },
     headers: { authorization: 'Bearer test-token' },
-    body: { action: 'cancel', year: 2026 },
+    body,
   }
 }
 
@@ -139,5 +140,46 @@ describe('player registration cancel', () => {
       memberIds: expect.arrayContaining(['partner-triple-a', 'partner-triple-b']),
       eventYear: 2026,
     }))
+  })
+
+  it('creates a player registration through service role using the authenticated user id', async () => {
+    const insert = vi.fn(() => ({
+      select: vi.fn(() => ({
+        single: vi.fn(() => Promise.resolve({ data: { id: 'reg-new' }, error: null })),
+      })),
+    }))
+
+    from.mockImplementation(table => {
+      if (table === 'zltac_registrations') {
+        const callNumber = from.mock.calls.filter(([name]) => name === 'zltac_registrations').length
+        if (callNumber === 1) return selectMaybeSingle(null)
+        return { insert }
+      }
+      if (table === 'profiles') return selectMaybeSingle({ alias: null })
+      if (table === 'zltac_events') return selectMaybeSingle({ max_players: null })
+      throw new Error(`unexpected table ${table}`)
+    })
+    computeAndWriteAmountOwing.mockResolvedValue({ amountOwing: 5000, error: null })
+
+    const response = res()
+    await handler(req({
+      action: 'register',
+      year: 2027,
+      user_id: 'malicious-other-user',
+      emergency_contact_name: ' Helper ',
+      emergency_contact_phone: ' 0400 000 000 ',
+    }), response)
+
+    expect(response.statusCode).toBe(201)
+    expect(response.body).toEqual({ ok: true, id: 'reg-new', amountOwing: 5000 })
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: USER_ID,
+      year: 2027,
+      emergency_contact_name: 'Helper',
+      emergency_contact_phone: '0400 000 000',
+      status: 'pending',
+    }))
+    expect(insert.mock.calls[0][0].user_id).not.toBe('malicious-other-user')
+    expect(computeAndWriteAmountOwing).toHaveBeenCalledWith('reg-new')
   })
 })
