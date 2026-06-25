@@ -33,9 +33,28 @@ const DEFAULT_SIDE_EVENTS = [
 ]
 
 const EMPTY_CUSTOM = { name: '', description: '', max_participants: '' }
+const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg']
+const LOGO_MAX_BYTES = 2 * 1024 * 1024
 
 function centsToDisplay(cents) { return ((cents ?? 0) / 100).toFixed(2) }
 function displayToCents(val) { return Math.round((parseFloat(val) || 0) * 100) }
+
+function safeLogoPreviewSrc(value) {
+  if (!value || typeof value !== 'string') return ''
+  if (value.startsWith('blob:')) return value
+  try {
+    const parsed = new URL(value, window.location.origin)
+    const allowedOrigins = new Set([window.location.origin])
+    const assetBase = import.meta.env.VITE_PUBLIC_ASSET_BASE_URL
+    if (assetBase) allowedOrigins.add(new URL(assetBase).origin)
+    if (allowedOrigins.has(parsed.origin) && parsed.pathname.startsWith('/assets/event-logos/')) {
+      return storageImageUrl(value, { width: 128 })
+    }
+  } catch {
+    return ''
+  }
+  return ''
+}
 
 function Toggle({ value, onChange, disabled }) {
   return (
@@ -238,7 +257,8 @@ export default function AdminEvent() {
   function handleLogoSelect(e) {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) { setMsg({ type: 'error', text: 'Logo must be under 2MB.' }); return }
+    if (!LOGO_ACCEPTED_TYPES.includes(file.type)) { setMsg({ type: 'error', text: 'Logo must be PNG or JPG.' }); return }
+    if (file.size > LOGO_MAX_BYTES) { setMsg({ type: 'error', text: 'Logo must be under 2MB.' }); return }
     setLogoFile(file)
     setLogoPreview(URL.createObjectURL(file))
     setMsg(null)
@@ -743,9 +763,9 @@ export default function AdminEvent() {
             <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Event Logo</label>
             <p className="text-xs text-[#e5e5e5]/60 mb-2">PNG or JPG, max 2MB.</p>
             <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
-            {logoPreview ? (
+            {safeLogoPreviewSrc(logoPreview) ? (
               <div className="flex items-center gap-4">
-                <img src={storageImageUrl(logoPreview, { width: 128 })} alt="Logo" decoding="async" className="h-16 w-16 object-contain rounded-lg border border-line bg-base p-1" />
+                <img src={safeLogoPreviewSrc(logoPreview)} alt="Logo" decoding="async" className="h-16 w-16 object-contain rounded-lg border border-line bg-base p-1" />
                 {!isArchived && (
                   <div className="flex flex-col gap-2">
                     <button type="button" onClick={() => logoRef.current.click()}
