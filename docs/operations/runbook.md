@@ -1,7 +1,7 @@
 # Operational Runbook
 
 **Status:** Draft
-**Last updated:** 2026-04-22
+**Last updated:** 2026-06-16
 
 ---
 
@@ -25,9 +25,44 @@ Do not push directly to `main`.
 
 ### Preview deploys
 
-Every pull request gets its own preview URL from Vercel. Preview deploys use the same Supabase instance as production, so **be careful with destructive changes** in PRs — a delete or truncate run in a preview deploy affects production data.
+Every pull request gets its own preview URL from Vercel. Preview deploys must
+use the staging Supabase project described below. If Preview-scope Vercel env
+vars are ever pointed at production, do not run destructive admin flows from a
+preview deployment.
 
-A separate staging Supabase project is a planned future improvement (tracked in the backlog).
+### Preview Supabase isolation
+
+Preview deploys must use a separate staging Supabase project before launch. The
+application code uses the same variable names in every environment; isolation is
+provided by Vercel environment scopes.
+
+Setup checklist:
+
+1. Create a new Supabase project for staging in the same region as production
+   where possible.
+2. Apply all committed migrations from this repository to the staging project.
+3. Configure staging Auth URL settings:
+   - Site URL: the main Vercel preview URL or a stable staging URL if one is
+     configured.
+   - Redirect URLs: production domain is not required for staging; include the
+     Vercel preview URL pattern used for PR previews and the local dev URL.
+4. Recreate required Storage buckets and policies via migrations or reviewed
+   SQL, not dashboard-only changes.
+5. Add Vercel Preview-scope variables using staging values:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+6. Keep Vercel Production-scope variables pointed at production Supabase.
+7. Create a PR preview deployment and perform a write test with disposable data.
+8. Confirm the disposable test row appears in staging and does not appear in
+   production.
+9. Confirm admin/API routes still work in preview with the staging service-role
+   key.
+10. Document the staging project reference and date verified in the private
+    audit notes.
+
+Never copy the production service-role key into the Preview scope. If that
+happens, rotate the production service-role key and redeploy production.
 
 ## Rollback
 
@@ -75,6 +110,30 @@ When adding or changing an env var:
 3. Update [environment-variables.md](./environment-variables.md)
 4. Redeploy — env var changes do not apply to existing deployments
 
+## Vercel function cap
+
+The app deliberately keeps API routes multiplexed because Vercel's free tier
+has a low Serverless Function count. The current deployable API files are:
+
+- `api/admin/alsa.js`
+- `api/admin/event.js`
+- `api/admin/users.js`
+- `api/admin/volunteers.js`
+- `api/captain.js`
+- `api/contact.js`
+- `api/player.js`
+- `api/profiles.js`
+- `api/public.js`
+- `api/referee-test.js`
+- `api/superadmin/[resource].js`
+- `api/volunteer-signup.js`
+
+That is exactly 12 functions. Do not add a new top-level `api/*.js` or
+`api/**/[route].js` file without first checking the plan limit and deciding
+whether the new behaviour should be added to an existing multiplexed route via
+a `?resource=` dispatch. Helper files belong under `api/_lib/` and do not count
+as deployable functions.
+
 ## Common issues
 
 ### "The site is down"
@@ -106,6 +165,20 @@ The default Supabase sender (`noreply@mail.supabase.io`) is rate-limited to 4/ho
 5. Commit the migration file to the repo in the same PR as the code change that needs it
 
 Never change the schema through the Supabase dashboard without also committing a migration file. The repo is the source of truth; undocumented schema changes will eventually cause a merge or environment drift problem.
+
+### Reconciling SQL Editor migrations
+
+If a production migration is applied through the Supabase SQL Editor instead of `supabase db push`, immediately reconcile the migration history from Git Bash:
+
+1. Confirm the linked project and current history:
+   `supabase migration list --linked`
+2. If the new migration appears as local-only, mark it applied:
+   `supabase migration repair <version> --status applied --linked`
+3. Verify the local and remote columns now both show the migration version:
+   `supabase migration list --linked`
+4. Keep the migration file committed in the same PR as the code that depends on it.
+
+Do this before deploying any API or frontend code that depends on the new schema.
 
 ## Who to contact
 

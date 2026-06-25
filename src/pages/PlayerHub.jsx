@@ -6,7 +6,7 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
 import { formatInEventTz } from '../lib/eventTimezone'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { maskStorageUrl, storageImageUrl } from '../lib/assetUrl'
 import Footer from '../components/Footer'
 import Dialog from '../components/Dialog'
 import PlayerHubProgress from '../components/PlayerHubProgress'
@@ -830,7 +830,11 @@ export default function PlayerHub() {
         .eq('user_id', user.id)
         .eq('event_year', eventYear)
         .maybeSingle(),
-      supabase.from('referee_test_settings').select('*').limit(1).maybeSingle(),
+      supabase
+        .from('referee_test_settings')
+        .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
+        .limit(1)
+        .maybeSingle(),
     ])
 
     if (docsErr) console.error('PlayerHub: legal_documents query failed:', docsErr)
@@ -890,12 +894,12 @@ export default function PlayerHub() {
     // Fetch doubles/triples records
     const [{ data: doublesData }, { data: triplesData }] = await Promise.all([
       supabase.from('doubles_pairs')
-        .select('*')
+        .select('id, event_year, player1_id, player2_id, confirmed, created_at')
         .or(`player1_id.eq.${user.id},player2_id.eq.${user.id}`)
         .eq('event_year', eventYear)
         .maybeSingle(),
       supabase.from('triples_teams')
-        .select('*')
+        .select('id, event_year, player1_id, player2_id, player3_id, player2_confirmed, player3_confirmed, confirmed, created_at')
         .or(`player1_id.eq.${user.id},player2_id.eq.${user.id},player3_id.eq.${user.id}`)
         .eq('event_year', eventYear)
         .maybeSingle(),
@@ -1716,7 +1720,7 @@ export default function PlayerHub() {
               {/* Team header */}
               <div className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
                 {team.logo_url ? (
-                  <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
+                  <img src={storageImageUrl(team.logo_url, { width: 112, resize: 'cover' })} alt={team.name} loading="lazy" decoding="async" className="w-14 h-14 rounded-xl object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-14 h-14 rounded-xl bg-brand/20 border border-brand/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-brand font-black text-lg">{team.name?.[0] ?? '?'}</span>

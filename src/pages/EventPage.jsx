@@ -11,8 +11,28 @@ import RegistrationTimeline from '../components/RegistrationTimeline'
 import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
 import { eventPhase } from '../lib/eventPhase'
-import { maskStorageUrl, storageImageUrl } from '../lib/assetUrl'
+import { maskStorageUrl, storageImageSrcSet, storageImageUrl } from '../lib/assetUrl'
 import { DashboardGridIcon, TargetIcon, TeamShieldIcon } from '../components/icons.jsx'
+
+const EVENT_PAGE_COLUMNS = [
+  'id',
+  'year',
+  'name',
+  'status',
+  'location',
+  'venue',
+  'logo_url',
+  'cover_photo_url',
+  'photo_urls',
+  'hero_text',
+  'description',
+  'side_events',
+  'reg_open_date',
+  'reg_close_date',
+  'event_starts_at',
+  'timezone',
+  'committee_email',
+].join(', ')
 
 function initials(name = '') {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
@@ -51,7 +71,7 @@ function TeamCard({ team, players }) {
             style={{ background: '#00FF41' }}
           >
             {team.logo_url
-              ? <img src={maskStorageUrl(team.logo_url)} alt={team.name} className="w-full h-full object-contain" />
+              ? <img src={storageImageUrl(team.logo_url, { width: 96 })} alt={team.name} loading="lazy" decoding="async" className="w-full h-full object-contain" />
               : initials(team.name)
             }
           </div>
@@ -104,11 +124,13 @@ function TeamCard({ team, players }) {
                 </div>
                 {confirmed && (
                   <div
+                    role="img"
+                    aria-label="Fully confirmed"
                     className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{ background: '#00FF41' }}
                     title="Fully confirmed"
                   >
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                       <path d="M2 5l2 2 4-4" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
@@ -125,11 +147,15 @@ function TeamCard({ team, players }) {
 // ── Side Event Panel ────────────────────────────────────────────────────────
 function SideEventPanel({ sideEvent, entries }) {
   const [open, setOpen] = useState(false)
+  const panelId = `side-event-${sideEvent.slug}`
 
   return (
     <div className="bg-surface border border-line rounded-xl overflow-hidden">
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-line/20 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
@@ -141,13 +167,14 @@ function SideEventPanel({ sideEvent, entries }) {
         <svg
           className={`w-4 h-4 text-[#e5e5e5]/60 transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          aria-hidden="true"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {open && (
-        <div className="border-t border-line px-5 py-4">
+        <div id={panelId} role="region" aria-label={`${sideEvent.name} entries`} className="border-t border-line px-5 py-4">
           {entries.length === 0 ? (
             <p className="text-[#e5e5e5]/60 text-sm">No entries yet</p>
           ) : (
@@ -586,7 +613,7 @@ export default function EventPage() {
         ] = await Promise.all([
           supabase
             .from('zltac_events')
-            .select('*')
+            .select(EVENT_PAGE_COLUMNS)
             .eq('year', yearInt)
             .maybeSingle(),
           user
@@ -654,7 +681,7 @@ export default function EventPage() {
         >
           <div className="relative text-center px-6">
             {event.logo_url
-              ? <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-16 mx-auto mb-5 object-contain opacity-70" />
+              ? <img src={storageImageUrl(event.logo_url, { width: 128 })} alt={event.name} decoding="async" className="h-16 mx-auto mb-5 object-contain opacity-70" />
               : <div className="text-4xl mb-4 opacity-50">🏆</div>
             }
             <span className="inline-block text-xs bg-[#2D2D2D] text-[#e5e5e5]/60 px-3 py-1 rounded-full font-bold uppercase tracking-widest mb-4">Archived</span>
@@ -729,8 +756,14 @@ export default function EventPage() {
   const myReg = user ? regs.find(r => r.user_id === user.id) : null
   const myTeam = (myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null) ?? ownedTeam
   const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
-  // Mask the gallery URLs once so thumbnails and the lightbox stay consistent.
-  const maskedPhotoUrls = (event.photo_urls ?? []).map(maskStorageUrl)
+  // Mask full-size gallery URLs once for the lightbox; thumbnails use
+  // transformed responsive URLs.
+  const photoUrls = event.photo_urls ?? []
+  const maskedPhotoUrls = photoUrls.map(maskStorageUrl)
+  const lightboxIndex = lightboxUrl ? maskedPhotoUrls.indexOf(lightboxUrl) : -1
+  const lightboxAlt = lightboxIndex >= 0
+    ? `${event.name} photo ${lightboxIndex + 1} of ${maskedPhotoUrls.length}`
+    : `${event.name} event photo`
 
   return (
     <div className="bg-base text-white">
@@ -739,7 +772,7 @@ export default function EventPage() {
         <Dialog open onClose={() => setLightboxUrl(null)} variant="lightbox" closeOnBackdrop label="Photo viewer" className="contents">
           <img
             src={lightboxUrl}
-            alt=""
+            alt={lightboxAlt}
             className="max-w-full max-h-full object-contain rounded-xl"
             onClick={e => e.stopPropagation()}
           />
@@ -774,7 +807,7 @@ export default function EventPage() {
         )}
         <div className="relative text-center px-6">
           {event.logo_url ? (
-            <img src={maskStorageUrl(event.logo_url)} alt={event.name} className="h-20 mx-auto mb-6 object-contain" />
+            <img src={storageImageUrl(event.logo_url, { width: 160 })} alt={event.name} decoding="async" className="h-20 mx-auto mb-6 object-contain" />
           ) : (
             <div className="text-5xl mb-4">🎯</div>
           )}
@@ -807,11 +840,7 @@ export default function EventPage() {
         <section className="max-w-5xl mx-auto px-6 pt-8">
           <img
             src={storageImageUrl(event.cover_photo_url, { width: 1280, quality: 70 })}
-            srcSet={[
-              `${storageImageUrl(event.cover_photo_url, { width: 768, quality: 70 })} 768w`,
-              `${storageImageUrl(event.cover_photo_url, { width: 1280, quality: 70 })} 1280w`,
-              `${storageImageUrl(event.cover_photo_url, { width: 1600, quality: 70 })} 1600w`,
-            ].join(', ')}
+            srcSet={storageImageSrcSet(event.cover_photo_url, [768, 1280, 1600], { quality: 70 })}
             sizes="(max-width: 1024px) calc(100vw - 3rem), 1024px"
             alt={event.name}
             width="4096"
@@ -842,19 +871,28 @@ export default function EventPage() {
       {Array.isArray(event.photo_urls) && event.photo_urls.length > 0 && (
         <section className="max-w-5xl mx-auto px-6 pb-12">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {maskedPhotoUrls.map((url, i) => (
-              <button
-                key={url + i}
-                onClick={() => setLightboxUrl(url)}
-                className="aspect-square rounded-xl overflow-hidden border border-line bg-base hover:border-brand/40 transition-colors group"
-              >
-                <img
-                  src={url}
-                  alt={`${event.name} photo ${i + 1}`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                />
-              </button>
-            ))}
+            {photoUrls.map((url, i) => {
+              const fullUrl = maskedPhotoUrls[i]
+              return (
+                <button
+                  type="button"
+                  key={url + i}
+                  onClick={() => setLightboxUrl(fullUrl)}
+                  aria-label={`Open ${event.name} photo ${i + 1} of ${maskedPhotoUrls.length}`}
+                  className="aspect-square rounded-xl overflow-hidden border border-line bg-base hover:border-brand/40 transition-colors group"
+                >
+                  <img
+                    src={storageImageUrl(url, { width: 360, quality: 70, resize: 'cover' })}
+                    srcSet={storageImageSrcSet(url, [240, 360, 480], { quality: 70, resize: 'cover' })}
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    alt={`${event.name} photo ${i + 1}`}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                  />
+                </button>
+              )
+            })}
           </div>
         </section>
       )}

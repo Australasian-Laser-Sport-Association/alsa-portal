@@ -21,6 +21,7 @@ export default async function handler(req, res) {
     limit: 3,
     window: '24 h',
     prefix: 'contact',
+    requireDistributed: true,
   })) return
 
   const { name, email, subject, message, website } = req.body ?? {}

@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch'
 import { formatDate } from '../../lib/dateFormat'
 import Dialog from '../../components/Dialog'
 
@@ -40,53 +40,31 @@ export default function AdminUnder18Approvals() {
   const [profiles, setProfiles] = useState([])
   const [yearsAvailable, setYearsAvailable] = useState([])
 
-  function showToast(msg, type = 'success') {
+  const showToast = useCallback((msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
-  }
+  }, [])
 
-  async function loadProfiles() {
-    // Committee users can SELECT all profiles via the profiles_select_committee RLS policy.
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, first_name, last_name, alias, dob')
-      .order('first_name', { ascending: true })
-    setProfiles(data ?? [])
-  }
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
-    let q = supabase
-      .from('under_18_approvals')
-      .select('id, user_id, event_year, status, submitted_at, approved_at, approved_by, notes, created_at, updated_at, player:profiles!user_id(first_name, last_name, alias), approver:profiles!approved_by(first_name, last_name, alias)')
-      .order('event_year', { ascending: false })
-      .order('created_at', { ascending: false })
-
-    if (yearFilter !== 'all') q = q.eq('event_year', yearFilter)
-    if (statusFilter !== 'all') q = q.eq('status', statusFilter)
-
-    const { data, error } = await q
-    if (error) {
+    try {
+      const params = new URLSearchParams({
+        year: String(yearFilter),
+        status: statusFilter,
+      })
+      const data = await apiFetch(`/api/admin/event?resource=under-18-approvals&${params}`)
+      setRows(data.rows ?? [])
+      setProfiles(data.profiles ?? [])
+      setYearsAvailable(data.years ?? [])
+    } catch (error) {
       showToast(`Load failed: ${error.message}`, 'error')
       setRows([])
-    } else {
-      setRows(data ?? [])
+    } finally {
+      setLoading(false)
     }
+  }, [showToast, statusFilter, yearFilter])
 
-    // Get the available years from the entire table for the picker.
-    const { data: yearRows } = await supabase
-      .from('under_18_approvals')
-      .select('event_year')
-    const years = Array.from(new Set([DEFAULT_YEAR, CURRENT_YEAR, ...(yearRows ?? []).map(r => r.event_year)])).filter(Boolean).sort((a, b) => b - a)
-    setYearsAvailable(years)
-
-    setLoading(false)
-  }
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadProfiles() }, [])
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [yearFilter, statusFilter])
+  useEffect(() => { load() }, [load])
 
   const counts = useMemo(() => ({
     all: rows.length,
@@ -266,29 +244,18 @@ function ApprovalEditor({ row, onSaved, onClose, showToast }) {
     }
 
     setSaving(true)
-    const patch = { status, notes: notes.trim() || null }
-
-    // Approving: stamp approved_at + approved_by (if not already set)
-    if (status === 'approved' && row.status !== 'approved') {
-      const { data: { user } } = await supabase.auth.getUser()
-      patch.approved_at = new Date().toISOString()
-      patch.approved_by = user?.id ?? null
-    }
-    // Moving away from approved → clear stamp (so the audit trail isn't misleading)
-    if (status !== 'approved' && row.status === 'approved') {
-      patch.approved_at = null
-      patch.approved_by = null
-    }
-
-    const { error } = await supabase.from('under_18_approvals').update(patch).eq('id', row.id)
-    setSaving(false)
-    setConfirmReject(false)
-
-    if (error) {
+    try {
+      await apiFetch('/api/admin/event?resource=under-18-approvals', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: row.id, status, notes }),
+      })
+      setConfirmReject(false)
+      onSaved()
+    } catch (error) {
       showToast(`Save failed: ${error.message}`, 'error')
-      return
+    } finally {
+      setSaving(false)
     }
-    onSaved()
   }
 
   return (
@@ -410,24 +377,22 @@ function AddApprovalModal({ profiles, existingRows, defaultYear, onClose, onCrea
     if (duplicate) { setError(`This player already has a ${duplicate.status} approval for ${yr}.`); return }
 
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const payload = {
-      user_id: selectedProfileId,
-      event_year: yr,
-      status,
-      notes: notes.trim() || null,
+    try {
+      const data = await apiFetch('/api/admin/event?resource=under-18-approvals', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: selectedProfileId,
+          event_year: yr,
+          status,
+          notes,
+        }),
+      })
+      onCreated(data.id)
+    } catch (error) {
+      setError(error.message)
+    } finally {
+      setSaving(false)
     }
-    if (status === 'approved') {
-      payload.approved_at = new Date().toISOString()
-      payload.approved_by = user?.id ?? null
-    }
-    const { data, error: insertError } = await supabase.from('under_18_approvals').insert(payload).select('id').single()
-    setSaving(false)
-    if (insertError) {
-      setError(insertError.message)
-      return
-    }
-    onCreated(data.id)
   }
 
   return (

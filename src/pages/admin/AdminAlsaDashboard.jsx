@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { LoadErrorState } from '../../components/Feedback'
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -15,24 +16,30 @@ function StatCard({ label, value, sub, color }) {
 export default function AdminAlsaDashboard() {
   const [stats, setStats] = useState({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function load() {
+      setLoadError('')
       // Portal-wide counts. ALSA Members reuses the same endpoint AdminMembers
       // reads — its `active` bucket is the canonical "currently active" set,
       // so the count here always matches that page. The endpoint can throw,
       // so it's guarded; the three Supabase counts return errors in-band.
       const [
-        { count: totalUsers },
+        { count: totalUsers, error: usersError },
         membersRes,
-        { count: lifetimeRegs },
-        { count: eventsArchived },
+        { count: lifetimeRegs, error: lifetimeError },
+        { count: eventsArchived, error: eventsError },
       ] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }),
         apiFetch('/api/admin/alsa?resource=members').catch(() => ({ active: [] })),
         supabase.from('zltac_registrations').select('*', { count: 'exact', head: true }),
         supabase.from('zltac_events').select('*', { count: 'exact', head: true }).eq('status', 'archived'),
       ])
+      if (usersError) throw usersError
+      if (lifetimeError) throw lifetimeError
+      if (eventsError) throw eventsError
 
       setStats({
         totalUsers: totalUsers ?? 0,
@@ -42,8 +49,11 @@ export default function AdminAlsaDashboard() {
       })
       setLoading(false)
     }
-    load()
-  }, [])
+    load().catch(error => {
+      setLoadError(error.message || 'Could not load dashboard.')
+      setLoading(false)
+    })
+  }, [refreshKey])
 
   return (
     <div>
@@ -58,6 +68,12 @@ export default function AdminAlsaDashboard() {
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
         </div>
+      ) : loadError ? (
+        <LoadErrorState
+          title="Could not load ALSA dashboard."
+          message={loadError}
+          onRetry={() => setRefreshKey(key => key + 1)}
+        />
       ) : (
         <div className="grid grid-cols-2 gap-4 max-w-4xl mx-auto">
           <StatCard label="Total Website Users" value={stats.totalUsers} color="text-white" />

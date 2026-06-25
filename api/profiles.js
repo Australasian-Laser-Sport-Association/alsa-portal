@@ -50,6 +50,7 @@ export default async function handler(req, res) {
     limit: 60,
     window: '1 m',
     prefix: 'profile-lookup',
+    requireDistributed: true,
   })) return
 
   const { ids, teamId, eventYear, year } = req.body ?? {}

@@ -53,4 +53,87 @@ describe('in-memory rate-limit fallback', () => {
       else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken
     }
   })
+
+  it('fails closed in production when distributed rate limiting is required but Redis is not configured', async () => {
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN
+    const previousVercelEnv = process.env.VERCEL_ENV
+    delete process.env.UPSTASH_REDIS_REST_URL
+    delete process.env.UPSTASH_REDIS_REST_TOKEN
+    process.env.VERCEL_ENV = 'production'
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = {
+      statusCode: null,
+      body: null,
+      setHeader() { throw new Error('rate-limit headers should not be set') },
+      status(code) {
+        this.statusCode = code
+        return this
+      },
+      json(payload) {
+        this.body = payload
+        return this
+      },
+    }
+
+    try {
+      await expect(enforceRateLimit({}, res, {
+        identifier: 'user-d',
+        limit: 2,
+        window: '1 m',
+        prefix: 'test-required',
+        requireDistributed: true,
+      })).resolves.toBe(false)
+      expect(res.statusCode).toBe(503)
+      expect(res.body).toEqual({ error: 'Service temporarily unavailable. Please try again later.' })
+    } finally {
+      error.mockRestore()
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken
+      if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV
+      else process.env.VERCEL_ENV = previousVercelEnv
+    }
+  })
+
+  it('keeps Vercel previews available even when NODE_ENV is production', async () => {
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN
+    const previousVercelEnv = process.env.VERCEL_ENV
+    const previousNodeEnv = process.env.NODE_ENV
+    delete process.env.UPSTASH_REDIS_REST_URL
+    delete process.env.UPSTASH_REDIS_REST_TOKEN
+    process.env.VERCEL_ENV = 'preview'
+    process.env.NODE_ENV = 'production'
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const headers = {}
+    const res = {
+      setHeader(name, value) { headers[name] = value },
+      status() { throw new Error('preview request should not be rejected') },
+    }
+
+    try {
+      await expect(enforceRateLimit({}, res, {
+        identifier: 'user-e',
+        limit: 2,
+        window: '1 m',
+        prefix: 'test-preview',
+        requireDistributed: true,
+      })).resolves.toBe(true)
+      expect(headers['X-RateLimit-Limit']).toBe(2)
+    } finally {
+      warn.mockRestore()
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken
+      if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV
+      else process.env.VERCEL_ENV = previousVercelEnv
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = previousNodeEnv
+    }
+  })
 })

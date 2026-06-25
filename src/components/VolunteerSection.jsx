@@ -62,8 +62,15 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
       setLoading(true)
       const [{ data: ev }, { data: roleData }, { data: settings }] = await Promise.all([
         supabase.from('zltac_events').select('reg_close_date, event_starts_at, committee_email').eq('id', eventId).maybeSingle(),
-        supabase.from('volunteer_roles').select('*').order('sort_order', { ascending: true }),
-        supabase.from('event_volunteer_settings').select('*').eq('event_id', eventId).maybeSingle(),
+        supabase
+          .from('volunteer_roles')
+          .select('id, code, name, short_description, target_count, min_count, requires_experience, experience_notes, is_default, sort_order, is_active')
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('event_volunteer_settings')
+          .select('id, event_id, required_per_team, count_per_team, enforcement, caveat_message')
+          .eq('event_id', eventId)
+          .maybeSingle(),
       ])
       if (cancelled) return
       setPhase(eventPhase(ev))

@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { formatDate } from '../lib/dateFormat'
 import { apiFetch } from '../lib/apiFetch.js'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { storageImageUrl } from '../lib/assetUrl'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
 import { COMMITTEE_EMAIL } from '../lib/eventPhase'
+import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from '../lib/passwordPolicy'
 import CommitteeBadge from '../components/CommitteeBadge'
 import MemberBadge from '../components/MemberBadge'
 
@@ -30,7 +31,7 @@ function Field({ label, value, green }) {
   )
 }
 
-function Input({ label, type = 'text', value, onChange, placeholder }) {
+function Input({ label, type = 'text', value, onChange, placeholder, minLength }) {
   const id = useId()
   return (
     <div>
@@ -41,6 +42,7 @@ function Input({ label, type = 'text', value, onChange, placeholder }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
+        minLength={minLength}
         className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
       />
     </div>
@@ -143,7 +145,7 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
         <div className="flex items-center gap-5 mb-6">
           <div className="relative flex-shrink-0">
             {avatarUrl
-              ? <img src={maskStorageUrl(avatarUrl)} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-line" />
+              ? <img src={storageImageUrl(avatarUrl, { width: 128, resize: 'cover' })} alt="avatar" loading="lazy" decoding="async" className="w-16 h-16 rounded-full object-cover border-2 border-line" />
               : <div className="w-16 h-16 rounded-full bg-brand/20 border-2 border-brand/30 flex items-center justify-center text-brand font-black text-xl">{initials}</div>
             }
           </div>
@@ -273,7 +275,10 @@ function PasswordCard({ userEmail }) {
     e.preventDefault()
     setMsg(null)
     if (newPw !== confirmPw) { setMsg({ type: 'error', text: 'New passwords do not match.' }); return }
-    if (newPw.length < 6)     { setMsg({ type: 'error', text: 'New password must be at least 6 characters.' }); return }
+    {
+      const passwordError = validatePassword(newPw)
+      if (passwordError) { setMsg({ type: 'error', text: passwordError }); return }
+    }
     if (newPw === currentPw)  { setMsg({ type: 'error', text: 'New password must be different from current.' }); return }
 
     setSaving(true)
@@ -323,8 +328,8 @@ function PasswordCard({ userEmail }) {
 
       <form onSubmit={submit} className="space-y-4">
         <Input label="Current Password" type="password" value={currentPw} onChange={setCurrentPw} placeholder="••••••••" />
-        <Input label="New Password" type="password" value={newPw} onChange={setNewPw} placeholder="At least 6 characters" />
-        <Input label="Confirm New Password" type="password" value={confirmPw} onChange={setConfirmPw} placeholder="Repeat new password" />
+        <Input label="New Password" type="password" value={newPw} onChange={setNewPw} placeholder={PASSWORD_REQUIREMENT_TEXT} minLength={PASSWORD_MIN_LENGTH} />
+        <Input label="Confirm New Password" type="password" value={confirmPw} onChange={setConfirmPw} placeholder="Repeat new password" minLength={PASSWORD_MIN_LENGTH} />
 
         {msg && (
           <p className={`text-sm rounded-lg px-4 py-2 border ${

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Footer from '../components/Footer'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { storageImageUrl } from '../lib/assetUrl'
 import StatsStrip from '../components/zltac/StatsStrip'
 import FormatEvolutionTimeline from '../components/zltac/FormatEvolutionTimeline'
 import YearExplorer from '../components/zltac/YearExplorer'
@@ -166,7 +166,7 @@ export default function ZLTACLanding() {
                 >
                   <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto overflow-hidden">
                     {p.avatar_url
-                      ? <img src={maskStorageUrl(p.avatar_url)} alt={memberFullName(p)} className="w-full h-full object-cover" />
+                      ? <img src={storageImageUrl(p.avatar_url, { width: 128, resize: 'cover' })} alt={memberFullName(p)} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       : <span className="text-brand font-bold text-2xl">{memberInitials(p)}</span>
                     }
                   </div>

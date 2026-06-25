@@ -7,20 +7,25 @@ import { ChevronDown } from 'lucide-react'
 // The body wrapper sets white text explicitly rather than relying on
 // inheritance from an ancestor.
 export default function CollapsibleSection({ id, icon: Icon, title, open, onToggle, children }) {
+  const buttonId = `${id}-button`
+  const panelId = `${id}-panel`
+
   return (
     <div id={id} className="bg-surface border border-line rounded-2xl">
       <button
+        id={buttonId}
         type="button"
         onClick={onToggle}
         aria-expanded={open}
+        aria-controls={panelId}
         className="w-full flex items-center gap-3 px-5 py-4 text-left"
       >
-        {Icon && <Icon className="w-6 h-6 text-brand flex-shrink-0" />}
+        {Icon && <Icon className="w-6 h-6 text-brand flex-shrink-0" aria-hidden="true" />}
         <span className="flex-1 text-brand font-black uppercase tracking-wide text-xl">{title}</span>
-        <ChevronDown className={`w-5 h-5 text-brand flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-5 h-5 text-brand flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open && (
-        <div className="px-5 pb-5 text-white">{children}</div>
+        <div id={panelId} role="region" aria-labelledby={buttonId} className="px-5 pb-5 text-white">{children}</div>
       )}
     </div>
   )

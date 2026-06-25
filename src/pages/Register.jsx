@@ -1,6 +1,7 @@
 import { useState, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from '../lib/passwordPolicy'
 
 const AU_NZ_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -32,6 +33,11 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    const passwordError = validatePassword(form.password)
+    if (passwordError) {
+      setError(passwordError)
+      return
+    }
     setLoading(true)
 
     const { error: signUpError } = await supabase.auth.signUp({
@@ -111,7 +117,7 @@ export default function Register() {
               </div>
               <div>
                 <label htmlFor={`${uid}-password`} className={labelClass}>Password</label>
-                <input id={`${uid}-password`} type="password" value={form.password} onChange={set('password')} placeholder="Min. 10 characters" minLength={10} required className={inputClass} />
+                <input id={`${uid}-password`} type="password" value={form.password} onChange={set('password')} placeholder={PASSWORD_REQUIREMENT_TEXT} minLength={PASSWORD_MIN_LENGTH} required className={inputClass} />
               </div>
 
               {/* Contact */}

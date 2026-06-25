@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Footer from '../components/Footer'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { storageImageUrl } from '../lib/assetUrl'
 
 function memberInitials(p) {
   const a = (p.first_name?.[0] ?? '').toUpperCase()
@@ -17,7 +17,7 @@ function MemberCard({ member }) {
     <div className="bg-surface border border-line rounded-xl p-4 flex items-center gap-3">
       <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
         {member.avatar_url
-          ? <img src={maskStorageUrl(member.avatar_url)} alt={memberFullName(member)} className="w-full h-full object-cover" />
+          ? <img src={storageImageUrl(member.avatar_url, { width: 96, resize: 'cover' })} alt={memberFullName(member)} loading="lazy" decoding="async" className="w-full h-full object-cover" />
           : <span className="text-emerald-400 font-bold text-sm">{memberInitials(member)}</span>
         }
       </div>

@@ -4,9 +4,12 @@ import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
 import { COMMITTEE_ROLES } from '../src/lib/roles.js'
 import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
-import { cleanupFormerSideEventMember, ensureSideEventMember } from './_lib/sideEventCleanup.js'
+import { cleanupFormerSideEventMember, cleanupFormerSideEventMembers, ensureSideEventMember } from './_lib/sideEventCleanup.js'
 import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
 import { anyPlaceholder } from './_lib/placeholders.js'
+
+const DOUBLES_PAIR_COLUMNS = 'id, event_year, player1_id, player2_id, confirmed, created_at'
+const TRIPLES_TEAM_COLUMNS = 'id, event_year, player1_id, player2_id, player3_id, player2_confirmed, player3_confirmed, confirmed, created_at'
 
 // Helper: returns true and writes a 403 to res when the event for the
 // given year is not in 'open' phase. Used only by price-bearing player
@@ -151,7 +154,7 @@ async function handleDoubles(req, res, user) {
     const { id } = body
     if (!id) return res.status(400).json({ error: 'id is required' })
 
-    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select('*').eq('id', id).maybeSingle()
+    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select(DOUBLES_PAIR_COLUMNS).eq('id', id).maybeSingle()
     if (pairErr) return res.status(500).json({ error: pairErr.message })
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player2_id !== user.id) return res.status(403).json({ error: 'Not a party to this pair' })
@@ -329,7 +332,7 @@ async function handleTriples(req, res, user) {
     const { id, mySlot } = body
     if (!id || !mySlot) return res.status(400).json({ error: 'id and mySlot are required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('*').eq('id', id).maybeSingle()
+    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select(TRIPLES_TEAM_COLUMNS).eq('id', id).maybeSingle()
     if (existingErr) return res.status(500).json({ error: existingErr.message })
     if (!existing) return res.status(404).json({ error: 'Team not found' })
     if (mySlot !== 2 && mySlot !== 3) return res.status(400).json({ error: 'mySlot must be 2 or 3' })
@@ -628,12 +631,10 @@ async function handleRegistration(req, res, user) {
     if (myPairs?.length) await supabaseAdmin.from('doubles_pairs').delete().in('id', myPairs.map(p => p.id))
     if (myTeams?.length) await supabaseAdmin.from('triples_teams').delete().in('id', myTeams.map(t => t.id))
 
-    for (const memberId of doublesPartners) {
-      await cleanupFormerSideEventMember({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberId, eventYear: year })
-    }
-    for (const memberId of triplesPartners) {
-      await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId, eventYear: year })
-    }
+    await Promise.all([
+      cleanupFormerSideEventMembers({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberIds: [...doublesPartners], eventYear: year }),
+      cleanupFormerSideEventMembers({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberIds: [...triplesPartners], eventYear: year }),
+    ])
 
     return res.json({ ok: true })
   }
@@ -811,6 +812,7 @@ export default async function handler(req, res) {
         : null
   if (rateConfig && !await enforceRateLimit(req, res, {
     identifier: user.id,
+    requireDistributed: true,
     ...rateConfig,
   })) return
 

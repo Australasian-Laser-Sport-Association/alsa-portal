@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Footer from './Footer'
 import { ShieldAlert, BookOpen } from 'lucide-react'
-import { maskStorageUrl } from '../lib/assetUrl'
+import { maskStorageUrl, storageImageUrl } from '../lib/assetUrl'
 
 // Single source of truth for the Rules Test taking experience — used by both
 // the player route (src/pages/RefereeTest.jsx) and the admin preview overlay
@@ -353,7 +353,7 @@ export default function RulesTestRunner({
               Aspect preserved (no crop), capped width, no autoplay. */}
           {currentQ.image_url && (
             <div className="w-full max-w-[600px] aspect-[4/3] rounded-xl border border-line mb-6 overflow-hidden">
-              <img src={maskStorageUrl(currentQ.image_url)} alt="" className="w-full h-full object-contain" />
+              <img src={storageImageUrl(currentQ.image_url, { width: 900 })} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />
             </div>
           )}
           {currentQ.video_url && (

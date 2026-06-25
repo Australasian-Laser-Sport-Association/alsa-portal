@@ -4,8 +4,9 @@ import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { arePaymentsOpen } from '../../lib/payments'
 import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
-import { maskStorageUrl } from '../../lib/assetUrl'
+import { maskStorageUrl, storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
 import Dialog from '../../components/Dialog'
+import { LoadErrorState } from '../../components/Feedback'
 
 const TABS = ['Details', 'Side Events', 'Pricing', 'Registration Settings', 'Hero & Photos']
 
@@ -112,6 +113,7 @@ export default function AdminEvent() {
   const navigate = useNavigate()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [activeTab, setActiveTab] = useState(0)
   const [saving, setSaving] = useState(false)
   const [archiving, setArchiving] = useState(false)
@@ -157,16 +159,23 @@ export default function AdminEvent() {
 
   async function loadCurrentEvent() {
     setLoading(true)
-    const { data } = await supabase
-      .from('zltac_events')
-      .select('*')
-      .neq('status', 'archived')
-      .order('year', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (data) populateForm(data)
-    setEvent(data)
-    setLoading(false)
+    setLoadError('')
+    try {
+      const { data, error } = await supabase
+        .from('zltac_events')
+        .select('*')
+        .neq('status', 'archived')
+        .order('year', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (error) throw error
+      if (data) populateForm(data)
+      setEvent(data)
+    } catch (error) {
+      setLoadError(error.message || 'Could not load the active event.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function populateForm(ev) {
@@ -300,11 +309,11 @@ export default function AdminEvent() {
       if (upErr) throw upErr
       const { data: urlData } = supabase.storage.from('event-covers').getPublicUrl(up.path)
       const publicUrl = urlData.publicUrl
-      const { error: updErr } = await supabase
-        .from('zltac_events')
-        .update({ cover_photo_url: publicUrl })
-        .eq('id', event.id)
-      if (updErr) throw updErr
+      await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cover', eventId: event.id, coverPhotoUrl: publicUrl }),
+      })
       setForm(f => ({ ...f, cover_photo_url: publicUrl }))
       setEvent(ev => ({ ...ev, cover_photo_url: publicUrl }))
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))
@@ -321,11 +330,11 @@ export default function AdminEvent() {
     setMsg(null)
     setCoverUploading(true)
     try {
-      const { error: updErr } = await supabase
-        .from('zltac_events')
-        .update({ cover_photo_url: null })
-        .eq('id', event.id)
-      if (updErr) throw updErr
+      await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cover', eventId: event.id, coverPhotoUrl: null }),
+      })
       setForm(f => ({ ...f, cover_photo_url: '' }))
       setEvent(ev => ({ ...ev, cover_photo_url: null }))
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))
@@ -384,30 +393,43 @@ export default function AdminEvent() {
       updated_at: new Date().toISOString(),
     }
 
-    let err
-    if (!event) {
-      ;({ error: err } = await supabase.from('zltac_events').insert(payload))
-    } else {
-      ;({ error: err } = await supabase.from('zltac_events').update(payload).eq('id', event.id))
-    }
-    setSaving(false)
-    if (err) setMsg({ type: 'error', text: err.message })
-    else {
+    try {
+      const data = await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', eventId: event?.id, payload }),
+      })
       setMsg({ type: 'ok', text: 'Saved.' })
+      if (data?.event) {
+        setEvent(data.event)
+        populateForm(data.event)
+      }
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))
       loadCurrentEvent()
+    } catch (err) {
+      setMsg({ type: 'error', text: err?.message || 'Could not save event.' })
+    } finally {
+      setSaving(false)
     }
   }
 
   async function handleChangeStatus(newStatus) {
     if (!event) return
     setSaving(true)
-    const { error } = await supabase.from('zltac_events').update({ status: newStatus }).eq('id', event.id)
-    setSaving(false)
-    if (!error) {
+    setMsg(null)
+    try {
+      await apiFetch('/api/admin/event?resource=event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'status', eventId: event.id, status: newStatus }),
+      })
       setEvent(e => ({ ...e, status: newStatus }))
       setForm(f => ({ ...f, status: newStatus }))
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))
+    } catch (err) {
+      setMsg({ type: 'error', text: err?.message || 'Could not update status.' })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -494,8 +516,22 @@ export default function AdminEvent() {
   const isArchived = event?.status === 'archived'
   const enabledSides = sideEvents.filter(se => se.enabled)
 
+  if (loading) {
+    return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+  }
+
+  if (loadError) {
+    return (
+      <LoadErrorState
+        title="Could not load active event."
+        message={loadError}
+        onRetry={loadCurrentEvent}
+      />
+    )
+  }
+
   // ── NO EVENT YET ──────────────────────────────────────────────────────────
-  if (!loading && !event) {
+  if (!event) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="text-5xl mb-4">🎯</div>
@@ -504,8 +540,19 @@ export default function AdminEvent() {
         <button
           onClick={async () => {
             const year = new Date().getFullYear() + 1
-            const { data } = await supabase.from('zltac_events').insert({ name: `ZLTAC ${year}`, year, status: 'draft', main_fee: 0, team_fee: 0, dinner_guest_price: 6500 }).select().single()
-            if (data) { setEvent(data); populateForm(data) }
+            try {
+              const data = await apiFetch('/api/admin/event?resource=event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'save',
+                  payload: { name: `ZLTAC ${year}`, year, status: 'draft', main_fee: 0, team_fee: 0, dinner_guest_price: 6500 },
+                }),
+              })
+              if (data?.event) { setEvent(data.event); populateForm(data.event) }
+            } catch (err) {
+              setLoadError(err?.message || 'Could not create event.')
+            }
           }}
           className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all"
         >
@@ -513,10 +560,6 @@ export default function AdminEvent() {
         </button>
       </div>
     )
-  }
-
-  if (loading) {
-    return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
   }
 
   return (
@@ -702,7 +745,7 @@ export default function AdminEvent() {
             <input ref={logoRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoSelect} className="hidden" />
             {logoPreview ? (
               <div className="flex items-center gap-4">
-                <img src={logoPreview} alt="Logo" className="h-16 w-16 object-contain rounded-lg border border-line bg-base p-1" />
+                <img src={storageImageUrl(logoPreview, { width: 128 })} alt="Logo" decoding="async" className="h-16 w-16 object-contain rounded-lg border border-line bg-base p-1" />
                 {!isArchived && (
                   <div className="flex flex-col gap-2">
                     <button type="button" onClick={() => logoRef.current.click()}
@@ -734,7 +777,15 @@ export default function AdminEvent() {
             <input ref={coverRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleCoverSelect} className="hidden" />
             {form.cover_photo_url ? (
               <div className="space-y-2">
-                <img src={maskStorageUrl(form.cover_photo_url)} alt="Cover" className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base" />
+                <img
+                  src={storageImageUrl(form.cover_photo_url, { width: 1280, quality: 72, resize: 'cover' })}
+                  srcSet={storageImageSrcSet(form.cover_photo_url, [768, 1280, 1600], { quality: 72, resize: 'cover' })}
+                  sizes="(max-width: 1024px) calc(100vw - 3rem), 1024px"
+                  alt="Cover"
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full aspect-[4/1] object-cover rounded-lg border border-line bg-base"
+                />
                 {!isArchived && (
                   <div className="flex gap-2">
                     <button type="button" disabled={coverUploading} onClick={() => coverRef.current.click()}
@@ -1120,7 +1171,15 @@ export default function AdminEvent() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 {(form.photo_urls ?? []).map((url, i) => (
                   <div key={url + i} className="relative group rounded-xl overflow-hidden border border-line bg-base aspect-square">
-                    <img src={maskStorageUrl(url)} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                    <img
+                      src={storageImageUrl(url, { width: 320, quality: 70, resize: 'cover' })}
+                      srcSet={storageImageSrcSet(url, [200, 320, 480], { quality: 70, resize: 'cover' })}
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      alt={`Photo ${i + 1}`}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
                     {!isArchived && (
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                         <button

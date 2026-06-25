@@ -2,8 +2,9 @@
 import { supabase } from '../../lib/supabase'
 import { ShieldAlert, BookOpen } from 'lucide-react'
 import RulesTestRunner from '../../components/RulesTestRunner'
-import { maskStorageUrl } from '../../lib/assetUrl'
+import { maskStorageUrl, storageImageUrl } from '../../lib/assetUrl'
 import { RASTER_IMAGE_TYPES, extensionForMime } from '../../lib/uploadPolicy'
+import { ConfirmDialog, InlineAlert, LoadErrorState } from '../../components/Feedback'
 
 const CATEGORIES = ['Rules', 'Safety', 'Equipment', 'Scoring', 'General']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
@@ -67,6 +68,7 @@ export default function AdminRefereeTest() {
   const [questions, setQuestions] = useState([])
   const [settings, setSettings]   = useState({ safety_questions_per_test: 10, safety_pass_score: 100, general_questions_per_test: 20, general_pass_score: 70 })
   const [loading, setLoading]     = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [adding, setAdding]       = useState(false)
   const [editing, setEditing]     = useState(null)
   const [form, setForm]           = useState(EMPTY_Q)
@@ -81,23 +83,42 @@ export default function AdminRefereeTest() {
   const [search, setSearch]       = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [preview, setPreview]     = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const csvRef = useRef()
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
-    const [{ data: qData }, { data: sData }] = await Promise.all([
-      supabase.from('referee_questions').select('*').order('created_at', { ascending: false }),
-      supabase.from('referee_test_settings').select('*').limit(1).single(),
-    ])
-    setQuestions(qData ?? [])
-    if (sData) setSettings({
-      safety_questions_per_test: sData.safety_questions_per_test ?? 10,
-      safety_pass_score: sData.safety_pass_score ?? 100,
-      general_questions_per_test: sData.general_questions_per_test ?? 20,
-      general_pass_score: sData.general_pass_score ?? 70,
-    })
-    setLoading(false)
+    setLoading(true)
+    setLoadError('')
+    try {
+      const [
+        { data: qData, error: qError },
+        { data: sData, error: sError },
+      ] = await Promise.all([
+        supabase.from('referee_questions').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('referee_test_settings')
+          .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
+          .limit(1)
+          .maybeSingle(),
+      ])
+      if (qError) throw qError
+      if (sError) throw sError
+      setQuestions(qData ?? [])
+      if (sData) setSettings({
+        safety_questions_per_test: sData.safety_questions_per_test ?? 10,
+        safety_pass_score: sData.safety_pass_score ?? 100,
+        general_questions_per_test: sData.general_questions_per_test ?? 20,
+        general_pass_score: sData.general_pass_score ?? 70,
+      })
+    } catch (error) {
+      setLoadError(error.message || 'Could not load referee test settings.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function startAdd()    { setForm(EMPTY_Q); setEditing(null); setMediaErr(''); setAdding(true) }
@@ -149,10 +170,18 @@ export default function AdminRefereeTest() {
     else { setMsg({ type: 'ok', text: editing ? 'Updated.' : 'Question added.' }); loadAll(); setTimeout(() => { setAdding(false); setMsg(null) }, 800) }
   }
 
-  async function deleteQ(id) {
-    if (!window.confirm('Delete this question?')) return
-    await supabase.from('referee_questions').delete().eq('id', id)
-    setQuestions(qs => qs.filter(q => q.id !== id))
+  async function deleteQ(question) {
+    if (!question?.id) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    const { error } = await supabase.from('referee_questions').delete().eq('id', question.id)
+    setDeleteBusy(false)
+    if (error) {
+      setDeleteError(error.message)
+      return
+    }
+    setQuestions(qs => qs.filter(q => q.id !== question.id))
+    setDeleteConfirm(null)
   }
 
   async function toggleActive(q) {
@@ -401,7 +430,7 @@ export default function AdminRefereeTest() {
                     {form.image_url && (
                       <div className="mb-2">
                         <div className="h-40 w-full rounded border border-line bg-[#1a1a1a] overflow-hidden">
-                          <img src={maskStorageUrl(form.image_url)} alt="" className="w-full h-full object-contain" />
+                          <img src={storageImageUrl(form.image_url, { width: 900 })} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />
                         </div>
                         <button type="button" onClick={() => setForm(f => ({ ...f, image_url: null }))}
                           className="mt-1 text-[11px] text-red-400/70 hover:text-red-400 transition-colors">Remove image</button>
@@ -430,7 +459,7 @@ export default function AdminRefereeTest() {
                     <p className="text-[10px] text-[#e5e5e5]/60 mt-1">MP4 or WebM · max 25 MB · no autoplay for players</p>
                   </div>
                 </div>
-                {mediaErr && <p className="text-red-400 text-xs mt-2">{mediaErr}</p>}
+                <InlineAlert className="mt-2 text-xs">{mediaErr}</InlineAlert>
               </div>
 
               <div className="flex items-center gap-3">
@@ -483,6 +512,13 @@ export default function AdminRefereeTest() {
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : loadError ? (
+          <LoadErrorState
+            title="Could not load referee test questions."
+            message={loadError}
+            onRetry={loadAll}
+            className="py-12"
+          />
         ) : (
           <div className="bg-surface border border-line rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -516,7 +552,7 @@ export default function AdminRefereeTest() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button onClick={() => startEdit(q)} className="text-xs text-[#e5e5e5]/60 hover:text-brand transition-colors">Edit</button>
-                        <button onClick={() => deleteQ(q.id)} className="text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors">Delete</button>
+                        <button onClick={() => { setDeleteConfirm(q); setDeleteError('') }} className="text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors">Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -526,6 +562,24 @@ export default function AdminRefereeTest() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Delete question?"
+        confirmLabel="Delete question"
+        busyLabel="Deleting..."
+        busy={deleteBusy}
+        destructive
+        error={deleteError}
+        onConfirm={() => deleteQ(deleteConfirm)}
+        onCancel={() => {
+          if (deleteBusy) return
+          setDeleteConfirm(null)
+          setDeleteError('')
+        }}
+      >
+        Delete this referee-test question? This removes it from future tests.
+      </ConfirmDialog>
     </>
   )
 }

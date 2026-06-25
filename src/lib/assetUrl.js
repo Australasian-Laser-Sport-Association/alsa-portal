@@ -98,3 +98,14 @@ export function storageImageUrl(url, {
     format,
   })
 }
+
+export function storageImageSrcSet(url, widths, options = {}) {
+  if (!url || !Array.isArray(widths) || widths.length === 0) return undefined
+  const entries = widths
+    .map(width => {
+      const imageUrl = storageImageUrl(url, { ...options, width })
+      return imageUrl && imageUrl !== url ? `${imageUrl} ${width}w` : null
+    })
+    .filter(Boolean)
+  return entries.length > 0 ? entries.join(', ') : undefined
+}

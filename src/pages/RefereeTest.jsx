@@ -38,7 +38,11 @@ export default function RefereeTest() {
       supabase
         .from('referee_questions_public')
         .select('id, section, question, option_a, option_b, option_c, option_d, category, image_url, video_url'),
-      supabase.from('referee_test_settings').select('*').limit(1).maybeSingle(),
+      supabase
+        .from('referee_test_settings')
+        .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
+        .limit(1)
+        .maybeSingle(),
     ])
 
     if (sData) setSettings({

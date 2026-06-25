@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { maskStorageUrl } from '../../lib/assetUrl'
+import { storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
@@ -126,27 +126,32 @@ function TournamentsTab() {
 
   async function loadList() {
     setLoadingList(true)
-    const [yearsRes, placingsRes] = await Promise.all([
-      supabase
-        .from('zltac_event_history')
-        .select('id, year, name, location_city, location_state, location_venue, location_country, is_cancelled, is_upcoming, team_count')
-        .order('year', { ascending: false }),
-      supabase
-        .from('zltac_event_placings')
-        .select('tournament_year'),
-    ])
-    if (!yearsRes.error) setYears(yearsRes.data ?? [])
-    if (!placingsRes.error) {
+    try {
+      const [yearsRes, placingsRes] = await Promise.all([
+        supabase
+          .from('zltac_event_history')
+          .select('id, year, name, location_city, location_state, location_venue, location_country, is_cancelled, is_upcoming, team_count')
+          .order('year', { ascending: false }),
+        supabase
+          .from('zltac_event_placings')
+          .select('tournament_year'),
+      ])
+      if (yearsRes.error) throw yearsRes.error
+      if (placingsRes.error) throw placingsRes.error
+      setYears(yearsRes.data ?? [])
       const counts = new Map()
       for (const p of (placingsRes.data ?? [])) {
         counts.set(p.tournament_year, (counts.get(p.tournament_year) ?? 0) + 1)
       }
       setPlacingCounts(counts)
+    } catch (error) {
+      showToast(error.message || 'Could not load tournaments.', 'error')
+    } finally {
+      setLoadingList(false)
     }
-    setLoadingList(false)
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadList() }, [])
 
   function startNew() {
@@ -814,16 +819,22 @@ function LegendsSection({ showToast }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('zltac_legends')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('alias', { ascending: true })
-    setRows(data ?? [])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('zltac_legends')
+        .select('*')
+        .order('display_order', { ascending: true })
+        .order('alias', { ascending: true })
+      if (error) throw error
+      setRows(data ?? [])
+    } catch (error) {
+      showToast(error.message || 'Could not load legends.', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
 
   function startEdit(row) {
@@ -1076,16 +1087,22 @@ function DynastiesSection({ showToast }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('zltac_dynasties')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('team_name', { ascending: true })
-    setRows(data ?? [])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('zltac_dynasties')
+        .select('*')
+        .order('display_order', { ascending: true })
+        .order('team_name', { ascending: true })
+      if (error) throw error
+      setRows(data ?? [])
+    } catch (error) {
+      showToast(error.message || 'Could not load dynasties.', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
 
   function startEdit(row) {
@@ -1366,17 +1383,23 @@ function ExtrasTab() {
 
   async function loadYears() {
     setLoadingList(true)
+    try {
     // Existing zltac_event_history rows only — same table/scope the Tournaments
     // tab lists from. Years that don't exist yet are created there first.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('zltac_event_history')
       .select('id, year, name')
       .order('year', { ascending: false })
+    if (error) throw error
     setYears(data ?? [])
-    setLoadingList(false)
+    } catch (error) {
+      showToast(error.message || 'Could not load tournament years.', 'error')
+    } finally {
+      setLoadingList(false)
+    }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadYears() }, [])
 
   async function selectYear(id) {
@@ -1488,7 +1511,7 @@ function ExtrasTab() {
               <label className={labelClass}>Event Logo</label>
               {form.logo_url && (
                 <div className="mb-3">
-                  <img src={maskStorageUrl(form.logo_url)} alt="logo" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
+                  <img src={storageImageUrl(form.logo_url, { width: 160 })} alt="logo" loading="lazy" decoding="async" className="h-20 rounded-lg object-contain bg-[#191919] p-2 border border-line" />
                 </div>
               )}
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
@@ -1556,7 +1579,15 @@ function ExtrasTab() {
                 <div className="grid grid-cols-4 gap-2">
                   {form.photo_urls.map((url, i) => (
                     <div key={i} className="relative group">
-                      <img src={maskStorageUrl(url)} alt="" className="h-20 w-full object-cover rounded-lg bg-[#191919] border border-line" />
+                      <img
+                        src={storageImageUrl(url, { width: 240, quality: 70, resize: 'cover' })}
+                        srcSet={storageImageSrcSet(url, [160, 240, 360], { quality: 70, resize: 'cover' })}
+                        sizes="25vw"
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-20 w-full object-cover rounded-lg bg-[#191919] border border-line"
+                      />
                       <button
                         onClick={() => removePhoto(i)}
                         className="absolute top-1 right-1 bg-black/80 text-red-400 text-xs w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

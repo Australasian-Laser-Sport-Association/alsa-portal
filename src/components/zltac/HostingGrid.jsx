@@ -18,6 +18,7 @@ function HostingTile({ region, years, count, selected, onClick }) {
       type="button"
       onClick={() => onClick(region)}
       aria-pressed={selected}
+      aria-label={`${selected ? 'Clear' : 'Filter by'} ${REGION_LABEL[region] ?? region} host region`}
       className={`text-left text-white bg-base border rounded-xl px-4 py-4 transition-all hover:border-brand/40 ${
         selected ? 'border-brand bg-brand/5' : 'border-line'
       }`}
@@ -53,35 +54,39 @@ export default function HostingGrid({ selectedRegion, onSelectRegion }) {
           </p>
         </div>
 
-        <div className="mb-3 flex items-center gap-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/60 font-bold">Australia</p>
-          <div className="flex-1 h-px bg-line" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
-          {au.map(h => (
-            <HostingTile
-              key={h.region}
-              {...h}
-              selected={selectedRegion === h.region}
-              onClick={onSelectRegion}
-            />
-          ))}
-        </div>
+        <fieldset>
+          <legend className="mb-3 flex w-full items-center gap-3">
+            <span className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/60 font-bold">Australia</span>
+            <span className="flex-1 h-px bg-line" aria-hidden="true" />
+          </legend>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
+            {au.map(h => (
+              <HostingTile
+                key={h.region}
+                {...h}
+                selected={selectedRegion === h.region}
+                onClick={onSelectRegion}
+              />
+            ))}
+          </div>
+        </fieldset>
 
-        <div className="mb-3 flex items-center gap-3">
-          <p className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/60 font-bold">New Zealand</p>
-          <div className="flex-1 h-px bg-line" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          {nz.map(h => (
-            <HostingTile
-              key={h.region}
-              {...h}
-              selected={selectedRegion === h.region}
-              onClick={onSelectRegion}
-            />
-          ))}
-        </div>
+        <fieldset>
+          <legend className="mb-3 flex w-full items-center gap-3">
+            <span className="text-[10px] uppercase tracking-widest text-[#e5e5e5]/60 font-bold">New Zealand</span>
+            <span className="flex-1 h-px bg-line" aria-hidden="true" />
+          </legend>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            {nz.map(h => (
+              <HostingTile
+                key={h.region}
+                {...h}
+                selected={selectedRegion === h.region}
+                onClick={onSelectRegion}
+              />
+            ))}
+          </div>
+        </fieldset>
       </div>
     </section>
   )

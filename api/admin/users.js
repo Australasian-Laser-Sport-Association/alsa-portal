@@ -3,6 +3,14 @@ import { verifyCommittee, verifySuperAdmin, statusForAuthError } from '../_lib/a
 import { PERMANENT_BAN, setUserSuspension } from '../_lib/suspension.js'
 import { changeProfileAlias } from '../_lib/profileChanges.js'
 
+const PROFILE_LIST_COLUMNS = 'id, first_name, last_name, alias, state, roles, suspended, created_at, home_arena, alsa_position'
+const USER_REGISTRATION_COLUMNS = 'id, year, status, side_events, teams(name)'
+const USER_PAYMENT_COLUMNS = 'id, amount, status, created_at'
+const USER_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
+const PAGE_SIZE_DEFAULT = 50
+const PAGE_SIZE_MAX = 100
+const SEARCH_MAX = 80
+
 // Shared by the 'reset' and 'remove-access' actions: blank all PII and drop
 // back to the base role. The profiles row itself is kept, so nothing cascades.
 // Registrations, acceptances, payments, and audit rows all survive.
@@ -21,6 +29,118 @@ const ANONYMISE_UPDATE = {
   roles: ['player'],
 }
 
+function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
+}
+
+function cleanSearchTerm(value) {
+  if (typeof value !== 'string') return ''
+  return value
+    .trim()
+    .slice(0, SEARCH_MAX)
+    .replace(/[^a-z0-9 -]/gi, '')
+    .replace(/\s+/g, ' ')
+}
+
+function profileSearchFilter(query, term) {
+  if (!term) return query
+  const pattern = `%${term}%`
+  return query.or(`first_name.ilike.${pattern},last_name.ilike.${pattern},alias.ilike.${pattern}`)
+}
+
+async function listCaptainIds() {
+  const { data, error } = await supabaseAdmin
+    .from('teams')
+    .select('captain_id')
+    .not('captain_id', 'is', null)
+  if (error) return { error }
+  return { ids: [...new Set((data ?? []).map(row => row.captain_id).filter(Boolean))] }
+}
+
+function applyRoleFilter(query, role, captainIds) {
+  if (!role || role === 'all' || role === 'player') return query
+  if (role === 'captain') return captainIds.length ? query.in('id', captainIds) : null
+  if (role === 'committee') return query.overlaps('roles', ['superadmin', 'alsa_committee', 'zltac_committee', 'advisor'])
+  return query.contains('roles', [role])
+}
+
+async function buildUsersPage(req) {
+  const page = parsePositiveInt(req.query.page, 1)
+  const pageSize = parsePositiveInt(req.query.pageSize, PAGE_SIZE_DEFAULT, { max: PAGE_SIZE_MAX })
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  const search = cleanSearchTerm(req.query.search)
+  const role = typeof req.query.role === 'string' ? req.query.role : 'all'
+  const state = typeof req.query.state === 'string' ? req.query.state : 'all'
+
+  let captainIds = []
+  if (role === 'captain') {
+    const captainResult = await listCaptainIds()
+    if (captainResult.error) return { error: captainResult.error }
+    captainIds = captainResult.ids
+    if (captainIds.length === 0) {
+      return {
+        data: { profiles: [], registrations: [], teams: [], page, pageSize, total: 0, states: USER_STATES },
+      }
+    }
+  }
+
+  let query = supabaseAdmin
+    .from('profiles')
+    .select(PROFILE_LIST_COLUMNS, { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
+  query = profileSearchFilter(query, search)
+  if (state !== 'all') query = query.eq('state', state)
+  query = applyRoleFilter(query, role, captainIds)
+  if (!query) {
+    return {
+      data: { profiles: [], registrations: [], teams: [], page, pageSize, total: 0, states: USER_STATES },
+    }
+  }
+
+  const { data: profiles, error, count } = await query
+  if (error) return { error }
+
+  const userIds = (profiles ?? []).map(profile => profile.id)
+  if (userIds.length === 0) {
+    return {
+      data: { profiles: [], registrations: [], teams: [], page, pageSize, total: count ?? 0, states: USER_STATES },
+    }
+  }
+
+  const [
+    { data: registrations, error: regErr },
+    { data: teams, error: teamErr },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('zltac_registrations')
+      .select('user_id, year')
+      .in('user_id', userIds),
+    supabaseAdmin
+      .from('teams')
+      .select('id, name, captain_id')
+      .in('captain_id', userIds),
+  ])
+
+  const err = regErr ?? teamErr
+  if (err) return { error: err }
+  return {
+    data: {
+      profiles: profiles ?? [],
+      registrations: registrations ?? [],
+      teams: teams ?? [],
+      page,
+      pageSize,
+      total: count ?? 0,
+      states: USER_STATES,
+    },
+  }
+}
+
 export default async function handler(req, res) {
   const { id } = req.query
 
@@ -34,7 +154,7 @@ export default async function handler(req, res) {
         if (superErr) return res.status(statusForAuthError(superErr)).json({ error: superErr })
 
         const countOf = (table, col) =>
-          supabaseAdmin.from(table).select('*', { count: 'exact', head: true }).eq(col, id)
+          supabaseAdmin.from(table).select('id', { count: 'exact', head: true }).eq(col, id)
 
         // payment_records hang off the user's ZLTAC registrations, not the
         // user directly, so fetch the registration ids first.
@@ -49,7 +169,7 @@ export default async function handler(req, res) {
           ['competition_registrations', countOf('competition_registrations', 'user_id')],
           ['payments',                  countOf('payments', 'user_id')],
           ['payment_records',           regIds.length
-            ? supabaseAdmin.from('payment_records').select('*', { count: 'exact', head: true }).in('registration_id', regIds)
+            ? supabaseAdmin.from('payment_records').select('id', { count: 'exact', head: true }).in('registration_id', regIds)
             : Promise.resolve({ count: 0, error: null })],
           ['legal_acceptances',         countOf('legal_acceptances', 'user_id')],
           ['referee_test_results',      countOf('referee_test_results', 'user_id')],
@@ -73,8 +193,16 @@ export default async function handler(req, res) {
         { data: registrations, error: e1 },
         { data: payments, error: e2 },
       ] = await Promise.all([
-        supabaseAdmin.from('zltac_registrations').select('*, teams(name)').eq('user_id', id).order('year', { ascending: false }),
-        supabaseAdmin.from('payments').select('*').eq('user_id', id).order('created_at', { ascending: false }),
+        supabaseAdmin
+          .from('zltac_registrations')
+          .select(USER_REGISTRATION_COLUMNS)
+          .eq('user_id', id)
+          .order('year', { ascending: false }),
+        supabaseAdmin
+          .from('payments')
+          .select(USER_PAYMENT_COLUMNS)
+          .eq('user_id', id)
+          .order('created_at', { ascending: false }),
       ])
 
       const errs = [e1, e2].filter(Boolean)
@@ -251,22 +379,9 @@ export default async function handler(req, res) {
   if (error) return res.status(statusForAuthError(error)).json({ error })
 
   if (req.method === 'GET') {
-    const [
-      { data: profiles, error: e1 },
-      { data: registrations, error: e2 },
-      { data: teams, error: e3 },
-    ] = await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('id, first_name, last_name, alias, state, roles, suspended, created_at, home_arena, alsa_position')
-        .order('created_at', { ascending: false }),
-      supabaseAdmin.from('zltac_registrations').select('user_id, year'),
-      supabaseAdmin.from('teams').select('id, name, captain_id'),
-    ])
-
-    const errs = [e1, e2, e3].filter(Boolean)
-    if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
-    return res.json({ profiles, registrations, teams })
+    const { data, error: listErr } = await buildUsersPage(req)
+    if (listErr) return res.status(500).json({ error: listErr.message })
+    return res.json(data)
   }
 
   return res.status(405).json({ error: 'Method not allowed' })

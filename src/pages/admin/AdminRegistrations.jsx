@@ -577,6 +577,8 @@ export default function AdminRegistrations() {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [placeholderBanner, setPlaceholderBanner] = useState(null) // { reference, name }
   const [linkModal, setLinkModal] = useState(null)                  // { placeholder } currently being linked to a real user
+  const [sideEventDelete, setSideEventDelete] = useState(null)      // { kind, id, label }
+  const [sideEventDeleting, setSideEventDeleting] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   // Teams tab review state
@@ -915,6 +917,28 @@ export default function AdminRegistrations() {
   const handlePaymentRow = useCallback(p => setPaymentModal({ registration: p, profile: p.profile }), [])
   const handleRemoveRow  = useCallback((p, name) => setRemoveConfirm({ userId: p.user_id, name, alias: p.profile?.alias }), [])
 
+  async function deleteSideEvent() {
+    if (!sideEventDelete) return
+    setSideEventDeleting(true)
+    try {
+      await apiFetch('/api/admin/event?resource=registrations', {
+        method: 'DELETE',
+        body: JSON.stringify({ kind: sideEventDelete.kind, id: sideEventDelete.id }),
+      })
+      if (sideEventDelete.kind === 'doubles') {
+        setDoubles(prev => prev.filter(x => x.id !== sideEventDelete.id))
+      } else {
+        setTriples(prev => prev.filter(x => x.id !== sideEventDelete.id))
+      }
+      showToast(`${sideEventDelete.label} deleted`)
+      setSideEventDelete(null)
+    } catch (err) {
+      showToast(`Error: ${err.message}`)
+    } finally {
+      setSideEventDeleting(false)
+    }
+  }
+
   return (
     <div>
       {/* Toast */}
@@ -937,6 +961,33 @@ export default function AdminRegistrations() {
               <button onClick={removePlayer} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors">Remove player</button>
               <button onClick={() => setRemoveConfirm(null)} className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors">Cancel</button>
             </div>
+        </Dialog>
+      )}
+
+      {sideEventDelete && (
+        <Dialog open onClose={() => !sideEventDeleting && setSideEventDelete(null)} variant="center" size="sm" className="p-6">
+          <Dialog.Title as="p" className="text-white font-bold mb-2">Delete side-event entry?</Dialog.Title>
+          <p className="text-[#e5e5e5]/60 text-sm mb-5">
+            Delete this {sideEventDelete.label.toLowerCase()} entry? This cannot be undone.
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={deleteSideEvent}
+              disabled={sideEventDeleting}
+              className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+            >
+              {sideEventDeleting ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSideEventDelete(null)}
+              disabled={sideEventDeleting}
+              className="border border-line text-[#e5e5e5]/60 hover:text-white disabled:opacity-50 font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </Dialog>
       )}
 
@@ -1414,10 +1465,8 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(d.created_at)}</td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={async () => {
-                            await apiFetch('/api/admin/event?resource=registrations', { method: 'DELETE', body: JSON.stringify({ kind: 'doubles', id: d.id }) })
-                            setDoubles(prev => prev.filter(x => x.id !== d.id))
-                          }}
+                          type="button"
+                          onClick={() => setSideEventDelete({ kind: 'doubles', id: d.id, label: 'Doubles pair' })}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
                           Delete
                         </button>
@@ -1477,10 +1526,8 @@ export default function AdminRegistrations() {
                       <td className="px-4 py-3 text-[#e5e5e5]/60 text-xs">{fmt(t.created_at)}</td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={async () => {
-                            await apiFetch('/api/admin/event?resource=registrations', { method: 'DELETE', body: JSON.stringify({ kind: 'triples', id: t.id }) })
-                            setTriples(prev => prev.filter(x => x.id !== t.id))
-                          }}
+                          type="button"
+                          onClick={() => setSideEventDelete({ kind: 'triples', id: t.id, label: 'Triples team' })}
                           className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
                           Delete
                         </button>

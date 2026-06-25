@@ -1,4 +1,6 @@
 import supabaseAdmin from './_lib/supabase.js'
+import { sendServerError } from './_lib/apiErrors.js'
+import { clientIp, enforceRateLimit } from './_lib/rateLimit.js'
 import {
   PUBLIC_ASSET_BUCKETS,
   isAllowedContentType,
@@ -19,6 +21,17 @@ import {
 // All resources are GET, all public (no auth). Consolidated from
 // api/event.js + api/committee.js + api/members.js to stay under the
 // Vercel Hobby function cap.
+
+async function enforcePublicRateLimit(req, res, resource) {
+  const isAsset = resource === 'asset'
+  return enforceRateLimit(req, res, {
+    identifier: clientIp(req),
+    limit: isAsset ? 300 : 120,
+    window: '1 m',
+    prefix: isAsset ? 'public-asset' : `public-${resource || 'unknown'}`,
+    requireDistributed: true,
+  })
+}
 
 // Columns that anon callers see for a competition. bank_account_name,
 // bank_bsb, bank_account_number are deliberately stripped — those only ever
@@ -45,7 +58,7 @@ async function handleEvent(req, res) {
    supabaseAdmin.from('triples_teams').select('id, event_year, player1_id, player2_id, player3_id, confirmed').eq('event_year', year).eq('confirmed', true),
   ])
 
-  if (e1 || e2) return res.status(500).json({ error: (e1 ?? e2).message })
+  if (e1 || e2) return sendServerError(res, e1 ?? e2, 'public:event')
   return res.json({ doubles: doubles ?? [], triples: triples ?? [] })
 }
 
@@ -64,7 +77,7 @@ async function handleCommittee(_req, res) {
   ])
 
   if (alsaErr || zltacErr) {
-    return res.status(500).json({ error: (alsaErr ?? zltacErr).message })
+    return sendServerError(res, alsaErr ?? zltacErr, 'public:committee')
   }
 
   const sortFn = (a, b) =>
@@ -96,8 +109,8 @@ async function handleMembers(_req, res) {
       .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url)'),
   ])
 
-  if (periodErr) return res.status(500).json({ error: periodErr.message })
-  if (lifetimeErr) return res.status(500).json({ error: lifetimeErr.message })
+  if (periodErr) return sendServerError(res, periodErr, 'public:members-period')
+  if (lifetimeErr) return sendServerError(res, lifetimeErr, 'public:members-lifetime')
 
   const lifetime_members = (lifetimeRows ?? [])
     .map(m => m.profiles)
@@ -111,7 +124,7 @@ async function handleMembers(_req, res) {
     .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url)')
     .eq('period_id', period.id)
 
-  if (membershipsErr) return res.status(500).json({ error: membershipsErr.message })
+  if (membershipsErr) return sendServerError(res, membershipsErr, 'public:memberships')
 
   const lifetimeIds = new Set(lifetime_members.map(p => p.id))
   const members = (memberships ?? [])
@@ -154,7 +167,7 @@ async function handleCompetitions(req, res) {
       // Postgrest can't OR (a IS NULL, a > now) cleanly; .or() handles it.
       .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
       .maybeSingle()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'public:competition-detail')
     if (!data) return res.status(404).json({ error: 'competition not found' })
     return res.json(data)
   }
@@ -175,8 +188,8 @@ async function handleCompetitions(req, res) {
       .order('start_date', { ascending: true }),
   ])
 
-  if (mainEventsResult.error) return res.status(500).json({ error: mainEventsResult.error.message })
-  if (competitionsResult.error) return res.status(500).json({ error: competitionsResult.error.message })
+  if (mainEventsResult.error) return sendServerError(res, mainEventsResult.error, 'public:main-events')
+  if (competitionsResult.error) return sendServerError(res, competitionsResult.error, 'public:competitions')
 
   return res.json({
     main_events: mainEventsResult.data ?? [],
@@ -214,14 +227,14 @@ async function handleRoster(req, res) {
     .is('archived_at', null)
     .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
     .maybeSingle()
-  if (compErr) return res.status(500).json({ error: compErr.message })
+  if (compErr) return sendServerError(res, compErr, 'public:roster-competition')
   if (!comp) return res.status(404).json({ error: 'competition not found' })
 
   const { data: rows, error: rosterErr } = await supabaseAdmin
     .from('public_competition_roster')
     .select('team_id, team_name, team_colour, alias, first_name, last_name, role_in_team')
     .eq('competition_slug', slug)
-  if (rosterErr) return res.status(500).json({ error: rosterErr.message })
+  if (rosterErr) return sendServerError(res, rosterErr, 'public:roster')
 
   // Group flat rows into { teams[], unteamed_players[] }. Each player entry
   // exposes only the three public columns.
@@ -381,6 +394,7 @@ async function handleAsset(req, res) {
 
 export default async function handler(req, res) {
   const resource = req.query.resource
+  if (!await enforcePublicRateLimit(req, res, resource)) return
   if (resource === 'asset')       return handleAsset(req, res)
 
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
