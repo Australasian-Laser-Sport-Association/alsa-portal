@@ -41,7 +41,6 @@ function displayToCents(val) { return Math.round((parseFloat(val) || 0) * 100) }
 
 function safeLogoPreviewSrc(value) {
   if (!value || typeof value !== 'string') return ''
-  if (value.startsWith('blob:')) return value
   try {
     const parsed = new URL(value, window.location.origin)
     const allowedOrigins = new Set([window.location.origin])
@@ -260,8 +259,7 @@ export default function AdminEvent() {
     if (!LOGO_ACCEPTED_TYPES.includes(file.type)) { setMsg({ type: 'error', text: 'Logo must be PNG or JPG.' }); return }
     if (file.size > LOGO_MAX_BYTES) { setMsg({ type: 'error', text: 'Logo must be under 2MB.' }); return }
     setLogoFile(file)
-    setLogoPreview(URL.createObjectURL(file))
-    setMsg(null)
+    setMsg({ type: 'ok', text: 'Logo selected. Save changes to upload it.' })
   }
 
   async function uploadLogo() {
