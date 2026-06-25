@@ -372,7 +372,16 @@ async function handleAsset(req, res) {
   const upstreamUrl = publicAssetUrlFor(bucket, path, req.query)
   if (!upstreamUrl) return sendAssetError(res, 404, 'Public asset not found')
 
-  const upstream = await fetch(upstreamUrl, { method: req.method })
+  let upstream = await fetch(upstreamUrl, { method: req.method })
+  if (!upstream.ok && shouldUseImageRenderer(bucket, req.query)) {
+    // Supabase's image renderer can transiently fail even when the original
+    // public object is healthy. Preserve the branded asset URL and serve the
+    // original image rather than showing a broken banner/avatar.
+    const fallbackUrl = publicAssetUrlFor(bucket, path, {})
+    if (fallbackUrl && fallbackUrl !== upstreamUrl) {
+      upstream = await fetch(fallbackUrl, { method: req.method })
+    }
+  }
   if (!upstream.ok) {
     return sendAssetError(res, upstream.status === 404 ? 404 : 502, 'Public asset not available')
   }
