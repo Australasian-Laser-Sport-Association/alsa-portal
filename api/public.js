@@ -68,11 +68,11 @@ async function handleCommittee(_req, res) {
   const [{ data: alsaData, error: alsaErr }, { data: zltacData, error: zltacErr }] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, avatar_url, alsa_position, roles')
+      .select('id, first_name, last_name, alias, avatar_url, alsa_position')
       .contains('roles', ['alsa_committee']),
     supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, avatar_url, roles')
+      .select('id, first_name, last_name, alias, avatar_url')
       .contains('roles', ['zltac_committee']),
   ])
 
