@@ -1,4 +1,5 @@
 import { isIP } from 'node:net'
+import { sendServerError } from './_lib/apiErrors.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
 import supabaseAdmin from './_lib/supabase.js'
 import { verifyUser } from './_lib/auth.js'
@@ -82,7 +83,7 @@ async function handleDoubles(req, res, user) {
       .eq('year', eventYear)
       .neq('user_id', user.id)
 
-    if (eligErr) return res.status(500).json({ error: eligErr.message })
+    if (eligErr) return sendServerError(res, eligErr, 'player:elig')
 
     const eligibleIds = (eligible ?? []).map(r => r.user_id)
     if (!eligibleIds.length) return res.json({ results: [] })
@@ -92,7 +93,7 @@ async function handleDoubles(req, res, user) {
       .select('player1_id, player2_id')
       .eq('event_year', eventYear)
 
-    if (pairsErr) return res.status(500).json({ error: pairsErr.message })
+    if (pairsErr) return sendServerError(res, pairsErr, 'player:pairs')
 
     const takenIds = new Set()
     existingPairs?.forEach(p => {
@@ -109,7 +110,7 @@ async function handleDoubles(req, res, user) {
       .in('id', availableIds)
       .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
 
-    if (profsErr) return res.status(500).json({ error: profsErr.message })
+    if (profsErr) return sendServerError(res, profsErr, 'player:profs')
     if (!profs?.length) return res.json({ results: [] })
 
     const profIds = profs.map(p => p.id)
@@ -119,7 +120,7 @@ async function handleDoubles(req, res, user) {
       .eq('year', eventYear)
       .in('user_id', profIds)
 
-    if (teamRegsErr) return res.status(500).json({ error: teamRegsErr.message })
+    if (teamRegsErr) return sendServerError(res, teamRegsErr, 'player:teamregs')
 
     const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
     // sideEvents lets the client grey out players who haven't selected
@@ -142,7 +143,7 @@ async function handleDoubles(req, res, user) {
       .select()
       .single()
 
-    if (insertErr) return res.status(500).json({ error: insertErr.message })
+    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
 
     // Creator commits on create — auto-add 'doubles' (no manual save needed).
     await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear })
@@ -155,7 +156,7 @@ async function handleDoubles(req, res, user) {
     if (!id) return res.status(400).json({ error: 'id is required' })
 
     const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select(DOUBLES_PAIR_COLUMNS).eq('id', id).maybeSingle()
-    if (pairErr) return res.status(500).json({ error: pairErr.message })
+    if (pairErr) return sendServerError(res, pairErr, 'player:pair')
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player2_id !== user.id) return res.status(403).json({ error: 'Not a party to this pair' })
     if (await denyIfWouldAddSideEventAfterLock(res, pair.event_year, user.id, 'doubles')) return
@@ -167,7 +168,7 @@ async function handleDoubles(req, res, user) {
       .select()
       .single()
 
-    if (updateErr) return res.status(500).json({ error: updateErr.message })
+    if (updateErr) return sendServerError(res, updateErr, 'player:update')
 
     // Accepter commits on confirm — auto-add 'doubles' for them.
     await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear: pair.event_year })
@@ -180,14 +181,14 @@ async function handleDoubles(req, res, user) {
     if (!id) return res.status(400).json({ error: 'id is required' })
 
     const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select('player1_id, player2_id, event_year').eq('id', id).maybeSingle()
-    if (pairErr) return res.status(500).json({ error: pairErr.message })
+    if (pairErr) return sendServerError(res, pairErr, 'player:pair')
     if (!pair) return res.status(404).json({ error: 'Pair not found' })
     if (pair.player1_id !== user.id && pair.player2_id !== user.id) {
       return res.status(403).json({ error: 'Not a party to this pair' })
     }
 
     const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
-    if (delErr) return res.status(500).json({ error: delErr.message })
+    if (delErr) return sendServerError(res, delErr, 'player:del')
 
     // The other former member keeps 'doubles' billed unless cleaned up.
     const partnerId = pair.player1_id === user.id ? pair.player2_id : pair.player1_id
@@ -218,7 +219,7 @@ async function handleTriples(req, res, user) {
       .eq('year', eventYear)
       .neq('user_id', user.id)
 
-    if (eligErr) return res.status(500).json({ error: eligErr.message })
+    if (eligErr) return sendServerError(res, eligErr, 'player:elig')
 
     let eligibleIds = (eligible ?? []).map(r => r.user_id)
       .filter(id => id !== existingPlayer2Id && id !== existingPlayer3Id)
@@ -230,7 +231,7 @@ async function handleTriples(req, res, user) {
       .select('player1_id, player2_id, player3_id')
       .eq('event_year', eventYear)
 
-    if (triplesErr) return res.status(500).json({ error: triplesErr.message })
+    if (triplesErr) return sendServerError(res, triplesErr, 'player:triples')
 
     const takenIds = new Set()
     existingTriples?.forEach(t => {
@@ -248,7 +249,7 @@ async function handleTriples(req, res, user) {
       .in('id', availableIds)
       .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
 
-    if (profsErr) return res.status(500).json({ error: profsErr.message })
+    if (profsErr) return sendServerError(res, profsErr, 'player:profs')
     if (!profs?.length) return res.json({ results: [] })
 
     const profIds = profs.map(p => p.id)
@@ -258,7 +259,7 @@ async function handleTriples(req, res, user) {
       .eq('year', eventYear)
       .in('user_id', profIds)
 
-    if (teamRegsErr) return res.status(500).json({ error: teamRegsErr.message })
+    if (teamRegsErr) return sendServerError(res, teamRegsErr, 'player:teamregs')
 
     const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
     // sideEvents lets the client grey out players who haven't selected
@@ -290,7 +291,7 @@ async function handleTriples(req, res, user) {
       .select()
       .single()
 
-    if (insertErr) return res.status(500).json({ error: insertErr.message })
+    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
 
     // Creator commits on create — auto-add 'triples' (no manual save needed).
     await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear })
@@ -308,7 +309,7 @@ async function handleTriples(req, res, user) {
       .select('player1_id, event_year, player2_confirmed, player3_confirmed')
       .eq('id', id)
       .maybeSingle()
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
 
     // Auto-confirm this slot when the added partner is a placeholder. The whole
@@ -324,7 +325,7 @@ async function handleTriples(req, res, user) {
       .select()
       .single()
 
-    if (updateErr) return res.status(500).json({ error: updateErr.message })
+    if (updateErr) return sendServerError(res, updateErr, 'player:update')
     return res.json({ record })
   }
 
@@ -333,7 +334,7 @@ async function handleTriples(req, res, user) {
     if (!id || !mySlot) return res.status(400).json({ error: 'id and mySlot are required' })
 
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select(TRIPLES_TEAM_COLUMNS).eq('id', id).maybeSingle()
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (!existing) return res.status(404).json({ error: 'Team not found' })
     if (mySlot !== 2 && mySlot !== 3) return res.status(400).json({ error: 'mySlot must be 2 or 3' })
     if (existing[`player${mySlot}_id`] !== user.id) return res.status(403).json({ error: 'You are not the player at this slot' })
@@ -356,7 +357,7 @@ async function handleTriples(req, res, user) {
       .select()
       .single()
 
-    if (updateErr) return res.status(500).json({ error: updateErr.message })
+    if (updateErr) return sendServerError(res, updateErr, 'player:update')
 
     // Accepter commits on confirm — auto-add 'triples' for them.
     await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear: existing.event_year })
@@ -370,7 +371,7 @@ async function handleTriples(req, res, user) {
     if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
 
     const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, player2_id, player3_id, event_year').eq('id', id).maybeSingle()
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
 
     const droppedId = existing[`player${slot}_id`]
@@ -382,7 +383,7 @@ async function handleTriples(req, res, user) {
       .select()
       .single()
 
-    if (updateErr) return res.status(500).json({ error: updateErr.message })
+    if (updateErr) return sendServerError(res, updateErr, 'player:update')
 
     // Only the dropped slot's player loses 'triples'; the remaining members
     // stay in this (now unconfirmed) team row, so the guard keeps their slug.
@@ -401,14 +402,14 @@ async function handleTriples(req, res, user) {
       .eq('id', id)
       .maybeSingle()
 
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (!existing) return res.status(404).json({ error: 'Team not found' })
 
     const isParty = [existing.player1_id, existing.player2_id, existing.player3_id].includes(user.id)
     if (!isParty) return res.status(403).json({ error: 'Not a party to this team' })
 
     const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
-    if (delErr) return res.status(500).json({ error: delErr.message })
+    if (delErr) return sendServerError(res, delErr, 'player:del')
 
     // Every other former member keeps 'triples' billed unless cleaned up.
     const formerMembers = [existing.player1_id, existing.player2_id, existing.player3_id].filter(pid => pid && pid !== user.id)
@@ -446,7 +447,7 @@ async function handleRegistration(req, res, user) {
       .select('id, is_active, document_type')
       .eq('id', documentId)
       .maybeSingle()
-    if (docErr) return res.status(500).json({ error: docErr.message })
+    if (docErr) return sendServerError(res, docErr, 'player:doc')
     const signableTypes = ['code_of_conduct', 'media_release']
     if (!doc || !doc.is_active || !signableTypes.includes(doc.document_type)) {
       return res.status(400).json({ error: 'Document is not available for signing.' })
@@ -458,7 +459,7 @@ async function handleRegistration(req, res, user) {
       .eq('user_id', user.id)
       .eq('year', eventYear)
       .maybeSingle()
-    if (registrationErr) return res.status(500).json({ error: registrationErr.message })
+    if (registrationErr) return sendServerError(res, registrationErr, 'player:registration')
     if (!registration) return res.status(403).json({ error: 'Register for this event before signing its documents.' })
 
     // user_id is taken from the authenticated session, never the request body.
@@ -478,7 +479,7 @@ async function handleRegistration(req, res, user) {
         ip_address: ipAddress,
         user_agent: userAgent,
       })
-    if (insertErr) return res.status(500).json({ error: insertErr.message })
+    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
 
     return res.json({ ok: true })
   }
@@ -506,7 +507,7 @@ async function handleRegistration(req, res, user) {
       .select('alias')
       .eq('id', user.id)
       .maybeSingle()
-    if (callerErr) return res.status(500).json({ error: callerErr.message })
+    if (callerErr) return sendServerError(res, callerErr, 'player:caller')
 
     const callerAlias = (callerProfile?.alias ?? '').trim()
     if (callerAlias) {
@@ -515,7 +516,7 @@ async function handleRegistration(req, res, user) {
         .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
         .eq('year', year)
         .eq('profiles.is_placeholder', true)
-      if (phErr) return res.status(500).json({ error: phErr.message })
+      if (phErr) return sendServerError(res, phErr, 'player:ph')
 
       const lowerCaller = callerAlias.toLowerCase()
       const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
@@ -538,7 +539,7 @@ async function handleRegistration(req, res, user) {
       .select('max_players')
       .eq('year', year)
       .maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (evErr) return sendServerError(res, evErr, 'player:ev')
 
     const cap = ev?.max_players
     if (!cap) return res.json({ ok: true })
@@ -549,14 +550,14 @@ async function handleRegistration(req, res, user) {
       .eq('user_id', user.id)
       .eq('year', year)
       .maybeSingle()
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (existing) return res.json({ ok: true })
 
     const { count, error: countErr } = await supabaseAdmin
       .from('zltac_registrations')
       .select('id', { count: 'exact', head: true })
       .eq('year', year)
-    if (countErr) return res.status(500).json({ error: countErr.message })
+    if (countErr) return sendServerError(res, countErr, 'player:count')
 
     if ((count ?? 0) >= cap) {
       return res.status(400).json({ error: `Registration cap of ${cap} reached. Contact the committee.` })
@@ -582,7 +583,7 @@ async function handleRegistration(req, res, user) {
       .eq('user_id', user.id)
       .eq('year', eventYear)
       .maybeSingle()
-    if (existingErr) return res.status(500).json({ error: existingErr.message })
+    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
     if (existing) return res.json({ ok: true, id: existing.id, existing: true })
 
     const { data: callerProfile, error: callerErr } = await supabaseAdmin
@@ -590,7 +591,7 @@ async function handleRegistration(req, res, user) {
       .select('alias')
       .eq('id', user.id)
       .maybeSingle()
-    if (callerErr) return res.status(500).json({ error: callerErr.message })
+    if (callerErr) return sendServerError(res, callerErr, 'player:caller')
 
     const callerAlias = (callerProfile?.alias ?? '').trim()
     if (callerAlias) {
@@ -599,7 +600,7 @@ async function handleRegistration(req, res, user) {
         .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
         .eq('year', eventYear)
         .eq('profiles.is_placeholder', true)
-      if (phErr) return res.status(500).json({ error: phErr.message })
+      if (phErr) return sendServerError(res, phErr, 'player:ph')
 
       const lowerCaller = callerAlias.toLowerCase()
       const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
@@ -618,7 +619,7 @@ async function handleRegistration(req, res, user) {
       .select('max_players')
       .eq('year', eventYear)
       .maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (evErr) return sendServerError(res, evErr, 'player:ev')
 
     const cap = ev?.max_players
     if (cap) {
@@ -626,7 +627,7 @@ async function handleRegistration(req, res, user) {
         .from('zltac_registrations')
         .select('id', { count: 'exact', head: true })
         .eq('year', eventYear)
-      if (countErr) return res.status(500).json({ error: countErr.message })
+      if (countErr) return sendServerError(res, countErr, 'player:count')
       if ((count ?? 0) >= cap) {
         return res.status(400).json({ error: `Registration cap of ${cap} reached. Contact the committee.` })
       }
@@ -652,7 +653,7 @@ async function handleRegistration(req, res, user) {
       if (regError.code === '23505' || msg.includes('zltac_registrations_payment_reference_key')) {
         return res.status(409).json({ error: 'A registration with this alias already exists for this event. If that is you, claim it via the banner above or check your Player Hub.' })
       }
-      return res.status(500).json({ error: regError.message })
+      return sendServerError(res, regError, 'player:reg')
     }
 
     const result = await computeAndWriteAmountOwing(regRow.id)
@@ -672,7 +673,7 @@ async function handleRegistration(req, res, user) {
       .eq('user_id', user.id)
       .eq('year', year)
       .maybeSingle()
-    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (regErr) return sendServerError(res, regErr, 'player:reg')
     if (!reg) return res.status(404).json({ error: 'No registration found for that year' })
 
     if (reg.team_id) {
@@ -681,7 +682,7 @@ async function handleRegistration(req, res, user) {
         .select('captain_id')
         .eq('id', reg.team_id)
         .maybeSingle()
-      if (teamErr) return res.status(500).json({ error: teamErr.message })
+      if (teamErr) return sendServerError(res, teamErr, 'player:team')
       if (team?.captain_id === user.id) {
         return res.status(409).json({
           error: 'You are the captain. Disband your team first.',
@@ -706,7 +707,7 @@ async function handleRegistration(req, res, user) {
       .from('zltac_registrations')
       .delete()
       .eq('id', reg.id)
-    if (delErr) return res.status(500).json({ error: delErr.message })
+    if (delErr) return sendServerError(res, delErr, 'player:del')
 
     // Cascade: dissolve any doubles/triples this user was in for the year and
     // clean up the remaining partners (their slug + amount_owing). The user's
@@ -745,7 +746,7 @@ async function handleRegistration(req, res, user) {
       .select('user_id')
       .eq('id', registrationId)
       .maybeSingle()
-    if (regErr) return res.status(500).json({ error: regErr.message })
+    if (regErr) return sendServerError(res, regErr, 'player:reg')
     if (!reg) return res.status(404).json({ error: 'Registration not found' })
 
     if (reg.user_id !== user.id) {
@@ -781,7 +782,7 @@ async function handleClaimable(req, res, user) {
     .select('alias')
     .eq('id', user.id)
     .maybeSingle()
-  if (profErr) return res.status(500).json({ error: profErr.message })
+  if (profErr) return sendServerError(res, profErr, 'player:prof')
 
   const callerAlias = (prof?.alias ?? '').trim()
   const callerEmail = (user.email ?? '').trim()
@@ -793,7 +794,7 @@ async function handleClaimable(req, res, user) {
     .from('profiles')
     .select('id, alias, first_name, last_name, placeholder_email')
     .eq('is_placeholder', true)
-  if (phErr) return res.status(500).json({ error: phErr.message })
+  if (phErr) return sendServerError(res, phErr, 'player:ph')
 
   const lowerAlias = callerAlias.toLowerCase()
   const lowerEmail = callerEmail.toLowerCase()
@@ -812,7 +813,7 @@ async function handleClaimable(req, res, user) {
     .select('user_id, year, payment_reference, side_events')
     .in('user_id', matchedIds)
     .order('year', { ascending: false })
-  if (regsErr) return res.status(500).json({ error: regsErr.message })
+  if (regsErr) return sendServerError(res, regsErr, 'player:regs')
 
   const regsByUser = {}
   for (const r of (regs ?? [])) {
@@ -851,7 +852,7 @@ async function handleClaim(req, res, user) {
     .select('alias, roles')
     .eq('id', user.id)
     .maybeSingle()
-  if (profErr) return res.status(500).json({ error: profErr.message })
+  if (profErr) return sendServerError(res, profErr, 'player:prof')
 
   const callerIsCommittee = (prof?.roles ?? []).some(r => COMMITTEE_ROLES.includes(r))
 
@@ -861,7 +862,7 @@ async function handleClaim(req, res, user) {
       .select('alias, placeholder_email, is_placeholder')
       .eq('id', placeholder_id)
       .maybeSingle()
-    if (phErr) return res.status(500).json({ error: phErr.message })
+    if (phErr) return sendServerError(res, phErr, 'player:ph')
     if (!placeholder) return res.status(404).json({ error: 'placeholder not found' })
     if (!placeholder.is_placeholder) {
       return res.status(400).json({ error: 'profile is not a placeholder' })
@@ -883,7 +884,7 @@ async function handleClaim(req, res, user) {
     placeholder_id,
     real_id: user.id,
   })
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(res, error, 'player:error')
 
   if (data && data.ok === false) {
     return res.status(400).json(data)

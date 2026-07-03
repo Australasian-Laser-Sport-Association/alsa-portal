@@ -1,4 +1,5 @@
 import supabaseAdmin from './_lib/supabase.js'
+import { sendServerError } from './_lib/apiErrors.js'
 import { verifyUser, getActiveEventYear } from './_lib/auth.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
 import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
@@ -116,7 +117,7 @@ export default async function handler(req, res) {
       .select('id, max_teams')
       .eq('year', year)
       .maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (evErr) return sendServerError(res, evErr, 'captain:ev')
     if (!ev) return res.status(404).json({ error: 'Event not found for year' })
 
     const cap = ev.max_teams
@@ -126,7 +127,7 @@ export default async function handler(req, res) {
       .from('teams')
       .select('id', { count: 'exact', head: true })
       .eq('event_id', ev.id)
-    if (countErr) return res.status(500).json({ error: countErr.message })
+    if (countErr) return sendServerError(res, countErr, 'captain:count')
 
     if ((count ?? 0) >= cap) {
       return res.status(400).json({ error: `Maximum number of teams (${cap}) reached for this event.` })
@@ -169,7 +170,7 @@ export default async function handler(req, res) {
       .select('id')
       .eq('captain_id', user.id)
       .not('event_id', 'is', null)
-    if (ctErr) return res.status(500).json({ error: ctErr.message })
+    if (ctErr) return sendServerError(res, ctErr, 'captain:ct')
 
     const captainedTeamIds = (captainedTeams ?? []).map(t => t.id)
     if (captainedTeamIds.length === 0) {
@@ -182,7 +183,7 @@ export default async function handler(req, res) {
       .select('user_id')
       .eq('year', eventYear)
       .in('team_id', captainedTeamIds)
-    if (rosterErr) return res.status(500).json({ error: rosterErr.message })
+    if (rosterErr) return sendServerError(res, rosterErr, 'captain:roster')
 
     const allowedPlayerIds = new Set((rosters ?? []).map(r => r.user_id))
     if (allowedPlayerIds.size === 0) {
@@ -251,7 +252,7 @@ export default async function handler(req, res) {
     ])
 
     const errs = [e1, e2, e3, e4, e5, e6, e7, e8].filter(Boolean)
-    if (errs.length) return res.status(500).json({ error: errs.map(e => e.message).join(' | ') })
+    if (errs.length) return sendServerError(res, new Error(errs.map(e => e.message).join(' | ')), 'captain:team-completions')
 
     // Sum payment_records per user, restricted to the requested playerIds.
     const playerIdSet = new Set(playerIds)
@@ -323,7 +324,7 @@ export default async function handler(req, res) {
       .select('id, captain_id, event_id, status')
       .eq('id', teamId)
       .maybeSingle()
-    if (teamErr) return res.status(500).json({ error: teamErr.message })
+    if (teamErr) return sendServerError(res, teamErr, 'captain:team')
     if (!team) return res.status(404).json({ error: 'Team not found' })
 
     // Auth: caller must be this team's captain.
@@ -349,7 +350,7 @@ export default async function handler(req, res) {
       .select('year')
       .eq('id', team.event_id)
       .maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (evErr) return sendServerError(res, evErr, 'captain:ev')
     if (!ev) return res.status(404).json({ error: 'Event not found for team' })
 
     const { count, error: countErr } = await supabaseAdmin
@@ -357,7 +358,7 @@ export default async function handler(req, res) {
       .select('id', { count: 'exact', head: true })
       .eq('team_id', teamId)
       .eq('year', ev.year)
-    if (countErr) return res.status(500).json({ error: countErr.message })
+    if (countErr) return sendServerError(res, countErr, 'captain:count')
 
     const rosterCount = count ?? 0
     const MIN_PLAYERS = 5
@@ -374,7 +375,7 @@ export default async function handler(req, res) {
       .from('teams')
       .update({ status: 'pending', rejection_reason: null })
       .eq('id', teamId)
-    if (updErr) return res.status(500).json({ error: updErr.message })
+    if (updErr) return sendServerError(res, updErr, 'captain:upd')
 
     return res.json({ ok: true, status: 'pending', count: rosterCount })
   }

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { sendServerError } from './_lib/apiErrors.js'
 import { verifyUser } from './_lib/auth.js'
 import { eventPhase } from '../src/lib/eventPhase.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
@@ -71,7 +72,7 @@ export default async function handler(req, res) {
     .select('id, user_id, year')
     .eq('id', registrationId)
     .maybeSingle()
-  if (regErr) return res.status(500).json({ error: regErr.message })
+  if (regErr) return sendServerError(res, regErr, 'volunteer-signup:reg')
   if (!reg) return res.status(404).json({ error: 'Registration not found' })
   if (reg.user_id !== user.id) return res.status(403).json({ error: 'Forbidden' })
 
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
       .select('id, notes, created_at, volunteer_signup_roles ( role_id, status, decided_at )')
       .eq('registration_id', registrationId)
       .maybeSingle()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'volunteer-signup:error')
     if (!signup) return res.status(404).json({ error: 'No volunteer signup for this registration' })
     return res.json({ signup: shapeSignup(signup) })
   }
@@ -94,7 +95,7 @@ export default async function handler(req, res) {
       .select('reg_close_date, event_starts_at')
       .eq('year', reg.year)
       .maybeSingle()
-    if (evErr) return res.status(500).json({ error: evErr.message })
+    if (evErr) return sendServerError(res, evErr, 'volunteer-signup:ev')
 
     const phase = eventPhase(ev)
     const lockAt = ev?.reg_close_date ? new Date(ev.reg_close_date) : null
@@ -104,7 +105,7 @@ export default async function handler(req, res) {
       .select('id, created_at')
       .eq('registration_id', registrationId)
       .maybeSingle()
-    if (exErr) return res.status(500).json({ error: exErr.message })
+    if (exErr) return sendServerError(res, exErr, 'volunteer-signup:ex')
 
     const isPreLockSignup = !!(existing && lockAt && new Date(existing.created_at) < lockAt)
 
@@ -118,12 +119,12 @@ export default async function handler(req, res) {
         .from('volunteer_signup_roles')
         .select('status')
         .eq('signup_id', existing.id)
-      if (rrErr) return res.status(500).json({ error: rrErr.message })
+      if (rrErr) return sendServerError(res, rrErr, 'volunteer-signup:rr')
       if ((roleRows ?? []).some(r => r.status === 'approved')) {
         return res.status(403).json({ error: APPROVED_MSG })
       }
       const { error: delErr } = await db.from('volunteer_signups').delete().eq('registration_id', registrationId)
-      if (delErr) return res.status(500).json({ error: delErr.message })
+      if (delErr) return sendServerError(res, delErr, 'volunteer-signup:del')
       return res.json({ ok: true })
     }
 
@@ -140,13 +141,13 @@ export default async function handler(req, res) {
       .upsert({ registration_id: registrationId, notes: notes || null }, { onConflict: 'registration_id' })
       .select('id, created_at')
       .single()
-    if (upErr) return res.status(500).json({ error: upErr.message })
+    if (upErr) return sendServerError(res, upErr, 'volunteer-signup:up')
 
     const { data: currentRows, error: curErr } = await db
       .from('volunteer_signup_roles')
       .select('role_id, status')
       .eq('signup_id', signup.id)
-    if (curErr) return res.status(500).json({ error: curErr.message })
+    if (curErr) return sendServerError(res, curErr, 'volunteer-signup:cur')
     const currentByRole = new Map((currentRows ?? []).map(r => [r.role_id, r.status]))
 
     const toAdd = roleIds.filter(id => !currentByRole.has(id))
@@ -161,7 +162,7 @@ export default async function handler(req, res) {
     if (toAdd.length) {
       const { data: validRoles, error: vrErr } = await db
         .from('volunteer_roles').select('id').in('id', toAdd).eq('is_active', true)
-      if (vrErr) return res.status(500).json({ error: vrErr.message })
+      if (vrErr) return sendServerError(res, vrErr, 'volunteer-signup:vr')
       const validIds = new Set((validRoles ?? []).map(r => r.id))
       if (toAdd.some(id => !validIds.has(id))) {
         return res.status(400).json({ error: 'One or more selected roles are invalid or inactive.' })
@@ -174,20 +175,20 @@ export default async function handler(req, res) {
         .delete()
         .eq('signup_id', signup.id)
         .in('role_id', toRemove)
-      if (rmErr) return res.status(500).json({ error: rmErr.message })
+      if (rmErr) return sendServerError(res, rmErr, 'volunteer-signup:rm')
     }
     if (toAdd.length) {
       const { error: addErr } = await db
         .from('volunteer_signup_roles')
         .insert(toAdd.map(role_id => ({ signup_id: signup.id, role_id, status: 'pending' })))
-      if (addErr) return res.status(500).json({ error: addErr.message })
+      if (addErr) return sendServerError(res, addErr, 'volunteer-signup:add')
     }
 
     const { data: finalRows, error: fErr } = await db
       .from('volunteer_signup_roles')
       .select('role_id, status, decided_at')
       .eq('signup_id', signup.id)
-    if (fErr) return res.status(500).json({ error: fErr.message })
+    if (fErr) return sendServerError(res, fErr, 'volunteer-signup:f')
 
     return res.json({
       signup: {
