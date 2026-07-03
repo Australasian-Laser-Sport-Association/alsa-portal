@@ -657,7 +657,7 @@ async function handleRegistration(req, res, user) {
     }
 
     const result = await computeAndWriteAmountOwing(regRow.id)
-    if (result.error) return res.status(500).json({ error: result.error })
+    if (result.error) return sendServerError(res, result.error instanceof Error ? result.error : new Error(String(result.error)), 'player:amount-owing')
 
     return res.status(201).json({ ok: true, id: regRow.id, amountOwing: result.amountOwing })
   }
@@ -756,7 +756,7 @@ async function handleRegistration(req, res, user) {
     }
 
     const result = await computeAndWriteAmountOwing(registrationId)
-    if (result.error) return res.status(500).json({ error: result.error })
+    if (result.error) return sendServerError(res, result.error instanceof Error ? result.error : new Error(String(result.error)), 'player:amount-owing')
 
     return res.json({ amountOwing: result.amountOwing })
   }

@@ -10,4 +10,4 @@ CREATE POLICY under_18_approvals_owner_insert ON public.under_18_approvals
 CREATE POLICY under_18_approvals_owner_update ON public.under_18_approvals
   FOR UPDATE TO authenticated
   USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
