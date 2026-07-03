@@ -55,6 +55,7 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'))
 const AdminMembers = lazy(() => import('./pages/admin/AdminMembers'))
 const AdminVolunteers = lazy(() => import('./pages/admin/AdminVolunteers'))
 const AdminRequiredDocuments = lazy(() => import('./pages/admin/AdminRequiredDocuments'))
+const AdminSignedDocuments = lazy(() => import('./pages/admin/AdminSignedDocuments'))
 const AdminUnder18Approvals = lazy(() => import('./pages/admin/AdminUnder18Approvals'))
 const AdminZLTACHallOfFame = lazy(() => import('./pages/admin/AdminZLTACHallOfFame'))
 const AdminZLTACResults = lazy(() => import('./pages/admin/AdminZLTACResults'))
@@ -181,6 +182,7 @@ function App() {
               <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
               <Route path="registrations" element={<AdminRegistrations />} />
               <Route path="required-documents" element={<AdminRequiredDocuments />} />
+              <Route path="signed-documents" element={<AdminSignedDocuments />} />
               {/* Legacy slug — keep links/bookmarks to /admin/legal-documents working */}
               <Route path="legal-documents" element={<Navigate to="/admin/required-documents" replace />} />
               <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
