@@ -1,4 +1,5 @@
 import supabaseAdmin from './_lib/supabase.js'
+import { sendServerError } from './_lib/apiErrors.js'
 import { verifyUser, getTeammateIds } from './_lib/auth.js'
 import { COMMITTEE_ROLES, PUBLIC_ROLE_BADGE_ROLES } from '../src/lib/roles.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
@@ -65,7 +66,7 @@ export default async function handler(req, res) {
       .eq('year', eventYear)
       .eq('team_id', teamId)
 
-    if (regsErr) return res.status(500).json({ error: regsErr.message })
+    if (regsErr) return sendServerError(res, regsErr, 'profiles:regs')
 
     const rosterIds = (regs ?? []).map(r => r.user_id).filter(Boolean)
     if (rosterIds.length === 0) return res.json({ profiles: [] })
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
       .select('id, first_name, last_name, alias, state, roles')
       .in('id', rosterIds)
 
-    if (profsErr) return res.status(500).json({ error: profsErr.message })
+    if (profsErr) return sendServerError(res, profsErr, 'profiles:profs')
     return res.json({ profiles: (profiles ?? []).map(row => maskRoles(row, user.id, isCommittee)) })
   }
 
@@ -105,7 +106,7 @@ export default async function handler(req, res) {
     .select('id, first_name, last_name, alias, state, dob, avatar_url, roles')
     .in('id', ids)
 
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(res, error, 'profiles:error')
 
   // Attach alsa_membership only to the caller's own row, if present.
   const selfRequested = ids.includes(user.id)

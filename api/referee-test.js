@@ -1,4 +1,5 @@
 import supabaseAdmin from './_lib/supabase.js'
+import { sendServerError } from './_lib/apiErrors.js'
 import { verifyUser } from './_lib/auth.js'
 
 // Server-authoritative Rules Test scoring.
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
     .select('id, section, correct_answer')
     .in('id', submittedIds)
     .eq('active', true)
-  if (qErr) return res.status(500).json({ error: qErr.message })
+  if (qErr) return sendServerError(res, qErr, 'referee-test:q')
 
   if ((questions ?? []).length !== submittedIds.length) {
     return res.status(400).json({ error: 'one or more questions are not active or do not exist' })
@@ -88,7 +89,7 @@ export default async function handler(req, res) {
     .from('referee_questions')
     .select('id, section')
     .eq('active', true)
-  if (actErr) return res.status(500).json({ error: actErr.message })
+  if (actErr) return sendServerError(res, actErr, 'referee-test:act')
 
   const activeSafety  = (activeAll ?? []).filter(q => q.section === 'safety').length
   const activeGeneral = (activeAll ?? []).filter(q => q.section !== 'safety').length
@@ -144,7 +145,7 @@ export default async function handler(req, res) {
     .select('id, passed')
     .eq('user_id', user.id)
     .maybeSingle()
-  if (existingErr) return res.status(500).json({ error: existingErr.message })
+  if (existingErr) return sendServerError(res, existingErr, 'referee-test:existing')
 
   if (existing?.passed === true) {
     return res.status(403).json({ error: "You've already passed the Rules Test. Contact the committee for retake." })
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
     ? await supabaseAdmin.from('referee_test_results').update(payload).eq('user_id', user.id)
     : await supabaseAdmin.from('referee_test_results').insert({ user_id: user.id, ...payload })
 
-  if (saveErr) return res.status(500).json({ error: saveErr.message })
+  if (saveErr) return sendServerError(res, saveErr, 'referee-test:save')
 
   return res.json({
     ok: true,

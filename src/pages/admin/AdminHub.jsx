@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import {
   Activity, Calendar, ClipboardList, FileText, ShieldCheck, BookOpen, HandHelping,
   Trophy, LayoutDashboard, Users, BadgeCheck, Award, Medal, Briefcase,
-  Database, AlertTriangle,
+  Database, AlertTriangle, FileCheck,
 } from 'lucide-react'
 import { Tile, TileSection } from '../../components/AdminTile.jsx'
 import { setSiteBanner, SiteBannerContext } from '../../lib/siteSettings'
@@ -27,6 +27,7 @@ const TILE_SECTIONS = [
       { label: 'Event Settings',      to: '/admin/event',              description: 'Configure dates, fees, side events, and lifecycle phase.', Icon: Calendar },
       { label: 'Registrations',       to: '/admin/registrations',      description: 'Review players, manage payments, edit registrations.',      Icon: ClipboardList },
       { label: 'Required Documents',  to: '/admin/required-documents', description: 'Upload Code of Conduct, Media Release, Under-18 forms.',    Icon: FileText },
+      { label: 'Signed Documents',    to: '/admin/signed-documents',   description: 'Review document versions signed by players.',              Icon: FileCheck },
       { label: 'Under 18 Approvals',  to: '/admin/under-18-approvals', description: 'Review and approve guardian forms for under-18 players.',   Icon: ShieldCheck },
       { label: 'Rules Test',          to: '/admin/referee-test',       description: 'Manage test questions, settings, and player results.',      Icon: BookOpen },
       { label: 'Volunteers',          to: '/admin/volunteers',         description: 'Recruit, assign, and confirm event volunteers.',            Icon: HandHelping },
