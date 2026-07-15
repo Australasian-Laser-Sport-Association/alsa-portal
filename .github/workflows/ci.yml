@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    name: Lint baseline + build
+    name: Lint, unit tests, and build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
