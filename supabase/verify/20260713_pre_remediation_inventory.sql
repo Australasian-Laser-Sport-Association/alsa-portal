@@ -74,7 +74,7 @@ SELECT
   pg_get_constraintdef(oid, true) AS definition
 FROM pg_constraint
 WHERE connamespace = 'public'::regnamespace
-ORDER BY relation_name::text, constraint_name;
+ORDER BY conrelid::regclass::text, constraint_name;
 
 SELECT
   event_object_table AS relation_name,
