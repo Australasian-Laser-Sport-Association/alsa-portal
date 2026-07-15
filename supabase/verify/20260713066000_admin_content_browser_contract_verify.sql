@@ -293,6 +293,28 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- This trigger helper exists only in the production lineage. If present, it
+  -- must remain available to service writes without being directly callable
+  -- through either browser database role.
+  IF to_regprocedure('public.prevent_profile_self_escalation()') IS NOT NULL THEN
+    IF has_function_privilege(
+         'anon', 'public.prevent_profile_self_escalation()', 'EXECUTE'
+       )
+       OR has_function_privilege(
+         'authenticated',
+         'public.prevent_profile_self_escalation()',
+         'EXECUTE'
+       )
+       OR NOT has_function_privilege(
+         'service_role',
+         'public.prevent_profile_self_escalation()',
+         'EXECUTE'
+       ) THEN
+      RAISE EXCEPTION
+        'Legacy profile self-escalation trigger function ACL is invalid';
+    END IF;
+  END IF;
+
   WITH expected(
     function_name, identity_args, anon_execute, auth_execute, service_execute
   ) AS (

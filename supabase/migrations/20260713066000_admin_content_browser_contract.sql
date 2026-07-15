@@ -198,6 +198,23 @@ GRANT EXECUTE ON FUNCTION
   public.recalculate_zltac_amount_owing(uuid)
 TO service_role;
 
+-- Production can retain this legacy trigger helper even though clean and
+-- staging databases do not. Trigger dispatch does not require browser roles
+-- to call the SECURITY DEFINER function directly, so remove the inherited and
+-- direct Data API grants while keeping service-role execution available.
+DO $$
+BEGIN
+  IF to_regprocedure('public.prevent_profile_self_escalation()') IS NOT NULL THEN
+    EXECUTE
+      'REVOKE EXECUTE ON FUNCTION public.prevent_profile_self_escalation() '
+      'FROM PUBLIC, anon, authenticated';
+    EXECUTE
+      'GRANT EXECUTE ON FUNCTION public.prevent_profile_self_escalation() '
+      'TO service_role';
+  END IF;
+END;
+$$;
+
 -- Normalize the only SECURITY DEFINER helpers that remain browser-executable.
 -- Every referenced object is schema-qualified and the empty search path keeps
 -- untrusted objects out of name resolution.
