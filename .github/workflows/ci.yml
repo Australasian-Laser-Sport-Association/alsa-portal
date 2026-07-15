@@ -66,13 +66,16 @@ jobs:
       - name: Start disposable Supabase
         run: supabase start
 
-      - name: Run database tests
-        run: supabase test db
-
       - name: Run remediation verification scripts
+        # Run against the pristine migration replay. Several pgTAP suites
+        # intentionally retain governance sentinel rows that are not live
+        # release-smoke evidence and would invalidate data precondition checks.
         run: npm run test:db:verify
         env:
           REMEDIATION_VERIFY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - name: Run database tests
+        run: supabase test db
 
       - name: Lint database schema
         run: supabase db lint --local --level warning --fail-on warning
