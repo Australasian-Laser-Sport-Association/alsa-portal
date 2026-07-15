@@ -137,6 +137,9 @@ export async function installMockBackend(page, options = {}) {
         return route.fulfill({ status: 200, headers: { 'content-range': '*/0' }, body: '' })
       }
       if (table === 'profiles') {
+        if (options.profileDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, options.profileDelayMs))
+        }
         return json(route, wantsObject ? profile : [profile], 200, { 'content-range': '0-0/1' })
       }
       if (table === 'cms_global') {

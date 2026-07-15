@@ -29,8 +29,8 @@ export default defineConfig({
     },
   ],
   webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER ? undefined : {
-    // Launch Vite directly. This avoids an npm child-process wrapper that can
-    // keep Playwright alive on Windows after the test server is stopped.
+    // npm run test:e2e owns the server lifecycle without a shell. Keep this
+    // fallback for developers who invoke Playwright directly on other hosts.
     command: `node ./node_modules/vite/bin/vite.js --host ${host} --port ${port} --strictPort`,
     url: `http://${host}:${port}`,
     reuseExistingServer: !process.env.CI,

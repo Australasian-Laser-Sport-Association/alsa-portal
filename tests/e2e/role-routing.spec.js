@@ -20,6 +20,18 @@ test('committee can enter a guarded admin route', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Event Settings' })).toBeVisible()
 })
 
+test('committee deep links wait for a delayed role profile after sign-in', async ({ page }) => {
+  const backend = await installMockBackend(page, {
+    roles: ['player', 'alsa_committee'],
+    profileDelayMs: 400,
+  })
+  await backend.signIn('/admin/event')
+
+  await expect(page).toHaveURL(/\/admin\/event$/)
+  await expect(page.getByText('Admin Panel', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/event$/)
+})
+
 test('a regular player is rejected from committee routes', async ({ page }) => {
   const backend = await installMockBackend(page, { roles: ['player'] })
   await backend.signIn('/admin/event')

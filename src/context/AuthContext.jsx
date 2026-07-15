@@ -16,10 +16,24 @@ export function AuthProvider({ children }) {
   // one boot. Set before the await (marks in-flight); reset to null on error so
   // a later emit can retry, and on SIGNED_OUT so a re-sign-in re-fetches.
   const fetchedForUserId = useRef(null)
+  // Every profile request receives a generation. A later sign-in, sign-out,
+  // user switch, or forced refresh invalidates older responses so a slow
+  // request cannot restore stale roles/profile data into a newer session.
+  const profileRequestGeneration = useRef(0)
+  const activeUserId = useRef(null)
 
   async function fetchProfile(userId, { force = false } = {}) {
     if (!force && fetchedForUserId.current === userId) return
+    const previousUserId = fetchedForUserId.current
     fetchedForUserId.current = userId
+    const requestGeneration = ++profileRequestGeneration.current
+    const isCurrentRequest = () => (
+      profileRequestGeneration.current === requestGeneration
+      && activeUserId.current === userId
+    )
+    if (previousUserId && previousUserId !== userId) setProfile(null)
+    setProfileError(null)
+    setProfileLoading(true)
     // Explicit column list (not select('*')) so privileged/audit columns
     // (alsa_position, is_placeholder, placeholder_email, created_by_admin_id,
     // alsa_member_id, updated_at) and the new `email`
@@ -27,33 +41,40 @@ export function AuthProvider({ children }) {
     // omitted deliberately — the user's own email is read from the auth session
     // (useAuth().user.email), not from the profile row. This is exactly the set
     // consumed off the context `profile` across all useAuth() consumers.
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, first_name, last_name, alias, dob, phone, state, home_arena, emergency_contact_name, emergency_contact_phone, avatar_url, roles, suspended, created_at')
-      .eq('id', userId)
-      .single()
-    if (error) {
-      // A transient load failure must not collapse to a null profile — that
-      // would flicker a committee member down to a plain player. Keep the
-      // last-known profile and surface the failure via profileError instead.
-      // Clear the dedup marker so the next emit (or refreshProfile) retries.
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, alias, dob, phone, state, home_arena, emergency_contact_name, emergency_contact_phone, avatar_url, roles, suspended, created_at')
+        .eq('id', userId)
+        .single()
+      if (!isCurrentRequest()) return
+      if (error) {
+        // A transient load failure must not collapse to a null profile. Keep
+        // the last-known profile and surface the failure via profileError.
+        // Clear the dedup marker so the next emit or refresh retries.
+        console.error('[AuthContext fetchProfile]', error)
+        fetchedForUserId.current = null
+        setProfileError(error)
+        return
+      }
+      if (data?.suspended) {
+        fetchedForUserId.current = null
+        setProfile(null)
+        setProfileError(new Error('Account suspended'))
+        await supabase.auth.signOut({ scope: 'local' })
+        return
+      }
+      setProfile(data ?? null)
+    } catch (error) {
+      if (!isCurrentRequest()) return
       console.error('[AuthContext fetchProfile]', error)
       fetchedForUserId.current = null
-      setProfileError(error)
-      setProfileLoading(false)
-      return
+      setProfileError(error instanceof Error ? error : new Error('Could not load profile'))
+    } finally {
+      // Do not let an older request clear the loading state owned by a newer
+      // session/profile request.
+      if (isCurrentRequest()) setProfileLoading(false)
     }
-    if (data?.suspended) {
-      fetchedForUserId.current = null
-      setProfile(null)
-      setProfileError(new Error('Account suspended'))
-      setProfileLoading(false)
-      await supabase.auth.signOut({ scope: 'local' })
-      return
-    }
-    setProfileError(null)
-    setProfile(data ?? null)
-    setProfileLoading(false)
   }
 
   useEffect(() => {
@@ -62,7 +83,21 @@ export function AuthProvider({ children }) {
     // don't re-fire on every duplicate INITIAL_SESSION / SIGNED_IN / token
     // refresh. Real sign-in (null→user), sign-out (user→null), and user switch
     // (id change) all still produce a new reference.
-    const setUserStable = u => setUser(prev => (prev?.id === u?.id ? prev : u))
+    const setUserStable = u => {
+      const nextUserId = u?.id ?? null
+      if (activeUserId.current !== nextUserId) {
+        // Clear role-bearing state at the identity boundary. fetchedForUserId
+        // may be null after a transient refresh failure, so it cannot safely
+        // be used to decide whether the visible profile belongs to this user.
+        profileRequestGeneration.current += 1
+        fetchedForUserId.current = null
+        setProfile(null)
+        setProfileError(null)
+        setProfileLoading(Boolean(nextUserId))
+      }
+      activeUserId.current = nextUserId
+      setUser(prev => (prev?.id === u?.id ? prev : u))
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null
@@ -71,6 +106,10 @@ export function AuthProvider({ children }) {
       if (u) {
         fetchProfile(u.id)
       } else {
+        profileRequestGeneration.current += 1
+        fetchedForUserId.current = null
+        setProfile(null)
+        setProfileError(null)
         setProfileLoading(false)
       }
     })
@@ -85,13 +124,20 @@ export function AuthProvider({ children }) {
         fetchProfile(u.id)
       }
       if (event === 'SIGNED_OUT') {
+        profileRequestGeneration.current += 1
         fetchedForUserId.current = null
         setProfile(null)
+        setProfileError(null)
+        setProfileLoading(false)
         setPasswordRecovery(false)
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      activeUserId.current = null
+      profileRequestGeneration.current += 1
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function signOut() {

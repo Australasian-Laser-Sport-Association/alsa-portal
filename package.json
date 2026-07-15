@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:db": "supabase test db",
     "test:db:verify": "node scripts/run-remediation-verifications.mjs",
-    "test:e2e": "playwright test --project=chromium",
+    "test:e2e": "node scripts/run-playwright-e2e.mjs",
     "release:check-env": "node scripts/check-release-environment.mjs",
     "release:check-vercel-env": "node scripts/run-vercel-release-environment-check.mjs",
     "rollout:db": "node scripts/run-remediation-rollout-phase.mjs",
