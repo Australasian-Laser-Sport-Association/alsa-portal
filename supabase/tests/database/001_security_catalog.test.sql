@@ -48,6 +48,7 @@ WITH server_written(name) AS (
     ('teams'),
     ('team_members'),
     ('competition_registrations'),
+    ('payments'),
     ('doubles_pairs'),
     ('triples_teams'),
     ('legal_documents'),
@@ -488,6 +489,181 @@ SELECT ok(
     'anon', 'public.can_read_team_members(uuid)', 'EXECUTE'
   ),
   'team-member RLS helper is available only to authenticated and service roles'
+);
+
+SELECT ok(
+  to_regprocedure('public.can_write_team_logo(text)') IS NOT NULL
+  AND EXISTS (
+    SELECT 1
+    FROM pg_proc AS function_row
+    WHERE function_row.oid = to_regprocedure('public.can_write_team_logo(text)')
+      AND function_row.prosecdef
+      AND function_row.provolatile = 's'
+      AND function_row.proowner = (
+        SELECT role_row.oid
+        FROM pg_roles AS role_row
+        WHERE role_row.rolname = 'postgres'
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM unnest(function_row.proconfig) AS setting(value)
+        WHERE setting.value IN ('search_path=', 'search_path=""')
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM aclexplode(
+          coalesce(
+            function_row.proacl,
+            acldefault('f', function_row.proowner)
+          )
+        ) AS acl
+        LEFT JOIN pg_roles AS grantee_role ON grantee_role.oid = acl.grantee
+        WHERE acl.privilege_type = 'EXECUTE'
+          AND coalesce(grantee_role.rolname, 'PUBLIC') NOT IN (
+            'postgres',
+            'authenticated',
+            'service_role'
+          )
+      )
+      AND (
+        SELECT count(*)
+        FROM aclexplode(
+          coalesce(
+            function_row.proacl,
+            acldefault('f', function_row.proowner)
+          )
+        ) AS acl
+        JOIN pg_roles AS grantee_role ON grantee_role.oid = acl.grantee
+        WHERE acl.privilege_type = 'EXECUTE'
+          AND NOT acl.is_grantable
+          AND grantee_role.rolname IN ('authenticated', 'service_role')
+      ) = 2
+  )
+  AND NOT has_function_privilege(
+    'anon', 'public.can_write_team_logo(text)', 'EXECUTE'
+  )
+  AND has_function_privilege(
+    'authenticated', 'public.can_write_team_logo(text)', 'EXECUTE'
+  )
+  AND has_function_privilege(
+    'service_role', 'public.can_write_team_logo(text)', 'EXECUTE'
+  ),
+  'team-logo RLS helper is actor-bound and available only to authenticated and service roles'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'storage'
+      AND policy.tablename = 'objects'
+      AND policy.policyname IN (
+        'avatars_owner_write',
+        'team_logos_owner_write',
+        'team_logos_captain_team_write'
+      )
+      AND policy.cmd = 'ALL'
+      AND policy.roles @> ARRAY['authenticated']::name[]
+      AND coalesce(policy.qual, '') LIKE '%is_active_user%'
+      AND coalesce(policy.with_check, '') LIKE '%is_active_user%'
+  ),
+  3::bigint,
+  'every avatar and team-logo ownership policy requires an active account'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'storage'
+      AND policy.tablename = 'objects'
+      AND policy.cmd IN ('ALL', 'INSERT', 'UPDATE', 'DELETE')
+      AND policy.roles && ARRAY['public', 'authenticated']::name[]
+      AND (
+        coalesce(policy.qual, '') LIKE '%avatars%'
+        OR coalesce(policy.qual, '') LIKE '%team-logos%'
+        OR coalesce(policy.with_check, '') LIKE '%avatars%'
+        OR coalesce(policy.with_check, '') LIKE '%team-logos%'
+      )
+      AND (
+        (policy.cmd IN ('ALL', 'UPDATE', 'DELETE')
+          AND coalesce(policy.qual, '') NOT LIKE '%is_active_user%')
+        OR (policy.cmd IN ('ALL', 'INSERT', 'UPDATE')
+          AND coalesce(policy.with_check, '') NOT LIKE '%is_active_user%')
+      )
+  ),
+  0::bigint,
+  'no avatar or team-logo browser write path omits the active-account guard'
+);
+
+SELECT ok(
+  has_table_privilege('authenticated', 'public.payments', 'SELECT')
+  AND NOT has_table_privilege('authenticated', 'public.payments', 'INSERT')
+  AND NOT has_table_privilege('authenticated', 'public.payments', 'UPDATE')
+  AND NOT has_table_privilege('authenticated', 'public.payments', 'DELETE')
+  AND NOT has_any_column_privilege('authenticated', 'public.payments', 'INSERT')
+  AND NOT has_any_column_privilege('authenticated', 'public.payments', 'UPDATE')
+  AND NOT EXISTS (
+    WITH table_dml_grantees AS (
+      SELECT relation.relowner, acl.grantee
+      FROM pg_class AS relation
+      CROSS JOIN LATERAL aclexplode(
+        coalesce(relation.relacl, acldefault('r', relation.relowner))
+      ) AS acl
+      WHERE relation.oid = 'public.payments'::regclass
+        AND acl.privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+    ),
+    column_dml_grantees AS (
+      SELECT relation.relowner, acl.grantee
+      FROM pg_class AS relation
+      JOIN pg_attribute AS attribute ON attribute.attrelid = relation.oid
+      CROSS JOIN LATERAL aclexplode(attribute.attacl) AS acl
+      WHERE relation.oid = 'public.payments'::regclass
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND acl.privilege_type IN ('INSERT', 'UPDATE')
+    )
+    SELECT 1
+    FROM (
+      SELECT relowner, grantee FROM table_dml_grantees
+      UNION
+      SELECT relowner, grantee FROM column_dml_grantees
+    ) AS direct_grant
+    LEFT JOIN pg_roles AS grantee_role ON grantee_role.oid = direct_grant.grantee
+    WHERE direct_grant.grantee <> direct_grant.relowner
+      AND coalesce(grantee_role.rolname, 'PUBLIC') <> 'service_role'
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename = 'payments'
+      AND policy.permissive = 'PERMISSIVE'
+      AND policy.cmd IN ('ALL', 'INSERT', 'UPDATE', 'DELETE')
+      AND policy.roles && ARRAY['public', 'anon', 'authenticated']::name[]
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM pg_policies AS policy
+    WHERE policy.schemaname = 'public'
+      AND policy.tablename = 'payments'
+      AND policy.policyname = 'payments_own_read'
+      AND policy.cmd = 'SELECT'
+      AND policy.permissive = 'PERMISSIVE'
+      AND policy.roles @> ARRAY['authenticated']::name[]
+      AND regexp_replace(
+        coalesce(policy.qual, ''),
+        '[[:space:]]+',
+        '',
+        'g'
+      ) = '(user_id=(SELECTauth.uid()ASuid))'
+      AND policy.with_check IS NULL
+  )
+  AND has_table_privilege('service_role', 'public.payments', 'SELECT')
+  AND has_table_privilege('service_role', 'public.payments', 'INSERT')
+  AND has_table_privilege('service_role', 'public.payments', 'UPDATE')
+  AND has_table_privilege('service_role', 'public.payments', 'DELETE'),
+  'legacy payments preserve owner reads and service access without browser writes'
 );
 
 SELECT ok(

@@ -68,22 +68,43 @@ SELECT throws_matching(
   'a browser cannot bypass the volunteer signup endpoint'
 );
 
+SELECT throws_matching(
+  $$
+    INSERT INTO public.payments (user_id, amount, status, event_year)
+    VALUES ('10000000-0000-4000-8000-000000000001', 1, 'paid', 2097)
+  $$,
+  'permission denied for table payments',
+  'a browser cannot write the legacy payment table directly'
+);
+
 RESET ROLE;
 
 -- Isolated fixture identities. auth.users insertion exercises the real signup
 -- trigger rather than constructing a profile that cannot exist in production.
 INSERT INTO auth.users (id, email, raw_user_meta_data)
-VALUES (
-  '10000000-0000-4000-8000-000000000001',
-  'release-gate@example.test',
-  jsonb_build_object(
-    'first_name', 'Release',
-    'last_name', 'Gate',
-    'alias', 'ReleaseGate',
-    'dob', '1990-01-01',
-    'state', 'NSW'
-  )
-);
+VALUES
+  (
+    '10000000-0000-4000-8000-000000000001',
+    'release-gate@example.test',
+    jsonb_build_object(
+      'first_name', 'Release',
+      'last_name', 'Gate',
+      'alias', 'ReleaseGate',
+      'dob', '1990-01-01',
+      'state', 'NSW'
+    )
+  ),
+  (
+    '10000000-0000-4000-8000-000000000002',
+    'other-payment-owner@example.test',
+    jsonb_build_object(
+      'first_name', 'Other',
+      'last_name', 'Owner',
+      'alias', 'OtherPaymentOwner',
+      'dob', '1991-01-01',
+      'state', 'VIC'
+    )
+  );
 
 SELECT is(
   (
@@ -117,6 +138,23 @@ INSERT INTO public.zltac_events (
     DATE '2098-07-03',
     TIMESTAMPTZ '2098-06-30 22:00:00+00',
     'Australia/Sydney'
+  );
+
+INSERT INTO public.payments (id, user_id, amount, status, event_year)
+VALUES
+  (
+    '21000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001',
+    5000,
+    'paid',
+    2097
+  ),
+  (
+    '21000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000002',
+    7500,
+    'paid',
+    2097
   );
 
 INSERT INTO public.teams (
@@ -385,12 +423,54 @@ SET LOCAL ROLE authenticated;
 
 SELECT is(
   (
+    SELECT array_agg(user_id ORDER BY user_id)
+    FROM public.payments
+  ),
+  ARRAY['10000000-0000-4000-8000-000000000001'::uuid],
+  'a browser can read only its own legacy payment rows'
+);
+
+SELECT is(
+  (
     SELECT count(*)
     FROM public.team_members
     WHERE team_id = '30000000-0000-4000-8000-000000000001'
   ),
   1::bigint,
   'team-member RLS reads complete without recursive-policy failure'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'avatars',
+      '10000000-0000-4000-8000-000000000001/security-active.png'
+    )
+  $$,
+  'an active account can write its avatar path'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '10000000-0000-4000-8000-000000000001/security-active.png'
+    )
+  $$,
+  'an active account can write its pre-team logo path'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '30000000-0000-4000-8000-000000000001/security-active.png'
+    )
+  $$,
+  'an active captain can write the owned team logo path'
 );
 
 RESET ROLE;
@@ -415,6 +495,41 @@ SELECT is_empty(
     RETURNING id
   $$,
   'a suspended session cannot mutate its own profile through RLS'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'avatars',
+      '10000000-0000-4000-8000-000000000001/security-suspended.png'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'a suspended session cannot upload a new avatar'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '30000000-0000-4000-8000-000000000001/security-suspended.png'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'a suspended captain cannot upload a new team logo'
+);
+
+SELECT is_empty(
+  $$
+    UPDATE storage.objects
+       SET metadata = jsonb_build_object('blocked', true)
+     WHERE bucket_id IN ('avatars', 'team-logos')
+       AND name LIKE '%/security-active.png'
+    RETURNING id
+  $$,
+  'a suspended session cannot replace avatar or team-logo metadata'
 );
 
 RESET ROLE;
