@@ -11,7 +11,8 @@ import LockedRegistrationBanner from '../components/LockedRegistrationBanner'
 import LockedNotice from '../components/LockedNotice'
 import { TeamShieldIcon } from '../components/icons.jsx'
 import { storageImageUrl } from '../lib/assetUrl'
-import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
+import { RASTER_IMAGE_TYPES } from '../lib/uploadPolicy'
+import { uploadCaptainLogo } from '../lib/captainLogoUpload.js'
 import { TEAM_COLOURS } from '../lib/teamColours'
 import { registrationDateOfBirth } from '../lib/dateOfBirth.js'
 import { buildCsv, downloadCsv } from '../lib/csv.js'
@@ -176,6 +177,7 @@ export default function CaptainHub() {
   const logoInputRef = useRef(null)
   const [logoUploading, setLogoUploading] = useState(false)
   const [logoError, setLogoError] = useState('')
+  const [logoRevision, setLogoRevision] = useState(null)
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
@@ -388,7 +390,6 @@ export default function CaptainHub() {
         state: has('state') ? overrides.state : (team.state ?? null),
         homeVenue: has('homeVenue') ? overrides.homeVenue : (team.home_venue ?? null),
         colour: has('colour') ? overrides.colour : team.colour,
-        logoUrl: has('logoUrl') ? overrides.logoUrl : (team.logo_url ?? null),
       }),
     })
     if (!result?.team) throw new Error('The server did not return the updated team.')
@@ -405,10 +406,9 @@ export default function CaptainHub() {
   }
 
   // ── Logo upload ──────────────────────────────────────────────────────────
-  // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
-  // team_logos_captain_team_write RLS policy (see 20260520000000 migration).
-  // We do not delete the old file when replacing; orphan cleanup is handled
-  // separately. Active document formats such as SVG are deliberately rejected.
+  // Logo bytes use a rate-limited server route. The route rechecks captaincy
+  // and event phase, writes a unique team-scoped path, commits the new URL,
+  // then removes the previous team-scoped object. SVG is rejected.
   const LOGO_ACCEPTED_TYPES = RASTER_IMAGE_TYPES
   const LOGO_MAX_BYTES = 2 * 1024 * 1024 // 2 MB
 
@@ -445,18 +445,20 @@ export default function CaptainHub() {
 
     setLogoUploading(true)
     try {
-      const ext = extensionForMime(file.type)
-      const path = `${team.id}/${Date.now()}.${ext}`
-
-      const { data: up, error: upErr } = await supabase.storage
-        .from('team-logos')
-        .upload(path, file, { upsert: false, contentType: file.type })
-      if (upErr) throw upErr
-
-      const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
-      const publicUrl = urlData.publicUrl
-
-      await persistTeamSettings({ logoUrl: publicUrl })
+      const result = await uploadCaptainLogo({
+        file,
+        eventId: event.id,
+        teamId: team.id,
+      })
+      const merged = { ...team, ...(result.team ?? {}), logo_url: result.url }
+      setTeam(merged)
+      setSettingsForm({
+        name: merged.name ?? '',
+        state: merged.state ?? '',
+        home_venue: merged.home_venue ?? '',
+        colour: merged.colour ?? '#00E6FF',
+      })
+      setLogoRevision(Date.now())
       showToast('Logo updated')
     } catch (err) {
       setLogoError(err?.message || 'Logo upload failed. Please try again.')
@@ -673,7 +675,7 @@ export default function CaptainHub() {
         <div className="flex items-start gap-5 mb-6">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-black text-base flex-shrink-0" style={{ background: team.colour ?? '#00E6FF' }}>
             {team.logo_url
-              ? <img src={storageImageUrl(team.logo_url, { width: 128 })} alt={team.name} decoding="async" className="w-full h-full object-contain rounded-xl" />
+              ? <img src={storageImageUrl(team.logo_url, { width: 128, version: logoRevision })} alt={team.name} decoding="async" className="w-full h-full object-contain rounded-xl" />
               : initials(team.name)
             }
           </div>
@@ -958,7 +960,7 @@ export default function CaptainHub() {
               >
                 {/* SAFETY: do not inline-render SVG logos — always use <img src>. */}
                 {team.logo_url
-                  ? <img src={storageImageUrl(team.logo_url, { width: 160 })} alt={`${team.name} logo`} loading="lazy" decoding="async" className="w-full h-full object-contain" />
+                  ? <img src={storageImageUrl(team.logo_url, { width: 160, version: logoRevision })} alt={`${team.name} logo`} loading="lazy" decoding="async" className="w-full h-full object-contain" />
                   : <span aria-hidden>{initials(team.name)}</span>
                 }
               </div>

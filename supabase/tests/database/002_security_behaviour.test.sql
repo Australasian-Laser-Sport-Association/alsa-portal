@@ -419,7 +419,68 @@ SELECT throws_ok(
   'a player cannot self-approve an under-18 decision even if a grant drifts'
 );
 
+INSERT INTO storage.objects (bucket_id, name)
+VALUES
+  (
+    'avatars',
+    '10000000-0000-4000-8000-000000000001/avatar.png'
+  ),
+  (
+    'team-logos',
+    '10000000-0000-4000-8000-000000000001/logo.png'
+  ),
+  (
+    'team-logos',
+    '30000000-0000-4000-8000-000000000001/logo.png'
+  ),
+  (
+    'avatars',
+    '10000000-0000-4000-8000-000000000002/security-other-owner.png'
+  ),
+  (
+    'team-logos',
+    '10000000-0000-4000-8000-000000000002/security-other-owner.png'
+  ),
+  (
+    'team-logos',
+    '30000000-0000-4000-8000-000000000002/security-unowned-team.png'
+  ),
+  (
+    'legal-documents',
+    'private/security-private.pdf'
+  );
+
+SET LOCAL ROLE anon;
+
+SELECT is_empty(
+  $$
+    SELECT id
+    FROM storage.objects
+    WHERE bucket_id IN ('avatars', 'team-logos', 'legal-documents')
+  $$,
+  'anonymous users cannot enumerate Storage object metadata'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES ('team-logos', 'anonymous/browser-write.webp')
+  $$,
+  '(permission denied for table objects|new row violates row-level security policy)',
+  'anonymous browsers cannot mutate Storage object metadata'
+);
+
+RESET ROLE;
 SET LOCAL ROLE authenticated;
+
+SELECT is_empty(
+  $$
+    SELECT id
+    FROM storage.objects
+    WHERE bucket_id IN ('avatars', 'team-logos', 'legal-documents')
+  $$,
+  'authenticated users cannot enumerate Storage object metadata'
+);
 
 SELECT is(
   (
@@ -430,47 +491,156 @@ SELECT is(
   'a browser can read only its own legacy payment rows'
 );
 
-SELECT is(
-  (
+SELECT throws_ok(
+  $$
     SELECT count(*)
     FROM public.team_members
     WHERE team_id = '30000000-0000-4000-8000-000000000001'
-  ),
-  1::bigint,
-  'team-member RLS reads complete without recursive-policy failure'
+  $$,
+  '42501',
+  'permission denied for table team_members',
+  'team-member rows are server-only after the final browser cutover'
 );
 
-SELECT lives_ok(
+SELECT throws_matching(
   $$
     INSERT INTO storage.objects (bucket_id, name)
     VALUES (
       'avatars',
-      '10000000-0000-4000-8000-000000000001/security-active.png'
+      '10000000-0000-4000-8000-000000000002/security-forged.png'
     )
   $$,
-  'an active account can write its avatar path'
+  'new row violates row-level security policy',
+  'an authenticated browser cannot upload an avatar directly'
 );
 
-SELECT lives_ok(
+SELECT throws_matching(
   $$
     INSERT INTO storage.objects (bucket_id, name)
     VALUES (
       'team-logos',
-      '10000000-0000-4000-8000-000000000001/security-active.png'
+      '10000000-0000-4000-8000-000000000002/security-forged.png'
     )
   $$,
-  'an active account can write its pre-team logo path'
+  'new row violates row-level security policy',
+  'an authenticated browser cannot upload a pre-team logo directly'
 );
 
-SELECT lives_ok(
+SELECT throws_matching(
   $$
     INSERT INTO storage.objects (bucket_id, name)
     VALUES (
       'team-logos',
-      '30000000-0000-4000-8000-000000000001/security-active.png'
+      '30000000-0000-4000-8000-000000000002/security-forged.png'
     )
   $$,
-  'an active captain can write the owned team logo path'
+  'new row violates row-level security policy',
+  'a captain cannot bypass the server-authorised team-logo route'
+);
+
+SELECT is_empty(
+  $$
+    UPDATE storage.objects
+       SET metadata = jsonb_build_object('forged', true)
+     WHERE bucket_id IN ('avatars', 'team-logos')
+       AND name IN (
+         '10000000-0000-4000-8000-000000000001/avatar.png',
+         '10000000-0000-4000-8000-000000000001/logo.png',
+         '30000000-0000-4000-8000-000000000001/logo.png',
+         '10000000-0000-4000-8000-000000000002/security-other-owner.png',
+         '30000000-0000-4000-8000-000000000002/security-unowned-team.png'
+       )
+    RETURNING id
+  $$,
+  'an authenticated browser cannot update any avatar or team-logo metadata'
+);
+
+SELECT throws_matching(
+  $$
+    DELETE FROM storage.objects
+     WHERE bucket_id IN ('avatars', 'team-logos')
+       AND name IN (
+         '10000000-0000-4000-8000-000000000001/avatar.png',
+         '10000000-0000-4000-8000-000000000001/logo.png',
+         '30000000-0000-4000-8000-000000000001/logo.png',
+         '10000000-0000-4000-8000-000000000002/security-other-owner.png',
+         '30000000-0000-4000-8000-000000000002/security-unowned-team.png'
+       )
+  $$,
+  '(Direct deletion from storage tables is not allowed|permission denied|row-level security)',
+  'an authenticated browser cannot delete any avatar or team-logo metadata'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'avatars',
+      '10000000-0000-4000-8000-000000000001/unbounded-1.png'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an authenticated browser cannot create arbitrary avatar object names'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '10000000-0000-4000-8000-000000000001/unbounded-1.png'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an authenticated browser cannot create arbitrary pre-team logo object names'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '30000000-0000-4000-8000-000000000001/nested/logo.png'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an authenticated browser cannot create nested team-logo object paths'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'avatars',
+      '10000000-0000-4000-8000-000000000001/avatar.webp'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an active account cannot write its avatar path directly'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '10000000-0000-4000-8000-000000000001/logo.webp'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an active account cannot write its pre-team logo path directly'
+);
+
+SELECT throws_matching(
+  $$
+    INSERT INTO storage.objects (bucket_id, name)
+    VALUES (
+      'team-logos',
+      '30000000-0000-4000-8000-000000000001/logo.webp'
+    )
+  $$,
+  'new row violates row-level security policy',
+  'an active captain must use the server-authorised team-logo route'
 );
 
 RESET ROLE;
@@ -502,11 +672,11 @@ SELECT throws_matching(
     INSERT INTO storage.objects (bucket_id, name)
     VALUES (
       'avatars',
-      '10000000-0000-4000-8000-000000000001/security-suspended.png'
+      '10000000-0000-4000-8000-000000000001/avatar.webp'
     )
   $$,
   'new row violates row-level security policy',
-  'a suspended session cannot upload a new avatar'
+  'a suspended session cannot upload a new avatar directly'
 );
 
 SELECT throws_matching(
@@ -514,11 +684,11 @@ SELECT throws_matching(
     INSERT INTO storage.objects (bucket_id, name)
     VALUES (
       'team-logos',
-      '30000000-0000-4000-8000-000000000001/security-suspended.png'
+      '30000000-0000-4000-8000-000000000001/logo.webp'
     )
   $$,
   'new row violates row-level security policy',
-  'a suspended captain cannot upload a new team logo'
+  'a suspended captain cannot upload a new team logo directly'
 );
 
 SELECT is_empty(
@@ -526,7 +696,11 @@ SELECT is_empty(
     UPDATE storage.objects
        SET metadata = jsonb_build_object('blocked', true)
      WHERE bucket_id IN ('avatars', 'team-logos')
-       AND name LIKE '%/security-active.png'
+       AND name IN (
+         '10000000-0000-4000-8000-000000000001/avatar.png',
+         '10000000-0000-4000-8000-000000000001/logo.png',
+         '30000000-0000-4000-8000-000000000001/logo.png'
+       )
     RETURNING id
   $$,
   'a suspended session cannot replace avatar or team-logo metadata'

@@ -7,9 +7,11 @@ import {
   brandedAssetPath,
   isAllowedContentType,
   isAllowedPublicAsset,
+  isMutableActorAssetBucket,
   normalizeQueryValue,
   sanitizeFilename,
   shouldUseImageRenderer,
+  validatedMutableAssetRevision,
   validatedRenderParams,
 } from './_lib/publicAsset.js'
 
@@ -443,6 +445,8 @@ function setAssetHeaders(res, bucket, path, contentType, upstreamHeaders, filena
     'Cache-Control',
     bucket === 'legal-documents'
       ? 'private, no-store, max-age=0'
+      : isMutableActorAssetBucket(bucket)
+        ? 'public, max-age=0, must-revalidate'
       : 'public, max-age=300, s-maxage=3600',
   )
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
@@ -462,13 +466,27 @@ function setAssetHeaders(res, bucket, path, contentType, upstreamHeaders, filena
 
 function publicAssetUrlFor(bucket, path, query) {
   const { publicUrl } = supabaseAdmin.storage.from(bucket).getPublicUrl(path).data
+  const requestedRevision = normalizeQueryValue(query?.v)
+  const hasRequestedRevision = requestedRevision != null && requestedRevision !== ''
+  const revision = isMutableActorAssetBucket(bucket) && hasRequestedRevision
+    ? validatedMutableAssetRevision(requestedRevision)
+    : null
 
-  if (!shouldUseImageRenderer(bucket, query)) return publicUrl
+  if (isMutableActorAssetBucket(bucket) && hasRequestedRevision && !revision) {
+    return null
+  }
+
+  const parsed = new URL(publicUrl)
+
+  if (!shouldUseImageRenderer(bucket, query)) {
+    if (revision) parsed.searchParams.set('v', revision)
+    return parsed.toString()
+  }
 
   const params = validatedRenderParams(query)
   if (!params) return null
+  if (revision) params.set('v', revision)
 
-  const parsed = new URL(publicUrl)
   parsed.pathname = parsed.pathname.replace(
     '/storage/v1/object/public/',
     '/storage/v1/render/image/public/',
@@ -536,10 +554,12 @@ async function handleAsset(req, res) {
   }
 
   let upstream = await fetch(upstreamUrl, fetchOptions)
-  if (!upstream.ok && shouldUseImageRenderer(bucket, req.query)) {
+  if (!upstream.ok
+      && shouldUseImageRenderer(bucket, req.query)
+      && !isMutableActorAssetBucket(bucket)) {
     // Supabase's image renderer can transiently fail even when the original
-    // public object is healthy. Preserve the branded asset URL and serve the
-    // original image rather than showing a broken banner/avatar.
+    // trusted admin asset is healthy. Preserve the branded asset URL and serve
+    // the original rather than showing a broken banner or event image.
     const fallbackUrl = publicAssetUrlFor(bucket, path, {})
     if (fallbackUrl && fallbackUrl !== upstreamUrl) {
       upstream = await fetch(fallbackUrl, fetchOptions)

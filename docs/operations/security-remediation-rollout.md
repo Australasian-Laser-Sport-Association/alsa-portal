@@ -1,6 +1,6 @@
 # Security Remediation Rollout
 
-**Status:** Local implementation and verification complete; controlled rollout not started
+**Status:** Final local verification complete; controlled rollout not started
 **Baseline commit:** `ff15a7cc589eef55b8be5f39421019262c447ba0`
 **Baseline branch:** `main`
 **Last updated:** 2026-07-15
@@ -9,13 +9,14 @@ This runbook controls the release of the July 2026 security and reliability
 remediation. It does not authorise a production change by itself. A maintainer
 must approve each production migration and deployment checkpoint separately.
 
-Local release evidence on 2026-07-15: 131 of 131 migrations replayed, 32 of
-32 remediation verifiers passed, 14 of 14 SQL behavior suites passed with 343
-assertions, 70 Vitest files passed with 474 tests passed and 1 intentionally
-skipped, native schema lint reported no errors, full application lint and
-production build passed, 18 of 18 Playwright journeys passed, and both
-dependency advisory audits reported zero vulnerabilities.
-This evidence does not replace staging or production proof.
+Final local evidence on 2026-07-15: 131 of 131 migrations replayed, 32 of 32
+remediation verifiers passed, 15 of 15 SQL behavior suites passed with 393
+assertions, 72 Vitest files passed with 495 tests passed and 1 intentionally
+skipped, fail-on-warning schema lint reported no errors, full application lint
+and production build passed, 18 of 18 Playwright journeys passed, and both the
+full and production-only dependency advisory audits reported zero
+vulnerabilities. Refresh these counts against any later commit. Local evidence
+does not replace staging or production proof.
 
 ## Evidence record
 
@@ -28,7 +29,9 @@ and must not be committed here.
 | Supabase project reference, independently verified | Pending | Pending |
 | Current migration history captured | Pending | Pending |
 | Read-only remediation inventory captured | Pending | Pending |
+| Data API exposed schemas exactly `public` | Pending | Pending |
 | Vercel deployment identifier | Pending | Pending |
+| Deployment URL protection verified | Pending | Pending |
 | Pre-change full database backup | Pending | Pending approval |
 | Off-project Storage copy verified | Pending provider configuration and manual workflow run | Pending provider configuration and manual workflow run |
 | Restore drill identifier and result | Pending | Pending |
@@ -44,13 +47,23 @@ values.
 3. Compare the linked reference with the private environment record. Stop on
    any mismatch.
 4. Capture the read-only inventory and migration list.
-5. Resolve every non-zero integrity count or record an approved remediation.
-6. Create and verify a restore-capable backup. Same-project CSV files are not a
+5. In Supabase API settings, verify the Data API exposed-schema list is exactly
+   `public`, matching `supabase/config.toml`. Stop on any additional schema.
+   The portal does not use the GraphQL API. The `066000` contract requires no
+   Storage policy to apply to `public`, `anon`, or `authenticated`; public
+   object bytes remain available only when their exact URL is known, and all
+   supported mutations use server-authorised workflows.
+6. Resolve every non-zero integrity count or record an approved remediation.
+7. Create and verify a restore-capable backup. Same-project CSV files are not a
    disaster-recovery backup.
-7. Run `npm run release:check-vercel-env` for Preview with independently
+8. Run `npm run release:check-vercel-env` for Preview with independently
    recorded staging/production refs, then repeat for Production with the refs
    reversed. Retain only the redacted reports.
-8. Confirm Upstash Redis is configured and healthy in each deployed scope.
+9. Confirm Vercel Deployment Protection is configured for Preview and
+   unaliased Production deployment URLs. After each exact URL is generated,
+   verify protection before any smoke test. An unaliased or hard-to-guess URL
+   is not access control. Retain only redacted evidence.
+10. Confirm Upstash Redis is configured and healthy in each deployed scope.
    Distributed rate limits and account-access locks fail closed without it.
 
 Never put a production service-role key in Preview or local test settings.
@@ -118,6 +131,18 @@ Remove-Item Env:FORBIDDEN_SUPABASE_PROJECT_REF
 Remove-Item Env:EXPECTED_RELEASE_COMMIT
 ```
 
+### Environment-specific deployment rule
+
+Staging rehearsals use an immutable Vercel Preview deployment from the exact
+reviewed release commit and Preview-scope environment variables. Never use
+`vercel --prod` or `vercel promote` for a staging checkpoint.
+
+Production uses a separate unaliased deployment built with Production-scope
+variables. `vercel --prod --skip-domain` prevents the public alias from moving;
+it does not enable Deployment Protection. Before exercising any intermediate
+schema, prove that Vercel Authentication or the approved equivalent protects
+the generated URL and that only authorised operators hold bypass access.
+
 ### Required maintenance and stale-client strategy
 
 The initial migrations revoke browser writes that the old bundle still uses,
@@ -156,9 +181,10 @@ from the first `010000` apply until `066000` and final smoke tests pass.
 1. Apply `legal-expand` with the phase runner.
 2. Run the matching verification SQL for every newly applied migration, ending
    with `20260713041000_add_masked_public_views_verify.sql`.
-3. From the exact reviewed release commit, run `vercel --prod --skip-domain` to
-   create a protected immutable deployment using the Production environment
-   without moving the public domain. Record that deployment URL and do not run
+3. Use the environment-specific immutable deployment method defined above. For
+   staging, use the protected Preview deployment bound to staging. For
+   Production, run `vercel --prod --skip-domain` from the exact reviewed
+   release commit, confirm protection on the generated URL, and do not run
    `vercel promote` while the public domain remains on the maintenance
    response. Verify the backup schedule remains off. At this intermediate
    schema, exercise only the controlled legal publication path. Migration
@@ -185,7 +211,8 @@ push, but it is not a substitute for saved smoke evidence.
    `20260713065500_backup_run_concurrency_guard_verify.sql`.
 3. Exercise registration, under-18, team, competition, side-event, payment,
    legal, volunteer, profile-governance, public-read, and referee-test paths
-   from the immutable production deployment while maintenance remains active.
+   from the recorded environment-specific immutable deployment. Production
+   maintenance remains active throughout this phase.
 4. Exercise all admin-content paths, including one harmless site-banner upsert
    through the deployed API. Confirm that it creates an attributed row in
    `admin_content_mutation_audit`; this is the database checkpoint for phase 3.
@@ -220,11 +247,20 @@ push, but it is not a substitute for saved smoke evidence.
    `competition-banners`. Repeat all signed-upload paths and confirm public
    branded reads still work. Do not restore the legacy Storage policies to
    accommodate a stale browser.
-5. Check Vercel and Supabase logs, then run
-   `vercel promote <verified-deployment-url>` for the exact staged Production
-   deployment. Coordinate the later merge to `main` so its automatic Vercel
-   deployment cannot replace the maintenance or verified final alias before
-   approval. Tell users to reload and reopen the recorded registration windows.
+5. Prove `anon` and `authenticated` cannot list Storage metadata or directly
+   insert, overwrite, or delete avatar and team-logo objects. Exercise the
+   server team-logo route and prove captain ownership, open-event enforcement,
+   file signature and size validation, rate limiting, safe rollback, and old
+   object cleanup. Confirm replacement is visible immediately through the
+   branded renderer. Avatar mutation remains unavailable until an equivalent
+   server route is reviewed and shipped.
+6. Check Vercel and Supabase logs. For staging, retain the Preview evidence and
+   do not promote the deployment. For Production, run
+   `vercel promote <verified-deployment-url>` for the exact protected staged
+   Production deployment. Coordinate the later merge to `main` so its
+   automatic Vercel deployment cannot replace the maintenance or verified
+   final alias before approval. Tell users to reload and reopen the recorded
+   registration windows.
 
 The three phases above are mandatory in disposable, staging, and production
 rehearsals. The maintenance window addresses the earlier mutually incompatible
@@ -313,9 +349,10 @@ The release evidence must show:
 ## Final release record
 
 Production release approval requires passing unit/API tests, lint, build,
-dependency audit, database integration tests, browser journeys, every migration
-verification script, the staging role matrix, and a documented independent
-restore drill. The approval record must also include guarded environment-check
-reports, all-eight upload finalization evidence, the verified asset-audit
-backup, and account-access saga/reconciliation evidence. Record the approving
-maintainer and timestamp in private release evidence.
+dependency audit, database integration tests, browser journeys, all 32
+remediation verification scripts, the staging role matrix, and a documented
+independent restore drill. The approval record must also include guarded environment-check
+reports, deployment-protection evidence, all-eight upload finalization
+evidence, the verified asset-audit backup, and account-access
+saga/reconciliation evidence. Record the approving maintainer and timestamp in
+private release evidence.

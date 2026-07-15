@@ -1,5 +1,6 @@
 const SUPABASE_OBJECT_PREFIX = '/storage/v1/object/public/'
 const SUPABASE_RENDER_PREFIX = '/storage/v1/render/image/public/'
+const MUTABLE_ACTOR_ASSET_BUCKETS = new Set(['avatars', 'team-logos'])
 
 export const PUBLIC_ASSET_BUCKETS = Object.freeze({
   avatars: {
@@ -159,6 +160,20 @@ export function brandedAssetUrlFromSupabase(url, params = {}) {
 export function normalizeQueryValue(value) {
   if (Array.isArray(value)) return value[0]
   return value
+}
+
+export function isMutableActorAssetBucket(bucket) {
+  return MUTABLE_ACTOR_ASSET_BUCKETS.has(bucket)
+}
+
+export function validatedMutableAssetRevision(value) {
+  const normalized = normalizeQueryValue(value)
+  if (normalized == null || normalized === '') return null
+
+  const revision = String(normalized)
+  return /^[A-Za-z0-9][A-Za-z0-9._~-]{0,63}$/.test(revision)
+    ? revision
+    : null
 }
 
 export function isAllowedContentType(bucket, contentType) {

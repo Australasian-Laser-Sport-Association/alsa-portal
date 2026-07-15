@@ -5,6 +5,15 @@ DECLARE
   v_column text;
   v_table text;
   v_minimization_view regclass := to_regclass('public.own_zltac_teams');
+  v_contract_marker constant text :=
+    'ADMIN_CONTENT_BROWSER_CONTRACT_660_APPLIED: actor-explicit, service-only committee content mutation; legacy browser grants are revoked.';
+  v_contract_applied boolean := coalesce(
+    obj_description(
+      to_regprocedure('public.admin_mutate_content(uuid,text,text,uuid,jsonb,jsonb)'),
+      'pg_proc'
+    ) = v_contract_marker,
+    false
+  );
   v_registration_safe constant text[] := ARRAY[
     'id', 'user_id', 'team_id', 'year', 'side_events', 'dinner_guests',
     'emergency_contact_name', 'emergency_contact_phone', 'status',
@@ -179,14 +188,27 @@ BEGIN
       AND tablename = 'under_18_approvals'
       AND policyname = 'under_18_approvals_select_own'
       AND cmd = 'SELECT'
-  ) OR NOT EXISTS (
+  ) THEN
+    RAISE EXCEPTION 'an own-row SELECT policy was removed by the cutover';
+  END IF;
+
+  IF v_contract_applied THEN
+    IF EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'teams'
+        AND policyname = 'teams_owner_read'
+    ) THEN
+      RAISE EXCEPTION 'retired teams base-table browser policy remains after 66000';
+    END IF;
+  ELSIF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename = 'teams'
       AND policyname = 'teams_owner_read'
       AND cmd = 'SELECT'
   ) THEN
-    RAISE EXCEPTION 'an own-row SELECT policy was removed by the cutover';
+    RAISE EXCEPTION 'teams own-row SELECT policy is missing before 66000';
   END IF;
 END;
 $$;

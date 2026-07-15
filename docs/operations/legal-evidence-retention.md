@@ -73,11 +73,13 @@ Use only synthetic accounts and evidence in these tests.
 
 ## Rollback boundary
 
-Rollback must be performed in reverse migration order: 53000 before 40000 or
-32000. The 32000 rollback refuses to run while the 53000 marker columns exist.
+Migrations 32000, 40000, and 53000 have no executable rollback. Each rollback
+file raises an exception unconditionally and exists only to document its
+security boundary. Do not attempt to reverse these migrations, even when no
+evidence has yet been anonymized. Keep them applied and use a reviewed
+roll-forward fix.
 
-The 53000 rollback refuses to run after any subject evidence or reviewer link
-has been anonymized because the original identifiers cannot be reconstructed.
-At that point, keep the migration and use a reviewed roll-forward fix. A legal
-document uploader link already cleared by account deletion is not restored by
-rollback.
+Once any subject evidence, reviewer link, or legal-document uploader link has
+been cleared, the original identifier cannot be reconstructed by a schema or
+application rollback. Follow the roll-forward-only procedure in the security
+remediation runbook.

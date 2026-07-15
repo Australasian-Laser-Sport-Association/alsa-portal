@@ -78,8 +78,17 @@ describe('admin content browser boundaries', () => {
     expect(expandMigration).not.toMatch(/REVOKE INSERT, UPDATE, DELETE ON[\s\S]*public\.cms_global/)
     expect(contractMigration).toContain('ADMIN_ASSET_CONTRACT_BLOCKED')
     expect(contractMigration).toMatch(/count\(DISTINCT purpose\)[\s\S]*<> 8/)
-    expect(contractMigration).toMatch(/REVOKE INSERT, UPDATE, DELETE ON[\s\S]*public\.cms_global[\s\S]*FROM anon, authenticated/)
-    expect(contractMigration).toMatch(/REVOKE SELECT ON[\s\S]*public\.referee_questions[\s\S]*public\.referee_test_settings[\s\S]*FROM anon, authenticated/)
+    expect(contractMigration).toMatch(
+      /REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER[\s\S]*ON ALL TABLES IN SCHEMA public[\s\S]*FROM PUBLIC, anon, authenticated/,
+    )
+    expect(contractMigration).toMatch(
+      /REVOKE SELECT ON[\s\S]*public\.referee_questions[\s\S]*public\.referee_test_settings[\s\S]*FROM PUBLIC, anon, authenticated/,
+    )
+    expect(contractMigration).toMatch(
+      /REVOKE ALL PRIVILEGES ON FUNCTION[\s\S]*public\.change_profile_alias[\s\S]*public\.recalculate_zltac_amount_owing[\s\S]*FROM PUBLIC, anon, authenticated/,
+    )
+    expect(contractMigration).toContain('ADMIN_BROWSER_POLICY_CONTRACT_BLOCKED')
+    expect(contractMigration).toContain('BROWSER_STORAGE_POLICY_CONTRACT_BLOCKED')
     for (const policy of [
       'event_logos_committee',
       'event_photos_committee',

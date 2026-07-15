@@ -8,6 +8,15 @@ DECLARE
   v_definition text;
   v_table_oid oid;
   v_retention_installed boolean;
+  v_contract_marker constant text :=
+    'ADMIN_CONTENT_BROWSER_CONTRACT_660_APPLIED: actor-explicit, service-only committee content mutation; legacy browser grants are revoked.';
+  v_contract_applied boolean := coalesce(
+    obj_description(
+      to_regprocedure('public.admin_mutate_content(uuid,text,text,uuid,jsonb,jsonb)'),
+      'pg_proc'
+    ) = v_contract_marker,
+    false
+  );
 BEGIN
   v_table_oid := to_regclass('public.zltac_event_lifecycle_audit');
   v_retention_installed := EXISTS (
@@ -29,7 +38,19 @@ BEGIN
     RAISE EXCEPTION 'zltac_event_lifecycle_audit does not have RLS enabled';
   END IF;
 
-  IF NOT EXISTS (
+  IF v_contract_applied THEN
+    IF EXISTS (
+      SELECT 1
+        FROM pg_policies
+       WHERE schemaname = 'public'
+         AND tablename = 'zltac_event_lifecycle_audit'
+         AND policyname = 'zltac_event_lifecycle_audit_committee_read'
+    ) OR has_any_column_privilege(
+      'authenticated', 'public.zltac_event_lifecycle_audit', 'SELECT'
+    ) THEN
+      RAISE EXCEPTION 'event lifecycle audit remains browser-readable after 66000';
+    END IF;
+  ELSIF NOT EXISTS (
     SELECT 1
       FROM pg_policies
      WHERE schemaname = 'public'
@@ -38,7 +59,7 @@ BEGIN
        AND cmd = 'SELECT'
        AND roles = ARRAY['authenticated']::name[]
   ) THEN
-    RAISE EXCEPTION 'committee read policy for event lifecycle audit is missing';
+    RAISE EXCEPTION 'committee read policy for event lifecycle audit is missing before 66000';
   END IF;
 
   IF has_table_privilege(
@@ -60,9 +81,12 @@ BEGIN
   END IF;
 
   IF NOT has_table_privilege(
-    'authenticated', 'public.zltac_event_lifecycle_audit', 'SELECT'
-  ) OR NOT has_table_privilege(
     'service_role', 'public.zltac_event_lifecycle_audit', 'SELECT'
+  ) OR (
+    NOT v_contract_applied
+    AND NOT has_table_privilege(
+      'authenticated', 'public.zltac_event_lifecycle_audit', 'SELECT'
+    )
   ) THEN
     RAISE EXCEPTION 'required event lifecycle audit privileges are missing';
   END IF;

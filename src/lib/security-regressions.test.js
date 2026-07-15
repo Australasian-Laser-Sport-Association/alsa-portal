@@ -41,6 +41,13 @@ describe('storage-origin isolation', () => {
     )
   })
 
+  it('adds a bounded revision when a mutable image is replaced in place', () => {
+    const url = 'https://project.supabase.co/storage/v1/object/public/team-logos/team/logo.png'
+    expect(storageImageUrl(url, { width: 128, version: 'upload-2' })).toBe(
+      '/assets/team-logos/team/logo.png?width=128&quality=75&resize=contain&format=webp&v=upload-2',
+    )
+  })
+
   it('leaves non-Supabase-storage image URLs unchanged', () => {
     const url = 'https://images.example.org/event-cover.jpg'
     expect(storageImageUrl(url, { width: 1280 })).toBe(url)
@@ -149,6 +156,12 @@ describe('client authorization boundaries', () => {
     expect(app).toContain('<Route element={<CommitteeRoute />}>')
     expect(app).toContain("<CommitteeRoute allowedRoles={['superadmin']}")
     expect(app).toContain('<ManagerRoute><ManagerCompetitionDetail /></ManagerRoute>')
+  })
+
+  it('cache-busts both team-logo renderings after an in-place replacement', async () => {
+    const captainHub = await readFile(new URL('../pages/CaptainHub.jsx', import.meta.url), 'utf8')
+    expect(captainHub).toContain('setLogoRevision(Date.now())')
+    expect(captainHub.match(/version: logoRevision/g)).toHaveLength(2)
   })
 })
 

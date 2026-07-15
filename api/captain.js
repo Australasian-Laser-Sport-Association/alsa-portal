@@ -2,10 +2,14 @@ import supabaseAdmin from './_lib/supabase.js'
 import { sendServerError } from './_lib/apiErrors.js'
 import { statusForAuthError, verifyUser } from './_lib/auth.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
-import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
+import { captainTeamErrorResponse } from './_lib/captainTeam.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
 import { isUuid } from './_lib/idValidation.js'
 import { getCaptainCurrentTeamReadiness } from './_lib/zltacReadinessData.js'
+import {
+  storeCaptainLogo,
+  teamLogoPathFromUrl,
+} from './_lib/captainLogoUpload.js'
 import {
   OpaqueProfileHandleError,
   PROFILE_HANDLE_PURPOSES,
@@ -16,7 +20,8 @@ import {
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
-const TEAM_PRESENTATION_FIELDS = new Set(['action', 'teamId', 'eventId', 'name', 'state', 'homeVenue', 'colour', 'logoUrl'])
+const TEAM_CREATE_FIELDS = new Set(['year', 'name', 'entryType', 'state', 'homeVenue', 'colour'])
+const TEAM_PRESENTATION_FIELDS = new Set(['action', 'teamId', 'eventId', 'name', 'state', 'homeVenue', 'colour'])
 
 function captainRosterScope(eventYear) {
   return `event-year:${eventYear}`
@@ -40,14 +45,13 @@ async function getOwnedCurrentTeamScope(captainId, teamId, eventId) {
     .from('zltac_events')
     .select('id, year, status')
     .eq('id', eventId)
-    .eq('status', 'open')
     .maybeSingle()
   if (eventError) throw eventError
   if (!event) return null
 
   const { data: team, error: teamError } = await supabaseAdmin
     .from('teams')
-    .select('id, captain_id, event_id, status')
+    .select('id, captain_id, event_id, status, logo_url')
     .eq('id', teamId)
     .eq('event_id', event.id)
     .eq('captain_id', captainId)
@@ -56,6 +60,19 @@ async function getOwnedCurrentTeamScope(captainId, teamId, eventId) {
   if (!team) return null
 
   return { event, team }
+}
+
+async function removeTeamLogoBestEffort(path, context) {
+  try {
+    const cleanup = await supabaseAdmin.storage
+      .from('team-logos')
+      .remove([path])
+    if (cleanup?.error) {
+      console.error(`[${context}] team-logo cleanup failed`)
+    }
+  } catch {
+    console.error(`[${context}] team-logo cleanup failed`)
+  }
 }
 
 export default async function handler(req, res) {
@@ -74,14 +91,84 @@ export default async function handler(req, res) {
 
   const { action, ...body } = req.body ?? {}
 
+  if (action === 'upload-team-logo') {
+    const { teamId, eventId } = body
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
+    }
+    if (!await enforceRateLimit(req, res, {
+      identifier: user.id,
+      limit: 5,
+      window: '1 d',
+      prefix: 'captain-logo-uploads',
+      requireDistributed: true,
+    })) return
+
+    let scope
+    try {
+      scope = await getOwnedCurrentTeamScope(user.id, teamId, eventId)
+    } catch (scopeError) {
+      return sendServerError(res, scopeError, 'captain:upload-logo-scope')
+    }
+    if (!scope) return res.status(404).json({ error: 'Current team not found' })
+    if (await denyIfLocked(res, scope.event.year)) return
+
+    const upload = await storeCaptainLogo({
+      supabase: supabaseAdmin,
+      input: body,
+      teamId,
+    })
+    if (upload.error) return res.status(400).json({ error: upload.error })
+    if (upload.serviceError) {
+      return sendServerError(res, upload.serviceError, 'captain:upload-logo-storage')
+    }
+
+    const { data, error: updateError } = await supabaseAdmin.rpc(
+      'captain_mutate_zltac_team',
+      {
+        p_actor_id: user.id,
+        p_team_id: teamId,
+        p_event_id: eventId,
+        p_action: 'settings',
+        p_changes: { logo_url: upload.data.url },
+      },
+    )
+    if (updateError) {
+      const previousPath = teamLogoPathFromUrl(scope.team.logo_url)
+      if (previousPath !== upload.data.path) {
+        await removeTeamLogoBestEffort(
+          upload.data.path,
+          'captain:upload-logo-rollback',
+        )
+      }
+      return sendCaptainMutationError(res, updateError, 'captain:upload-logo-update')
+    }
+
+    const previousPath = teamLogoPathFromUrl(scope.team.logo_url)
+    if (previousPath
+        && previousPath !== upload.data.path
+        && previousPath.startsWith(`${teamId}/`)) {
+      await removeTeamLogoBestEffort(
+        previousPath,
+        'captain:upload-logo-cleanup',
+      )
+    }
+
+    return res.json({ ...data, ...upload.data })
+  }
+
   if (action === 'create-team') {
+    const unexpected = Object.keys(body).filter(key => !TEAM_CREATE_FIELDS.has(key))
+    if (unexpected.length > 0) {
+      return res.status(400).json({ error: `Unsupported field(s): ${unexpected.join(', ')}` })
+    }
+
     const year = Number.parseInt(body.year, 10)
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const entryType = typeof body.entryType === 'string' ? body.entryType.trim() : ''
     const state = typeof body.state === 'string' ? body.state.trim() : ''
     const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
     const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
-    const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : ''
 
     if (!Number.isInteger(year)) return res.status(400).json({ error: 'year is required' })
     if (await denyIfLocked(res, year)) return
@@ -90,10 +177,6 @@ export default async function handler(req, res) {
     if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
     if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
     if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
-    if (!isAllowedTeamLogoUrl(logoUrl, process.env.VITE_SUPABASE_URL, user.id)) {
-      return res.status(400).json({ error: 'Invalid team logo URL.' })
-    }
-
     const { data, error: createErr } = await supabaseAdmin.rpc('create_zltac_captain_team', {
       p_user_id: user.id,
       p_year: year,
@@ -102,7 +185,7 @@ export default async function handler(req, res) {
       p_state: state,
       p_home_venue: homeVenue || null,
       p_colour: colour || null,
-      p_logo_url: logoUrl || null,
+      p_logo_url: null,
     })
     if (createErr) {
       return sendCaptainMutationError(res, createErr, 'captain:create-team')
@@ -125,7 +208,6 @@ export default async function handler(req, res) {
     const state = typeof body.state === 'string' ? body.state.trim() : ''
     const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
     const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
-    const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : ''
 
     if (!name || name.length > 80) {
       return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
@@ -133,17 +215,6 @@ export default async function handler(req, res) {
     if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
     if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
     if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
-    // Initial team creation happens before the team UUID is known, so that
-    // upload lives under the captain UUID. Subsequent uploads live under the
-    // team UUID. Both folders are RLS-owned by this captain/team.
-    if (!isAllowedTeamLogoUrl(
-      logoUrl,
-      process.env.VITE_SUPABASE_URL,
-      [teamId, user.id],
-    )) {
-      return res.status(400).json({ error: 'Invalid team logo URL.' })
-    }
-
     const { data, error: updateErr } = await supabaseAdmin.rpc('captain_mutate_zltac_team', {
       p_actor_id: user.id,
       p_team_id: teamId,
@@ -154,7 +225,6 @@ export default async function handler(req, res) {
         state,
         home_venue: homeVenue || null,
         colour: colour || null,
-        logo_url: logoUrl || null,
       },
     })
     if (updateErr) {
@@ -290,6 +360,14 @@ export default async function handler(req, res) {
     })
     if (disbandErr) {
       return sendCaptainMutationError(res, disbandErr, 'captain:disband-team')
+    }
+
+    const logoPath = teamLogoPathFromUrl(scope.team.logo_url)
+    if (logoPath?.startsWith(`${teamId}/`)) {
+      await removeTeamLogoBestEffort(
+        logoPath,
+        'captain:disband-team-logo-cleanup',
+      )
     }
     return res.json({ ok: true, ...data })
   }

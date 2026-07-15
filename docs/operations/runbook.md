@@ -256,7 +256,7 @@ that duration and alert on backup runs that approach it.
 
 ### "Users are getting 42501 / permission denied errors"
 
-This is a database permissions issue. See the debugging table in the [Data Access Matrix](../security/data-access-matrix.md). The usual causes are a missing GRANT on a new table, or an RLS policy that references a column that has changed.
+This is a database permissions issue. See the debugging table in the [Data Access Matrix](../security/data-access-matrix.md). The usual causes are a missing reviewed GRANT on a new table, a column allow-list mismatch, or an RLS policy that references a column that has changed. Do not add a GRANT from the matrix alone: compare the linked migration, live catalog, and matching verifier, then stop the rollout if they disagree.
 
 ### "Auth emails aren't arriving"
 
@@ -286,13 +286,30 @@ remain in non-production monitoring and must not trigger Production alerting.
 
 ## Making schema changes
 
-1. Create a new migration file in `supabase/migrations/` with a timestamp prefix
-2. Write the SQL — remember to include both RLS policies and GRANT statements (see [ADR-0002](../adr/0002-rls-plus-grant-security-model.md))
-3. Test locally if possible
-4. Apply to production using the Supabase CLI (`supabase db push`) or via the SQL editor in the Supabase dashboard
-5. Commit the migration file to the repo in the same PR as the code change that needs it
+1. Run `supabase migration new <descriptive-name>` to create the timestamped
+   migration file under `supabase/migrations/`.
+2. Write the SQL, including explicit RLS policies and least-privilege GRANTs
+   where browser access is required. Add or update the matching verifier and
+   behavior tests (see [ADR-0002](../adr/0002-rls-plus-grant-security-model.md)).
+3. Replay and test the migration on a disposable local database.
+4. Commit the migration, verifier, tests, and dependent code in one pull
+   request. Obtain the required review and passing CI before any production
+   apply.
+5. Apply the reviewed commit to staging, run its verifier and relevant smoke
+   tests, and stop on any catalog or behavior mismatch.
+6. Before production, independently verify the linked project and migration
+   history, take a current restore-capable backup appropriate to the change,
+   and obtain explicit maintainer approval for the exact operation.
+7. Apply the migration to production using the Supabase CLI (`supabase db
+   push`) or the Supabase SQL Editor, then run the same verifier. Apply schema
+   changes before deploying code that depends on them.
+8. Deploy the dependent code through the approved release path and complete
+   production-safe smoke checks.
 
-Never change the schema through the Supabase dashboard without also committing a migration file. The repo is the source of truth; undocumented schema changes will eventually cause a merge or environment drift problem.
+Never apply an uncommitted or unreviewed migration to production. Never change
+the schema through the Supabase dashboard without a committed migration file.
+The repository is the source of truth; undocumented schema changes create
+environment drift and an unrecoverable review gap.
 
 ### Reconciling SQL Editor migrations
 
@@ -304,7 +321,8 @@ If a production migration is applied through the Supabase SQL Editor instead of 
    `supabase migration repair <version> --status applied --linked`
 3. Verify the local and remote columns now both show the migration version:
    `supabase migration list --linked`
-4. Keep the migration file committed in the same PR as the code that depends on it.
+4. Confirm the applied migration is the exact file already committed in the
+   approved pull request or release commit.
 
 Do this before deploying any API or frontend code that depends on the new schema.
 

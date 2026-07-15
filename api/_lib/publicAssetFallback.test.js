@@ -109,4 +109,114 @@ describe('public asset proxy renderer fallback', () => {
     expect(response.headers['content-range']).toBe('bytes 100-199/1000')
     expect(response.headers['accept-ranges']).toBe('bytes')
   })
+
+  it('does not edge-cache mutable actor-owned logos', async () => {
+    const request = req()
+    request.query = {
+      resource: 'asset',
+      bucket: 'team-logos',
+      path: 'team-id/logo.png',
+    }
+    getPublicUrl.mockReturnValue({
+      data: {
+        publicUrl: 'https://project.supabase.co/storage/v1/object/public/team-logos/team-id/logo.png',
+      },
+    })
+    const fetch = vi.fn().mockResolvedValue(new Response('team-logo', {
+      status: 200,
+      headers: { 'content-type': 'image/png' },
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const response = res()
+    await handler(request, response)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['Cache-Control']).toBe(
+      'public, max-age=0, must-revalidate',
+    )
+  })
+
+  it('propagates a validated mutable-asset revision to the upstream renderer', async () => {
+    const request = req()
+    request.query = {
+      resource: 'asset',
+      bucket: 'team-logos',
+      path: 'team-id/upload-id.png',
+      width: '160',
+      format: 'webp',
+      v: '1721048400000',
+    }
+    getPublicUrl.mockReturnValue({
+      data: {
+        publicUrl: 'https://project.supabase.co/storage/v1/object/public/team-logos/team-id/upload-id.png',
+      },
+    })
+    const fetch = vi.fn().mockResolvedValue(new Response('team-logo', {
+      status: 200,
+      headers: { 'content-type': 'image/webp' },
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const response = res()
+    await handler(request, response)
+
+    expect(response.statusCode).toBe(200)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][0]).toContain(
+      '/storage/v1/render/image/public/team-logos/team-id/upload-id.png',
+    )
+    expect(fetch.mock.calls[0][0]).toContain('v=1721048400000')
+  })
+
+  it('rejects an invalid mutable revision before contacting Storage', async () => {
+    const request = req()
+    request.query = {
+      resource: 'asset',
+      bucket: 'avatars',
+      path: 'user-id/avatar.png',
+      width: '128',
+      v: 'unbounded revision',
+    }
+    getPublicUrl.mockReturnValue({
+      data: {
+        publicUrl: 'https://project.supabase.co/storage/v1/object/public/avatars/user-id/avatar.png',
+      },
+    })
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+
+    const response = res()
+    await handler(request, response)
+
+    expect(response.statusCode).toBe(404)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not expose the raw actor upload when image rendering fails', async () => {
+    const request = req()
+    request.query = {
+      resource: 'asset',
+      bucket: 'team-logos',
+      path: 'team-id/upload-id.png',
+      width: '160',
+      v: '1721048400000',
+    }
+    getPublicUrl.mockReturnValue({
+      data: {
+        publicUrl: 'https://project.supabase.co/storage/v1/object/public/team-logos/team-id/upload-id.png',
+      },
+    })
+    const fetch = vi.fn().mockResolvedValue(new Response('renderer rejected image', {
+      status: 502,
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const response = res()
+    await handler(request, response)
+
+    expect(response.statusCode).toBe(502)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch.mock.calls[0][0]).toContain('/storage/v1/render/image/public/')
+  })
 })

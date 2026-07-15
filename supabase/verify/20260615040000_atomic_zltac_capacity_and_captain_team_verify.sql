@@ -5,19 +5,51 @@ DECLARE
   v_trigger_count integer;
   v_insert_order text[];
   v_update_order text[];
+  v_contract_marker constant text :=
+    'ADMIN_CONTENT_BROWSER_CONTRACT_660_APPLIED: actor-explicit, service-only committee content mutation; legacy browser grants are revoked.';
+  v_contract_applied boolean := coalesce(
+    obj_description(
+      to_regprocedure('public.admin_mutate_content(uuid,text,text,uuid,jsonb,jsonb)'),
+      'pg_proc'
+    ) = v_contract_marker,
+    false
+  );
+  v_captain_function regprocedure := coalesce(
+    to_regprocedure(
+      'public.create_zltac_captain_team(uuid,integer,text,text,text,text,text,text)'
+    ),
+    to_regprocedure(
+      'public.create_zltac_captain_team(uuid,integer,text,text,text,text,text)'
+    )
+  );
 BEGIN
+  IF v_captain_function IS NULL THEN
+    RAISE EXCEPTION 'create_zltac_captain_team is missing';
+  END IF;
   IF has_function_privilege(
-    'authenticated',
-    'public.create_zltac_captain_team(uuid, integer, text, text, text, text, text)',
-    'EXECUTE'
+    'authenticated', v_captain_function, 'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'authenticated can execute create_zltac_captain_team directly';
+  END IF;
+  IF NOT has_function_privilege(
+    'service_role', v_captain_function, 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'service_role cannot execute create_zltac_captain_team';
   END IF;
   IF has_function_privilege('authenticated', 'public.add_zltac_team_player(uuid, uuid, uuid, integer)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.disband_zltac_team(uuid, uuid, integer)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.remove_zltac_team_player(uuid, uuid, uuid, integer)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.recalculate_zltac_amount_owing(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated can execute a service-only ZLTAC workflow';
+  END IF;
+  IF v_contract_applied AND (
+    has_function_privilege('anon', v_captain_function, 'EXECUTE')
+    OR has_function_privilege('anon', 'public.add_zltac_team_player(uuid, uuid, uuid, integer)', 'EXECUTE')
+    OR has_function_privilege('anon', 'public.disband_zltac_team(uuid, uuid, integer)', 'EXECUTE')
+    OR has_function_privilege('anon', 'public.remove_zltac_team_player(uuid, uuid, uuid, integer)', 'EXECUTE')
+    OR has_function_privilege('anon', 'public.recalculate_zltac_amount_owing(uuid)', 'EXECUTE')
+  ) THEN
+    RAISE EXCEPTION 'anon can execute a service-only ZLTAC workflow after 66000';
   END IF;
 
   SELECT count(*) INTO v_trigger_count

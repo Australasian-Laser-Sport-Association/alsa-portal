@@ -117,6 +117,7 @@ export function storageImageUrl(url, {
   quality = 75,
   resize = 'contain',
   format = 'webp',
+  version,
 } = {}) {
   if (!url) return url
 
@@ -129,6 +130,7 @@ export function storageImageUrl(url, {
     quality,
     resize,
     format,
+    v: version,
   })
 }
 
