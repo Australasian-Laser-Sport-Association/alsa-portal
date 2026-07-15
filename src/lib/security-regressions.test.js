@@ -107,7 +107,9 @@ describe('deployment security configuration', () => {
     const jobEnvironment = workflow.match(
       /timeout-minutes: 60\n {4}env:\n([\s\S]*?)\n\n {4}steps:/,
     )?.[1]
-    expect(workflow).toContain("vars.DR_BACKUPS_ENABLED == 'true' && github.ref == 'refs/heads/main'")
+    expect(workflow).toMatch(
+      /github\.ref == 'refs\/heads\/main' &&\s+\(\s+github\.event_name == 'workflow_dispatch' \|\|\s+vars\.DR_BACKUPS_ENABLED == 'true'\s+\)/,
+    )
     expect(workflow).toContain('name: disaster-recovery')
     expect(workflow).toContain('runs-on: ubuntu-24.04')
     expect(workflow).toContain('permissions: {}')
