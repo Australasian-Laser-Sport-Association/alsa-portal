@@ -9,11 +9,11 @@ This runbook controls the release of the July 2026 security and reliability
 remediation. It does not authorise a production change by itself. A maintainer
 must approve each production migration and deployment checkpoint separately.
 
-Local release evidence on 2026-07-15: 130 of 130 migrations replayed, 31 of
-31 remediation verifiers passed, 14 of 14 SQL behavior suites passed with 331
-assertions, 70 Vitest files passed with 465 tests passed and 1 intentionally
+Local release evidence on 2026-07-15: 131 of 131 migrations replayed, 32 of
+32 remediation verifiers passed, 14 of 14 SQL behavior suites passed with 343
+assertions, 70 Vitest files passed with 474 tests passed and 1 intentionally
 skipped, native schema lint reported no errors, full application lint and
-production build passed, 17 of 17 Playwright journeys passed, and both
+production build passed, 18 of 18 Playwright journeys passed, and both
 dependency advisory audits reported zero vulnerabilities.
 This evidence does not replace staging or production proof.
 
@@ -55,9 +55,25 @@ values.
 
 Never put a production service-role key in Preview or local test settings.
 
+### Bootstrap disaster recovery before the broad release
+
+The off-project backup workflow is a prerequisite for production phase 1, but
+GitHub can dispatch it only after the workflow exists on the default branch and
+the job itself accepts only `main`. If the workflow is not already on `main`,
+land `.github/workflows/disaster-recovery-backup.yml` by itself in a small
+preliminary pull request. Do not merge this broad schema-dependent release
+branch merely to unlock the backup: the normal Git integration would also
+auto-deploy the new application against the old database.
+
+After the workflow-only change is on `main`, configure the protected
+`disaster-recovery` environment, run the manual backup, verify its downloaded
+hashes, and complete the documented restore drill. Leave
+`DR_BACKUPS_ENABLED` false until that drill passes; manual dispatch is the
+bootstrap path and the flag enables only the unattended schedule.
+
 ## Dependency-ordered checkpoints
 
-Do not run an unrestricted `supabase db push` while all 31 remediation files
+Do not run an unrestricted `supabase db push` while all 32 remediation files
 are pending. It has no "stop at version" option and would collapse mandatory
 application and publication checkpoints.
 
@@ -140,11 +156,13 @@ from the first `010000` apply until `066000` and final smoke tests pass.
 1. Apply `legal-expand` with the phase runner.
 2. Run the matching verification SQL for every newly applied migration, ending
    with `20260713041000_add_masked_public_views_verify.sql`.
-3. Deploy the reviewed final application build to a protected immutable URL
-   using the production environment while the public domain remains on the
-   maintenance response. Verify the URL is not publicly promoted and that the
-   backup schedule remains off. At this intermediate schema, exercise only the
-   controlled legal publication path. Migration `012000` supplies the
+3. From the exact reviewed release commit, run `vercel --prod --skip-domain` to
+   create a protected immutable deployment using the Production environment
+   without moving the public domain. Record that deployment URL and do not run
+   `vercel promote` while the public domain remains on the maintenance
+   response. Verify the backup schedule remains off. At this intermediate
+   schema, exercise only the controlled legal publication path. Migration
+   `012000` supplies the
    access-revocation column read by server authorisation and guards it against
    browser writes. Migration `040000` supplies both publication and
    response-reconciliation functions. Do not deliberately exercise any other
@@ -202,9 +220,11 @@ push, but it is not a substitute for saved smoke evidence.
    `competition-banners`. Repeat all signed-upload paths and confirm public
    branded reads still work. Do not restore the legacy Storage policies to
    accommodate a stale browser.
-5. Check Vercel and Supabase logs, restore the production domain to the final
-   deployment, tell users to reload, and reopen the recorded registration
-   windows.
+5. Check Vercel and Supabase logs, then run
+   `vercel promote <verified-deployment-url>` for the exact staged Production
+   deployment. Coordinate the later merge to `main` so its automatic Vercel
+   deployment cannot replace the maintenance or verified final alias before
+   approval. Tell users to reload and reopen the recorded registration windows.
 
 The three phases above are mandatory in disposable, staging, and production
 rehearsals. The maintenance window addresses the earlier mutually incompatible
@@ -223,7 +243,7 @@ For every migration:
    is an executable production reversal.
 6. Obtain explicit approval before applying the same checkpoint to production.
 
-All 31 `20260713` migrations have a strict roll-forward-only security boundary.
+All 32 `20260713` migrations have a strict roll-forward-only security boundary.
 Migration `20260713053000_preserve_anonymized_legal_evidence.sql` additionally
 crosses an irreversible data-retention boundary. Read
 `docs/operations/legal-evidence-retention.md` before applying it. Once evidence

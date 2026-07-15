@@ -55,14 +55,20 @@ decryption and restoration.
 The job reads its secrets from the protected GitHub Environment named
 `disaster-recovery`. Restrict that environment to the protected `main` branch;
 the workflow also refuses to run from any other ref.
-It remains disabled until the repository variable `DR_BACKUPS_ENABLED` is
-explicitly set to `true`; GitHub evaluates this job-level condition before
-environment-level variables are available. Keep the non-sensitive optional
-`DR_DEST_PREFIX` at repository level for the same reason. This prevents an
-unconfigured scheduled workflow from pretending that disaster recovery exists.
+Scheduled runs remain disabled until the repository variable
+`DR_BACKUPS_ENABLED` is explicitly set to `true`. A maintainer-triggered
+`workflow_dispatch` intentionally bypasses that flag so the first backup and
+restore drill can bootstrap the schedule. GitHub evaluates the job-level
+condition before environment-level variables are available, so keep
+`DR_BACKUPS_ENABLED` and the non-sensitive optional `DR_DEST_PREFIX` at
+repository level. Do not enable the schedule until the manual backup and
+restore drill has passed. This prevents an unconfigured scheduled workflow from
+pretending that disaster recovery exists.
 Do not add a required-review wait that unattended scheduled runs cannot
-satisfy. The workflow injects each credential only into its configuration check
-and the one operational step that needs it; keep future steps equally narrow.
+satisfy. Protect the workflow itself with the branch rule requiring at least
+one independent approving pull-request review, without a bypass actor. The
+workflow injects each credential only into its configuration check and the one
+operational step that needs it; keep future steps equally narrow.
 
 Configure `DR_SOURCE_S3_REGION` to the Supabase project's region and
 `DR_DEST_S3_REGION` to the independent provider's signing region. These are

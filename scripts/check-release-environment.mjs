@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHmac } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
 const VALID_TARGETS = new Set(['production', 'preview'])
@@ -15,6 +16,18 @@ const REQUIRED_VARIABLES = [
   'UPSTASH_REDIS_REST_URL',
   'UPSTASH_REDIS_REST_TOKEN',
 ]
+
+export const CROSS_SCOPE_ISOLATION_VARIABLES = Object.freeze([
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'RESEND_API_KEY',
+  'CRON_SECRET',
+  'VITE_SENTRY_DSN',
+  'SENTRY_DSN',
+])
+
+export const ISOLATION_FINGERPRINT_PREFIX = 'ALSA_ISOLATION_FINGERPRINTS '
 
 // The guarded Vercel runner removes every value this checker can consume from
 // its parent process before the CLI injects the selected remote scope. Keep the
@@ -32,6 +45,25 @@ export const CHECKED_RELEASE_VARIABLES = Object.freeze([
 
 function normalized(value) {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+export function isolationFingerprints(environment, fingerprintKey) {
+  if (typeof fingerprintKey !== 'string' || fingerprintKey.length < 32) {
+    throw new Error('A sufficiently long internal isolation fingerprint key is required.')
+  }
+
+  return Object.fromEntries(CROSS_SCOPE_ISOLATION_VARIABLES.map(name => {
+    const value = normalized(environment[name])
+    if (!value) return [name, null]
+    return [name, createHmac('sha256', fingerprintKey).update(value).digest('base64url')]
+  }))
+}
+
+export function formatIsolationFingerprintPayload(environment, fingerprintKey) {
+  return `${ISOLATION_FINGERPRINT_PREFIX}${JSON.stringify({
+    version: 1,
+    fingerprints: isolationFingerprints(environment, fingerprintKey),
+  })}`
 }
 
 function isPlaceholder(value) {
@@ -359,6 +391,19 @@ function takeOptionValue(argv, index, option) {
 export function parseArguments(argv) {
   const options = { forbiddenSupabaseProjectRefs: [] }
   for (let index = 0; index < argv.length;) {
+    if (argv[index] === '--emit-isolation-fingerprints') {
+      options.emitIsolationFingerprints = true
+      index += 1
+      continue
+    }
+
+    const fingerprintKey = takeOptionValue(argv, index, '--fingerprint-key')
+    if (fingerprintKey) {
+      options.fingerprintKey = fingerprintKey.value
+      index += fingerprintKey.consumed
+      continue
+    }
+
     const target = takeOptionValue(argv, index, '--target')
     if (target) {
       options.target = target.value
@@ -410,7 +455,16 @@ export function runCli({
   error = message => console.error(message),
 } = {}) {
   try {
-    const options = optionsWithEnvironmentFallbacks(parseArguments(argv), environment)
+    const parsed = parseArguments(argv)
+    if (parsed.emitIsolationFingerprints) {
+      log(formatIsolationFingerprintPayload(environment, parsed.fingerprintKey))
+      return 0
+    }
+    if (parsed.fingerprintKey) {
+      throw new Error('--fingerprint-key is only valid with --emit-isolation-fingerprints.')
+    }
+
+    const options = optionsWithEnvironmentFallbacks(parsed, environment)
     const result = validateReleaseEnvironment(environment, options)
     log(formatReleaseEnvironmentReport(result))
     return result.passed ? 0 : 1

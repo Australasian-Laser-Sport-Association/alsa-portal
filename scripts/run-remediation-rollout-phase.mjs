@@ -29,16 +29,19 @@ export const EXPECTED_RELEASE_COMMIT_ENV = 'EXPECTED_RELEASE_COMMIT'
 export const REMEDIATION_ROLLOUT_PHASES = Object.freeze([
   Object.freeze({
     id: 'legal-expand',
+    predecessor: '20260703010000',
     endpoint: '20260713041000',
     description: 'Security/API foundations plus legal publication and masked-view expansion.',
   }),
   Object.freeze({
     id: 'application-cutover',
+    predecessor: '20260713041000',
     endpoint: '20260713065500',
     description: 'Legal storage, application, admin-content expansion, and backup lease cutover, stopping before browser contraction.',
   }),
   Object.freeze({
     id: 'admin-content-contract',
+    predecessor: '20260713065500',
     endpoint: '20260713066000',
     description: 'Final admin-content browser privilege contraction after audited smoke proof.',
   }),
@@ -76,6 +79,85 @@ export function migrationNamesThroughPhase(
     )
   }
   return names
+}
+
+function repositoryMigrationVersions(migrationDirectory = MIGRATION_ROOT) {
+  const versions = readdirSync(migrationDirectory, { withFileTypes: true })
+    .filter(entry => entry.isFile() && migrationVersion(entry.name))
+    .map(entry => migrationVersion(entry.name))
+    .sort()
+
+  const duplicate = versions.find((version, index) => version === versions[index - 1])
+  if (duplicate) {
+    throw new Error(`Repository migration version ${duplicate} is duplicated.`)
+  }
+  return versions
+}
+
+export function parseLinkedMigrationHistory(output) {
+  if (typeof output !== 'string') {
+    throw new Error('Unable to read linked remote migration history.')
+  }
+
+  const versions = output
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .split(/\r?\n/)
+    .map(line => line.split('|').map(column => column.trim()))
+    .filter(columns => columns.length >= 2 && /^[0-9]{14}$/.test(columns[1]))
+    .map(columns => columns[1])
+
+  if (versions.length === 0) {
+    throw new Error('Linked remote migration history is empty or could not be parsed.')
+  }
+  return versions
+}
+
+export function validateLinkedMigrationHistory({
+  phaseId,
+  remoteVersions,
+  migrationDirectory = MIGRATION_ROOT,
+}) {
+  const phase = remediationRolloutPhase(phaseId)
+  if (!Array.isArray(remoteVersions)
+      || remoteVersions.length === 0
+      || remoteVersions.some(version => !/^[0-9]{14}$/.test(version))) {
+    throw new Error('Linked remote migration history is empty or invalid.')
+  }
+
+  const repositoryVersions = repositoryMigrationVersions(migrationDirectory)
+  for (const boundary of [phase.predecessor, phase.endpoint]) {
+    if (!repositoryVersions.includes(boundary)) {
+      throw new Error(`Phase ${phase.id} boundary ${boundary} is missing from repository migrations.`)
+    }
+  }
+
+  const remoteTip = remoteVersions.at(-1)
+  if (remoteTip !== phase.predecessor && remoteTip !== phase.endpoint) {
+    throw new Error(
+      `Phase ${phase.id} requires linked remote history to end exactly at predecessor ${phase.predecessor} or endpoint ${phase.endpoint}; found ${remoteTip}.`,
+    )
+  }
+
+  const expectedPrefix = repositoryVersions.filter(version => version <= remoteTip)
+  const mismatchIndex = Math.max(expectedPrefix.length, remoteVersions.length) === 0
+    ? -1
+    : Array.from(
+        { length: Math.max(expectedPrefix.length, remoteVersions.length) },
+        (_, index) => index,
+      ).find(index => expectedPrefix[index] !== remoteVersions[index])
+
+  if (mismatchIndex !== undefined && mismatchIndex !== -1) {
+    const expected = expectedPrefix[mismatchIndex] ?? 'no additional migration'
+    const found = remoteVersions[mismatchIndex] ?? 'missing'
+    throw new Error(
+      `Linked remote migration history is not the contiguous repository prefix at ${remoteTip}: expected ${expected}, found ${found}.`,
+    )
+  }
+
+  return {
+    remoteTip,
+    idempotentVerification: remoteTip === phase.endpoint,
+  }
 }
 
 export function rolloutConfirmation(environment, phaseId) {
@@ -252,6 +334,30 @@ function runSupabase(args, spawn = spawnSync, environment = process.env) {
   }
 }
 
+function linkedMigrationHistory(spawn = spawnSync, environment = process.env) {
+  const childEnvironment = { ...environment }
+  delete childEnvironment[EXPECTED_PROJECT_REF_ENV]
+  delete childEnvironment[FORBIDDEN_PROJECT_REF_ENV]
+  delete childEnvironment[EXPECTED_RELEASE_COMMIT_ENV]
+  const result = spawn('supabase', ['migration', 'list', '--linked'], {
+    cwd: REPO_ROOT,
+    env: childEnvironment,
+    shell: false,
+    encoding: 'utf8',
+    windowsHide: true,
+  })
+  if (result.error) {
+    if (result.error.code === 'ENOENT') {
+      throw new Error('Supabase CLI was not found.')
+    }
+    throw new Error('Unable to start the Supabase CLI.')
+  }
+  if (result.status !== 0) {
+    throw new Error('Unable to verify linked remote migration history.')
+  }
+  return parseLinkedMigrationHistory(String(result.stdout ?? ''))
+}
+
 function printPhaseList(log = console.log) {
   for (const phase of REMEDIATION_ROLLOUT_PHASES) {
     log(`${phase.id} -> ${phase.endpoint}: ${phase.description}`)
@@ -297,6 +403,16 @@ export function runRemediationRolloutPhase({
     }
     assertReviewedRelease(environment, spawn)
   }
+
+  const history = validateLinkedMigrationHistory({
+    phaseId: phase.id,
+    remoteVersions: linkedMigrationHistory(spawn, environment),
+  })
+  log(
+    history.idempotentVerification
+      ? `Linked migration history is already at ${history.remoteTip}; running idempotent verification only.`
+      : `Linked migration history is at required predecessor ${history.remoteTip}.`,
+  )
 
   let phaseRoot
   try {

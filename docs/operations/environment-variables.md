@@ -79,11 +79,16 @@ proof in the runbook.
 
 The DR secrets below belong in the protected GitHub Environment named
 `disaster-recovery`, not Vercel, repository-level secrets, or `.env.local`.
-Restrict that environment to the protected `main` branch and require the
-maintainer review appropriate for recovery credentials. `DR_BACKUPS_ENABLED`
-and `DR_DEST_PREFIX` remain repository variables because job-level conditions
-are evaluated before GitHub makes environment values available. These settings
-configure the disabled-by-default `disaster-recovery-backup.yml` workflow.
+Restrict that environment to the protected `main` branch. Do not add a
+per-run deployment approval that unattended scheduled backups cannot satisfy;
+instead require at least one independent approving pull-request review before
+any change can reach `main`, including changes to the backup workflow, and
+restrict environment and secret administration to maintainers with
+multi-factor authentication. Do not add a bypass actor to that branch rule.
+`DR_BACKUPS_ENABLED` and `DR_DEST_PREFIX` remain repository variables because
+job-level conditions are evaluated before GitHub makes environment values
+available. These settings configure the disabled-by-default
+`disaster-recovery-backup.yml` workflow.
 
 | Name | Kind | Purpose |
 |---|---|---|

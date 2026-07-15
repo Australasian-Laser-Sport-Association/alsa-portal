@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 
+import { randomBytes } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { CHECKED_RELEASE_VARIABLES } from './check-release-environment.mjs'
+import {
+  CHECKED_RELEASE_VARIABLES,
+  CROSS_SCOPE_ISOLATION_VARIABLES,
+  ISOLATION_FINGERPRINT_PREFIX,
+} from './check-release-environment.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/
 const BRANCH_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
+const SENTRY_VARIABLES = Object.freeze(['VITE_SENTRY_DSN', 'SENTRY_DSN'])
+const DIRECT_ISOLATION_VARIABLES = Object.freeze(
+  CROSS_SCOPE_ISOLATION_VARIABLES.filter(name => !SENTRY_VARIABLES.includes(name)),
+)
 
 function takeOptionValue(argv, index, option) {
   const argument = argv[index]
@@ -75,6 +84,56 @@ export function vercelProcessInvocation(vercelArguments, {
   return { command: 'vercel', arguments: vercelArguments }
 }
 
+function vercelEnvironmentArguments(target, gitBranch, childArguments) {
+  const argumentsList = ['env', 'run', '-e', target]
+  if (target === 'preview' && gitBranch) {
+    argumentsList.push('--git-branch', gitBranch)
+  }
+  argumentsList.push('--', ...childArguments)
+  return argumentsList
+}
+
+export function parseIsolationFingerprintOutput(output) {
+  const line = String(output ?? '')
+    .split(/\r?\n/)
+    .find(candidate => candidate.startsWith(ISOLATION_FINGERPRINT_PREFIX))
+  if (!line) throw new Error('The guarded Vercel environment isolation check returned no fingerprint evidence.')
+
+  let payload
+  try {
+    payload = JSON.parse(line.slice(ISOLATION_FINGERPRINT_PREFIX.length))
+  } catch {
+    throw new Error('The guarded Vercel environment isolation check returned invalid fingerprint evidence.')
+  }
+  const fingerprints = payload?.version === 1 ? payload.fingerprints : null
+  if (!fingerprints || typeof fingerprints !== 'object' || Array.isArray(fingerprints)) {
+    throw new Error('The guarded Vercel environment isolation check returned invalid fingerprint evidence.')
+  }
+  for (const name of CROSS_SCOPE_ISOLATION_VARIABLES) {
+    const value = fingerprints[name]
+    if (value !== null && (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value))) {
+      throw new Error('The guarded Vercel environment isolation check returned invalid fingerprint evidence.')
+    }
+  }
+  return fingerprints
+}
+
+export function identicalCrossScopeVariables(targetFingerprints, comparisonFingerprints) {
+  const identical = DIRECT_ISOLATION_VARIABLES.filter(name => (
+    typeof targetFingerprints?.[name] === 'string'
+      && targetFingerprints[name] === comparisonFingerprints?.[name]
+  ))
+
+  const sentryShared = SENTRY_VARIABLES.some(targetName => (
+    typeof targetFingerprints?.[targetName] === 'string'
+      && SENTRY_VARIABLES.some(comparisonName => (
+        targetFingerprints[targetName] === comparisonFingerprints?.[comparisonName]
+      ))
+  ))
+  if (sentryShared) identical.push('VITE_SENTRY_DSN/SENTRY_DSN')
+  return identical
+}
+
 function validatedOptions(options) {
   if (!['production', 'preview'].includes(options.target)) {
     throw new Error('Target must be production or preview.')
@@ -131,6 +190,7 @@ export function runGuardedVercelEnvironmentCheck({
   linkedProject = hasLinkedVercelProject(),
   spawn = spawnSync,
   platform = process.platform,
+  fingerprintKey = randomBytes(32).toString('base64url'),
 } = {}) {
   const options = validatedOptions(parseVercelReleaseArguments(argv))
   if (dotenvOverrides.length > 0) {
@@ -142,22 +202,18 @@ export function runGuardedVercelEnvironmentCheck({
     throw new Error('This checkout is not linked to a Vercel project. Link and independently verify the intended project first.')
   }
 
-  const vercelArguments = ['env', 'run', '-e', options.target]
-  if (options.target === 'preview') {
-    vercelArguments.push('--git-branch', options.gitBranch)
-  }
-  vercelArguments.push(
-    '--',
+  const vercelArguments = vercelEnvironmentArguments(options.target, options.gitBranch, [
     'node',
     'scripts/check-release-environment.mjs',
     '--target',
     options.target,
-  )
+  ])
 
   const invocation = vercelProcessInvocation(vercelArguments, { platform, environment })
+  const childEnvironment = sanitizedVercelParentEnvironment(environment, options)
   const result = spawn(invocation.command, invocation.arguments, {
     cwd: REPO_ROOT,
-    env: sanitizedVercelParentEnvironment(environment, options),
+    env: childEnvironment,
     shell: false,
     stdio: 'inherit',
     windowsHide: true,
@@ -170,6 +226,46 @@ export function runGuardedVercelEnvironmentCheck({
   }
   if (result.status !== 0) {
     throw new Error('The guarded Vercel environment check failed.')
+  }
+
+  const fingerprintChildArguments = [
+    'node',
+    'scripts/check-release-environment.mjs',
+    '--emit-isolation-fingerprints',
+    '--fingerprint-key',
+    fingerprintKey,
+  ]
+  const comparisonTarget = options.target === 'production' ? 'preview' : 'production'
+  const fingerprintScopes = [
+    { target: options.target, gitBranch: options.gitBranch },
+    { target: comparisonTarget, gitBranch: '' },
+  ]
+  const fingerprints = fingerprintScopes.map(scope => {
+    const argumentsList = vercelEnvironmentArguments(
+      scope.target,
+      scope.gitBranch,
+      fingerprintChildArguments,
+    )
+    const fingerprintInvocation = vercelProcessInvocation(argumentsList, { platform, environment })
+    const fingerprintResult = spawn(fingerprintInvocation.command, fingerprintInvocation.arguments, {
+      cwd: REPO_ROOT,
+      env: childEnvironment,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      windowsHide: true,
+    })
+    if (fingerprintResult.error || fingerprintResult.status !== 0) {
+      throw new Error('The guarded Vercel environment isolation check failed.')
+    }
+    return parseIsolationFingerprintOutput(fingerprintResult.stdout)
+  })
+
+  const identical = identicalCrossScopeVariables(fingerprints[0], fingerprints[1])
+  if (identical.length > 0) {
+    throw new Error(
+      `Preview and Production provider values must be isolated. Identical values detected for: ${identical.join(', ')}.`,
+    )
   }
   return { target: options.target, checked: true }
 }

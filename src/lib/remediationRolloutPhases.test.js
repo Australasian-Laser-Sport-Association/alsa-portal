@@ -8,18 +8,31 @@ import {
   FORBIDDEN_PROJECT_REF_ENV,
   REMEDIATION_ROLLOUT_PHASES,
   migrationNamesThroughPhase,
+  parseLinkedMigrationHistory,
   rolloutConfirmation,
   runRemediationRolloutPhase,
+  validateLinkedMigrationHistory,
   validateProjectRefPair,
   validateReviewedReleaseState,
 } from '../../scripts/run-remediation-rollout-phase.mjs'
 
+const repositoryVersions = migrationNamesThroughPhase('admin-content-contract')
+  .map(name => name.slice(0, 14))
+
+function historyThrough(version) {
+  return repositoryVersions.filter(candidate => candidate <= version)
+}
+
 describe('remediation rollout phases', () => {
-  it('defines explicit legal, application, and final contract endpoints', () => {
-    expect(REMEDIATION_ROLLOUT_PHASES.map(phase => [phase.id, phase.endpoint])).toEqual([
-      ['legal-expand', '20260713041000'],
-      ['application-cutover', '20260713065500'],
-      ['admin-content-contract', '20260713066000'],
+  it('defines explicit legal, application, and final contract boundaries', () => {
+    expect(REMEDIATION_ROLLOUT_PHASES.map(phase => [
+      phase.id,
+      phase.predecessor,
+      phase.endpoint,
+    ])).toEqual([
+      ['legal-expand', '20260703010000', '20260713041000'],
+      ['application-cutover', '20260713041000', '20260713065500'],
+      ['admin-content-contract', '20260713065500', '20260713066000'],
     ])
   })
 
@@ -35,6 +48,70 @@ describe('remediation rollout phases', () => {
     expect(basename(contract.at(-1))).toBe('20260713066000_admin_content_browser_contract.sql')
     expect(legal.length).toBeLessThan(application.length)
     expect(application.length).toBeLessThan(contract.length)
+  })
+
+  it('parses only the remote column from the linked migration list', () => {
+    const output = [
+      '   Local          | Remote         | Time (UTC)',
+      '  ----------------|----------------|---------------------',
+      '   20260703010000 | 20260703010000 | 2026-07-03 01:00:00',
+      '   20260713010000 |                | 2026-07-13 01:00:00',
+      '                  | 20260713009999 | 2026-07-13 00:59:99',
+    ].join('\n')
+
+    expect(parseLinkedMigrationHistory(output)).toEqual([
+      '20260703010000',
+      '20260713009999',
+    ])
+  })
+
+  it('accepts only a contiguous linked history at the phase predecessor or endpoint', () => {
+    for (const phase of REMEDIATION_ROLLOUT_PHASES) {
+      expect(validateLinkedMigrationHistory({
+        phaseId: phase.id,
+        remoteVersions: historyThrough(phase.predecessor),
+      })).toEqual({
+        remoteTip: phase.predecessor,
+        idempotentVerification: false,
+      })
+
+      expect(validateLinkedMigrationHistory({
+        phaseId: phase.id,
+        remoteVersions: historyThrough(phase.endpoint),
+      })).toEqual({
+        remoteTip: phase.endpoint,
+        idempotentVerification: true,
+      })
+    }
+  })
+
+  it('rejects a linked history stopped partway through the selected phase', () => {
+    expect(() => validateLinkedMigrationHistory({
+      phaseId: 'legal-expand',
+      remoteVersions: historyThrough('20260713010000'),
+    })).toThrow('requires linked remote history to end exactly at predecessor')
+  })
+
+  it('rejects gaps, duplicates, and remote-only drift even when the tip is an allowed boundary', () => {
+    const predecessorHistory = historyThrough('20260713041000')
+    const withGap = predecessorHistory.filter(version => version !== '20260713033000')
+    const withDuplicate = [
+      ...predecessorHistory.slice(0, -1),
+      predecessorHistory.at(-2),
+      predecessorHistory.at(-1),
+    ]
+    const withRemoteOnly = [
+      ...predecessorHistory.slice(0, -1),
+      '20260713040999',
+      predecessorHistory.at(-1),
+    ]
+
+    for (const remoteVersions of [withGap, withDuplicate, withRemoteOnly]) {
+      expect(() => validateLinkedMigrationHistory({
+        phaseId: 'application-cutover',
+        remoteVersions,
+      })).toThrow('is not the contiguous repository prefix')
+    }
   })
 
   it('keeps a phase request local unless dry-run or apply is explicit', () => {

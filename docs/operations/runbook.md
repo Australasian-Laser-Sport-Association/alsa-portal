@@ -23,6 +23,13 @@ The workflow is:
 
 Do not push directly to `main`.
 
+An approved controlled rollout may override this normal path. In particular,
+the July 2026 security remediation must follow
+[security-remediation-rollout.md](./security-remediation-rollout.md): do not
+merge its broad release branch merely to make an operational workflow
+available, because that merge would also auto-deploy the schema-dependent
+application.
+
 ### Preview deploys
 
 Every pull request gets its own preview URL from Vercel. Preview deploys must
@@ -40,7 +47,12 @@ Setup checklist:
 
 1. Create a new Supabase project for staging in the same region as production
    where possible.
-2. Apply all committed migrations from this repository to the staging project.
+2. If a controlled migration rollout is active, follow its phased runner and
+   checkpoints instead of applying every pending migration at once. For the
+   July 2026 remediation, use
+   [security-remediation-rollout.md](./security-remediation-rollout.md). Only
+   use the normal all-committed-migrations path when no active rollout says
+   otherwise.
 3. Configure staging Auth URL settings:
    - Site URL: the main Vercel preview URL or a stable staging URL if one is
      configured.
@@ -76,6 +88,15 @@ happens, rotate the production service-role key and redeploy production.
 ## Rollback
 
 If a deploy causes a problem:
+
+First check whether a database security cutover is in progress. After migration
+`20260713010000` in the July 2026 remediation, the baseline application is no
+longer compatible with the hardened database and must not be re-promoted. Keep
+maintenance active and follow the roll-forward procedure in
+[security-remediation-rollout.md](./security-remediation-rollout.md#failure-and-rollback-handling)
+instead.
+
+For an ordinary application-only deploy with a compatible database:
 
 1. Open the Vercel dashboard → the portal project → Deployments
 2. Find the last known-good deployment

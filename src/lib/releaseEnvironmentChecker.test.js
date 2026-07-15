@@ -1,7 +1,10 @@
 import { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
 import {
+  CROSS_SCOPE_ISOLATION_VARIABLES,
+  formatIsolationFingerprintPayload,
   formatReleaseEnvironmentReport,
+  isolationFingerprints,
   parseArguments,
   runCli,
   supabaseProjectRef,
@@ -33,6 +36,44 @@ function validEnvironment(overrides = {}) {
 }
 
 describe('release environment checker', () => {
+  it('emits only keyed fingerprints for internal cross-scope comparison', () => {
+    const environment = validEnvironment()
+    const fingerprintKey = 'release-isolation-test-key-material'
+    const fingerprints = isolationFingerprints(environment, fingerprintKey)
+    const payload = formatIsolationFingerprintPayload(environment, fingerprintKey)
+
+    expect(Object.keys(fingerprints)).toEqual(CROSS_SCOPE_ISOLATION_VARIABLES)
+    for (const value of Object.values(fingerprints)) {
+      expect(value).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    }
+    for (const name of CROSS_SCOPE_ISOLATION_VARIABLES) {
+      expect(payload).toContain(name)
+      expect(payload).not.toContain(environment[name])
+    }
+  })
+
+  it('keeps fingerprint mode separate from the existing single-scope report', () => {
+    const environment = validEnvironment()
+    const output = []
+    const status = runCli({
+      argv: [
+        '--emit-isolation-fingerprints',
+        '--fingerprint-key',
+        'release-isolation-test-key-material',
+      ],
+      environment,
+      log: value => output.push(value),
+      error: value => output.push(value),
+    })
+
+    expect(status).toBe(0)
+    expect(output).toHaveLength(1)
+    expect(output[0]).not.toContain('Release environment check:')
+    for (const name of CROSS_SCOPE_ISOLATION_VARIABLES) {
+      expect(output[0]).not.toContain(environment[name])
+    }
+  })
+
   it('accepts a complete production environment bound to its expected project', () => {
     const result = validateReleaseEnvironment(validEnvironment(), {
       target: 'production',
