@@ -1,5 +1,6 @@
 ﻿import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
+import { useLocation } from 'react-router-dom'
 
 function LoadingScreen() {
   return (
@@ -15,8 +16,12 @@ function LoadingScreen() {
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) return <LoadingScreen />
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const target = `${location.pathname}${location.search}`
+    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />
+  }
   return children
 }

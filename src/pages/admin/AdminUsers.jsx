@@ -21,15 +21,44 @@ const ROLE_META = {
 // names the deletion-impact endpoint returns.
 const IMPACT_LABELS = {
   zltac_registrations: 'ZLTAC registrations',
-  event_registrations: 'event registrations',
   competition_registrations: 'competition registrations',
   payments: 'payments',
   payment_records: 'payment ledger entries',
   legal_acceptances: 'signed legal acceptances',
   referee_test_results: 'rules test results',
-  under_18_approvals: 'under 18 approvals',
+  referee_test_attempts: 'rules test attempts',
+  under_18_approvals: 'under-18 approvals',
   team_members: 'team memberships',
+  competition_managers: 'competition manager assignments',
   alsa_memberships: 'ALSA memberships',
+  alsa_lifetime_members: 'ALSA lifetime member records',
+  side_event_roster_slots: 'side-event roster slots',
+  teams_captained: 'team captain links',
+  teams_managed: 'team manager links',
+  doubles_player_1_slots: 'doubles player 1 slots',
+  doubles_player_2_slots: 'doubles player 2 slots',
+  triples_player_1_slots: 'triples player 1 slots',
+  triples_player_2_slots: 'triples player 2 slots',
+  triples_player_3_slots: 'triples player 3 slots',
+  profiles_created: 'placeholder creator links',
+  legal_documents_uploaded: 'legal document uploader links',
+  under_18_decisions_reviewed: 'under-18 reviewer links',
+  payment_records_recorded: 'payment recorder links',
+  payment_history_changes: 'payment history actor links',
+  profile_alias_changes: 'profile audit actor links',
+  lifetime_memberships_granted: 'lifetime membership grant links',
+  code_of_conduct_overrides_set: 'code of conduct override audit links',
+  media_release_overrides_set: 'media release override audit links',
+  referee_test_overrides_set: 'rules test override audit links',
+  under_18_overrides_set: 'under-18 override audit links',
+  alsa_memberships_created: 'membership creator audit links',
+  competitions_created: 'competition creator audit links',
+  competition_manager_grants: 'competition manager grant audit links',
+  team_invitations_sent: 'team invitation audit links',
+}
+
+function impactEntries(impact, category) {
+  return Object.entries(impact?.[category] ?? {}).filter(([, count]) => count > 0)
 }
 
 const AVATAR_COLORS = {
@@ -299,7 +328,7 @@ export default function AdminUsers() {
 
   // Hard-delete flow: open the confirm and fetch the impact preview. The
   // confirm button stays disabled until the preview has loaded, so the
-  // superadmin always sees what a delete destroys before they can click it.
+  // superadmin sees what is deleted, retained, detached, or blocked first.
   async function startHardDelete(u) {
     setConfirmHardDelete(u.id)
     setConfirmDelete(null)
@@ -765,18 +794,66 @@ export default function AdminUsers() {
                       {deleteImpact === null && !deleteErr ? (
                         <p className="text-[11px] text-[#e5e5e5]/60 mb-3">Checking linked records...</p>
                       ) : deleteImpact && (
-                        <div className="mb-3">
-                          <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed mb-1.5">
-                            This cannot be undone. It will permanently delete the account and:
+                        <div className="mb-3 space-y-2.5">
+                          <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed">
+                            This cannot be undone. The account is permanently deleted, with linked data handled as follows.
                           </p>
-                          {Object.entries(deleteImpact).filter(([, n]) => n > 0).length === 0 ? (
+
+                          {deleteImpact.totals.deleted === 0
+                            && deleteImpact.totals.retained_anonymized === 0
+                            && deleteImpact.totals.detached === 0
+                            && deleteImpact.totals.blockers === 0 && (
                             <p className="text-[11px] text-[#e5e5e5]/80">No linked records, only the account itself.</p>
-                          ) : (
-                            <ul className="text-[11px] text-[#e5e5e5]/80 list-disc pl-4 space-y-0.5">
-                              {Object.entries(deleteImpact).filter(([, n]) => n > 0).map(([k, n]) => (
-                                <li key={k}>{n} {IMPACT_LABELS[k] ?? k}</li>
-                              ))}
-                            </ul>
+                          )}
+
+                          {impactEntries(deleteImpact, 'deleted').length > 0 && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-red-300 mb-1">Permanently deleted</p>
+                              <ul className="text-[11px] text-[#e5e5e5]/80 list-disc pl-4 space-y-0.5">
+                                {impactEntries(deleteImpact, 'deleted').map(([key, count]) => (
+                                  <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {impactEntries(deleteImpact, 'retained_anonymized').length > 0 && (
+                            <div className="rounded-lg border border-brand/20 bg-brand/5 p-2">
+                              <p className="text-[11px] font-semibold text-brand mb-1">Retained and anonymised</p>
+                              <ul className="text-[11px] text-[#e5e5e5]/80 list-disc pl-4 space-y-0.5">
+                                {impactEntries(deleteImpact, 'retained_anonymized').map(([key, count]) => (
+                                  <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
+                                ))}
+                              </ul>
+                              <p className="text-[10px] text-[#e5e5e5]/55 leading-relaxed mt-1.5">
+                                Account links, IP addresses, user agents, and under-18 notes are removed. An opaque evidence token remains pending an approved retention schedule.
+                              </p>
+                            </div>
+                          )}
+
+                          {impactEntries(deleteImpact, 'detached').length > 0 && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-[#e5e5e5]/70 mb-1">Links removed from surviving records</p>
+                              <ul className="text-[11px] text-[#e5e5e5]/70 list-disc pl-4 space-y-0.5">
+                                {impactEntries(deleteImpact, 'detached').map(([key, count]) => (
+                                  <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {impactEntries(deleteImpact, 'blockers').length > 0 && (
+                            <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-2">
+                              <p className="text-[11px] font-semibold text-red-300 mb-1">Deletion blocked by audit records</p>
+                              <ul className="text-[11px] text-red-200/80 list-disc pl-4 space-y-0.5">
+                                {impactEntries(deleteImpact, 'blockers').map(([key, count]) => (
+                                  <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
+                                ))}
+                              </ul>
+                              <p className="text-[10px] text-red-200/65 leading-relaxed mt-1.5">
+                                Use Remove access instead. Audit attribution must not be silently erased.
+                              </p>
+                            </div>
                           )}
                         </div>
                       )}
@@ -784,7 +861,7 @@ export default function AdminUsers() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => hardDelete(selected.id)}
-                          disabled={deleting || !deleteImpact}
+                          disabled={deleting || !deleteImpact || !deleteImpact.can_delete}
                           className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
                         >
                           {deleting ? 'Deleting...' : 'Yes, Delete Permanently'}

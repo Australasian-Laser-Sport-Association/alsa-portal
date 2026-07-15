@@ -1,0 +1,212 @@
+name: Off-project disaster-recovery backup
+
+on:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: disaster-recovery-backup
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  backup:
+    name: Encrypted database and Storage copy
+    if: ${{ vars.DR_BACKUPS_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
+    environment:
+      name: disaster-recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      DEST_PREFIX: ${{ vars.DR_DEST_PREFIX || 'alsa-portal' }}
+      AWS_EC2_METADATA_DISABLED: 'true'
+      POSTGRES_TOOL_IMAGE: postgres:17.10-alpine3.24@sha256:af194ccf3e2d7fe367012c7b88ce8b816c5c889b18a5b316799a1f0d7eac746a
+
+    steps:
+      - name: Check required configuration
+        env:
+          DATABASE_URL: ${{ secrets.DR_DATABASE_URL }}
+          SOURCE_S3_ACCESS_KEY: ${{ secrets.DR_SOURCE_S3_ACCESS_KEY }}
+          SOURCE_S3_SECRET_KEY: ${{ secrets.DR_SOURCE_S3_SECRET_KEY }}
+          SOURCE_S3_ENDPOINT: ${{ secrets.DR_SOURCE_S3_ENDPOINT }}
+          SOURCE_S3_REGION: ${{ secrets.DR_SOURCE_S3_REGION }}
+          DEST_S3_ACCESS_KEY: ${{ secrets.DR_DEST_S3_ACCESS_KEY }}
+          DEST_S3_SECRET_KEY: ${{ secrets.DR_DEST_S3_SECRET_KEY }}
+          DEST_S3_BUCKET: ${{ secrets.DR_DEST_S3_BUCKET }}
+          DEST_S3_REGION: ${{ secrets.DR_DEST_S3_REGION }}
+          AGE_RECIPIENT: ${{ secrets.DR_AGE_RECIPIENT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            DATABASE_URL
+            SOURCE_S3_ACCESS_KEY SOURCE_S3_SECRET_KEY SOURCE_S3_ENDPOINT SOURCE_S3_REGION
+            DEST_S3_ACCESS_KEY DEST_S3_SECRET_KEY DEST_S3_BUCKET DEST_S3_REGION
+            AGE_RECIPIENT
+          )
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required disaster-recovery settings: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "$AGE_RECIPIENT" =~ ^age1[0-9a-z]+$ ]]; then
+            echo 'DR_AGE_RECIPIENT is not a valid age public recipient.' >&2
+            exit 1
+          fi
+
+      - name: Install encryption tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+          aws --version
+
+      - name: Create database dump
+        env:
+          DATABASE_URL: ${{ secrets.DR_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/alsa-dr"
+          mkdir -p "$work/plain" "$work/output"
+          docker run --rm --platform linux/amd64 \
+            --env DATABASE_URL \
+            --volume "$work/plain:/backup" \
+            "$POSTGRES_TOOL_IMAGE" \
+            sh -ec 'pg_dump --dbname="$DATABASE_URL" --format=custom --compress=9 --file=/backup/database.dump'
+          test -s "$work/plain/database.dump"
+          docker run --rm --platform linux/amd64 \
+            --volume "$work/plain:/backup:ro" \
+            "$POSTGRES_TOOL_IMAGE" \
+            sh -ec 'pg_restore --list /backup/database.dump >/dev/null'
+          echo "DATABASE_DUMP_COMPLETED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Copy every Storage bucket from Supabase
+        env:
+          SOURCE_S3_ACCESS_KEY: ${{ secrets.DR_SOURCE_S3_ACCESS_KEY }}
+          SOURCE_S3_SECRET_KEY: ${{ secrets.DR_SOURCE_S3_SECRET_KEY }}
+          SOURCE_S3_ENDPOINT: ${{ secrets.DR_SOURCE_S3_ENDPOINT }}
+          SOURCE_S3_REGION: ${{ secrets.DR_SOURCE_S3_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/alsa-dr"
+          export AWS_ACCESS_KEY_ID="$SOURCE_S3_ACCESS_KEY"
+          export AWS_SECRET_ACCESS_KEY="$SOURCE_S3_SECRET_KEY"
+          export AWS_DEFAULT_REGION="$SOURCE_S3_REGION"
+          mapfile -t buckets < <(
+            aws s3api list-buckets \
+              --endpoint-url "$SOURCE_S3_ENDPOINT" \
+              --query 'Buckets[].Name' \
+              --output text | tr '\t' '\n' | sed '/^$/d'
+          )
+          if (( ${#buckets[@]} == 0 )); then
+            echo 'The Supabase S3 endpoint returned no Storage buckets.' >&2
+            exit 1
+          fi
+          mkdir -p "$work/plain/storage"
+          for bucket in "${buckets[@]}"; do
+            if [[ ! "$bucket" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+              echo "Refusing unexpected bucket name: $bucket" >&2
+              exit 1
+            fi
+            aws s3 sync "s3://$bucket" "$work/plain/storage/$bucket" \
+              --endpoint-url "$SOURCE_S3_ENDPOINT" \
+              --only-show-errors --no-progress
+          done
+          printf '%s\n' "${buckets[@]}" > "$work/plain/storage-buckets.txt"
+          echo "STORAGE_COPY_COMPLETED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
+      - name: Encrypt and checksum the backup
+        env:
+          AGE_RECIPIENT: ${{ secrets.DR_AGE_RECIPIENT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/alsa-dr"
+          stamp="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
+          tar -C "$work/plain" -czf "$work/plain/storage.tar.gz" storage storage-buckets.txt
+          tar -tzf "$work/plain/storage.tar.gz" >/dev/null
+          age --recipient "$AGE_RECIPIENT" \
+            --output "$work/output/database.dump.age" \
+            "$work/plain/database.dump"
+          age --recipient "$AGE_RECIPIENT" \
+            --output "$work/output/storage.tar.gz.age" \
+            "$work/plain/storage.tar.gz"
+          bucket_json="$(jq -R -s 'split("\n") | map(select(length > 0))' "$work/plain/storage-buckets.txt")"
+          jq -n \
+            --arg created_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg database_dump_completed_at "$DATABASE_DUMP_COMPLETED_AT" \
+            --arg storage_copy_completed_at "$STORAGE_COPY_COMPLETED_AT" \
+            --arg source_commit "$GITHUB_SHA" \
+            --arg postgres_image "$POSTGRES_TOOL_IMAGE" \
+            --argjson storage_buckets "$bucket_json" \
+            '{format_version: 1, created_at: $created_at, database_dump_completed_at: $database_dump_completed_at, storage_copy_completed_at: $storage_copy_completed_at, source_commit: $source_commit, postgres_image: $postgres_image, storage_buckets: $storage_buckets, encrypted_with: "age"}' \
+            > "$work/output/manifest.json"
+          (
+            cd "$work/output"
+            sha256sum database.dump.age storage.tar.gz.age manifest.json > SHA256SUMS
+          )
+          echo "BACKUP_STAMP=$stamp" >> "$GITHUB_ENV"
+
+      - name: Upload to the independent backup account
+        env:
+          DEST_S3_ACCESS_KEY: ${{ secrets.DR_DEST_S3_ACCESS_KEY }}
+          DEST_S3_SECRET_KEY: ${{ secrets.DR_DEST_S3_SECRET_KEY }}
+          DEST_S3_ENDPOINT: ${{ secrets.DR_DEST_S3_ENDPOINT }}
+          DEST_S3_BUCKET: ${{ secrets.DR_DEST_S3_BUCKET }}
+          DEST_S3_REGION: ${{ secrets.DR_DEST_S3_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/alsa-dr"
+          export AWS_ACCESS_KEY_ID="$DEST_S3_ACCESS_KEY"
+          export AWS_SECRET_ACCESS_KEY="$DEST_S3_SECRET_KEY"
+          export AWS_DEFAULT_REGION="$DEST_S3_REGION"
+          endpoint=()
+          if [[ -n "${DEST_S3_ENDPOINT:-}" ]]; then endpoint=(--endpoint-url "$DEST_S3_ENDPOINT"); fi
+          destination="s3://$DEST_S3_BUCKET/$DEST_PREFIX/$BACKUP_STAMP/"
+          aws s3 cp "$work/output/" "$destination" \
+            --recursive --only-show-errors --no-progress "${endpoint[@]}"
+          for object in database.dump.age storage.tar.gz.age SHA256SUMS manifest.json; do
+            remote_size="$(aws s3api head-object \
+              --bucket "$DEST_S3_BUCKET" \
+              --key "$DEST_PREFIX/$BACKUP_STAMP/$object" \
+              --query ContentLength \
+              --output text \
+              "${endpoint[@]}")"
+            local_size="$(stat -c '%s' "$work/output/$object")"
+            if [[ "$remote_size" != "$local_size" ]]; then
+              echo "Uploaded backup object has the wrong size: $object" >&2
+              exit 1
+            fi
+          done
+          verify="$work/readback"
+          if [[ -e "$verify" ]]; then
+            echo 'Refusing to reuse an existing backup read-back directory.' >&2
+            exit 1
+          fi
+          install -d -m 700 "$verify"
+          for object in database.dump.age storage.tar.gz.age SHA256SUMS manifest.json; do
+            aws s3 cp \
+              "s3://$DEST_S3_BUCKET/$DEST_PREFIX/$BACKUP_STAMP/$object" \
+              "$verify/$object" \
+              --only-show-errors --no-progress "${endpoint[@]}"
+          done
+          cmp --silent "$work/output/SHA256SUMS" "$verify/SHA256SUMS"
+          (
+            cd "$verify"
+            sha256sum -c SHA256SUMS
+          )
+          echo "Encrypted backup read-back hashes verified at $DEST_PREFIX/$BACKUP_STAMP" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove runner copies
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/alsa-dr"

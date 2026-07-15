@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useCallback } from 'react'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate } from '../../lib/dateFormat'
+import { buildCsv, downloadCsv } from '../../lib/csv.js'
 import Dialog from '../../components/Dialog'
 
 const TABS = ['Roles', 'Event Settings', 'Signups']
@@ -407,7 +409,7 @@ function SettingsTab() {
   const [msg, setMsg] = useState(null)
 
   useEffect(() => {
-    supabase.from('zltac_events').select('id, year, name, status').order('year', { ascending: false })
+    supabase.from('public_zltac_events').select('id, year, name, status').order('year', { ascending: false })
       .then(({ data }) => {
         const list = data ?? []
         setEvents(list)
@@ -555,7 +557,7 @@ function SignupsTab() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('zltac_events').select('id, year, name, status').order('year', { ascending: false }),
+      supabase.from('public_zltac_events').select('id, year, name, status').order('year', { ascending: false }),
       apiFetch('/api/admin/volunteers?resource=roles'),
     ]).then(([{ data: evs }, rolesRes]) => {
       setEvents(evs ?? [])
@@ -563,7 +565,7 @@ function SignupsTab() {
     }).catch(err => setError(err.message))
   }, [])
 
-  async function loadSignups() {
+  const loadSignups = useCallback(async () => {
     setLoading(true); setError(null)
     const params = new URLSearchParams()
     if (filterEvent !== 'all') params.set('event_id', filterEvent)
@@ -576,10 +578,10 @@ function SignupsTab() {
       setError(err.message)
     }
     setLoading(false)
-  }
+  }, [filterEvent, filterRoleIds, hasNotes])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadSignups() }, [filterEvent, filterRoleIds, hasNotes, refreshKey])
+  useEffect(() => { loadSignups() }, [loadSignups, refreshKey])
 
   function toggleRole(id) {
     setFilterRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -608,8 +610,8 @@ function SignupsTab() {
       signed_up_at: s.created_at ?? '',
     }))
     const keys = Object.keys(rows[0])
-    const csv = [keys.join(','), ...rows.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'volunteer-signups.csv'; a.click()
+    const csv = buildCsv(keys, rows.map(row => keys.map(key => row[key])))
+    downloadCsv(csv, 'volunteer-signups.csv')
   }
 
   function maxDecidedAt(s) {
@@ -918,7 +920,7 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
     }
   }, [activeRoles])
 
-  async function loadPlayers(eid) {
+  const loadPlayers = useCallback(async eid => {
     setLoadingPlayers(true); setError(''); setRegistrationId('')
     const ev = events.find(e => e.id === eid)
     if (!ev) { setLoadingPlayers(false); return }
@@ -946,10 +948,10 @@ function ManualSignupModal({ events, roles, onClose, onCreated, onOpenExisting }
       setError(err.message)
     }
     setLoadingPlayers(false)
-  }
+  }, [events])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (eventId) loadPlayers(eventId) }, [eventId])
+  useEffect(() => { if (eventId) loadPlayers(eventId) }, [eventId, loadPlayers])
 
   function toggleRole(id) {
     setSelectedRoleIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])

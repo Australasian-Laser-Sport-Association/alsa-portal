@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useId } from 'react'
-import { supabase } from '../../lib/supabase.js'
 import { storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
+import { uploadAuthorizedAsset } from '../../lib/authorizedAssetUpload.js'
 
 // Shared competition create/edit form. Used by:
 //   - the admin Create / Edit modal in AdminCompetitions.jsx
@@ -22,7 +22,6 @@ const DESCRIPTION_MAX = 10000
 const LINK_LABEL_MAX = 80
 const LINK_URL_MAX = 2048
 const MAX_LINKS = 20
-const BANNER_BUCKET = 'competition-banners'
 const BANNER_ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp']
 const BANNER_MAX_BYTES = 5 * 1024 * 1024
 
@@ -133,10 +132,9 @@ export default function CompetitionEditForm({
     setLinks(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  // Banner upload — direct to Supabase Storage. The path encodes the
-  // competition id, which the storage write policy joins against
-  // competition_managers. The resulting public URL is held in form state and
-  // sent on the next Save; we do NOT write to the row until the user submits.
+  // The API authorises one exact, non-overwriting Storage path for this
+  // competition. The resulting branded URL is held in form state and sent on
+  // the next Save; we do NOT write to the row until the user submits.
   // Orphaned files on cancel-after-upload are an accepted trade-off (a future
   // cleanup job can sweep storage objects not referenced by any
   // competitions.banner_url).
@@ -161,14 +159,13 @@ export default function CompetitionEditForm({
     }
     setBannerUploading(true)
     try {
-      const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
-      const path = `${initial.id}/${Date.now()}.${ext}`
-      const { data: up, error: upErr } = await supabase.storage
-        .from(BANNER_BUCKET)
-        .upload(path, file, { upsert: false, cacheControl: '3600', contentType: file.type })
-      if (upErr) throw upErr
-      const { data: urlData } = supabase.storage.from(BANNER_BUCKET).getPublicUrl(up.path)
-      setBannerUrl(urlData.publicUrl)
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/superadmin/competition-asset-upload',
+        purpose: 'competition-banner',
+        scopeId: initial.id,
+        file,
+      })
+      setBannerUrl(uploaded.url)
     } catch (err) {
       setBannerError(err?.message || 'Banner upload failed. Please try again.')
     } finally {

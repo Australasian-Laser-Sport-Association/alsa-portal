@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
-import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import Dialog from '../components/Dialog'
@@ -14,14 +13,9 @@ import { TeamShieldIcon } from '../components/icons.jsx'
 import { storageImageUrl } from '../lib/assetUrl'
 import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
 import { TEAM_COLOURS } from '../lib/teamColours'
+import { registrationDateOfBirth } from '../lib/dateOfBirth.js'
+import { buildCsv, downloadCsv } from '../lib/csv.js'
 
-function isUnder18(dob, eventYear) {
-  if (!dob) return false
-  const cutoff = new Date(`${eventYear}-07-01`)
-  const eighteenth = new Date(dob)
-  eighteenth.setFullYear(eighteenth.getFullYear() + 18)
-  return eighteenth > cutoff
-}
 function initials(name = '') { return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?' }
 
 function Tick({ ok }) {
@@ -33,57 +27,55 @@ function Tick({ ok }) {
   )
 }
 
-// ── Status helpers ──────────────────────────────────────────────────────────
-//
-// derivePaymentStatus(reg, amountPaidCents) — single source of truth for the
-// player payment chip state. Returns 'unpaid' | 'partial' | 'paid' | 'overpaid'
-// from the registration's amount_owing (the cost of registration) minus the
-// sum of payment_records.amount for that registration (the running ledger).
-//
-//   balance < 0  → 'overpaid'
-//   balance == 0 → 'paid'
-//   balance > 0  AND any payment recorded → 'partial'
-//   balance > 0  AND no payments          → 'unpaid'
-//
-// The PaymentChip below reads only the returned status string; this helper
-// is the single point of change if the formula ever evolves.
-function derivePaymentStatus(reg, amountPaidCents) {
-  if (!reg || reg.amount_owing == null) return 'unpaid'
-  const owing = reg.amount_owing
-  const paid = amountPaidCents ?? 0
-  const balance = owing - paid
-  if (balance < 0) return 'overpaid'
-  if (balance === 0) return 'paid'
-  if (paid > 0) return 'partial'
-  return 'unpaid'
+// Canonical status helpers. The server owns all readiness calculations; this
+// page only maps the returned vocabulary to presentation states.
+function checkDone(check) {
+  return check?.status === 'satisfied' || check?.status === 'not_required'
 }
 
-// deriveSideEventsStatus(reg, doublesPairs, triplesTeams) — boolean per player.
-// Requires (a) the player has confirmed their side-event selections, and
-// (b) for each partner-based event the player chose, the relevant
-// doubles_pairs / triples_teams row is confirmed.
-function deriveSideEventsStatus(reg, doublesPairs, triplesTeams) {
-  if (!reg) return false
-  if (!reg.has_confirmed_side_events) return false
-  const slugs = new Set(reg.side_events ?? [])
-  const uid = reg.user_id
-  if (slugs.has('doubles')) {
-    const pair = (doublesPairs ?? []).find(p => p.player1_id === uid || p.player2_id === uid)
-    if (!pair || !pair.confirmed) return false
+function checkChipState(check) {
+  if (check?.status === 'not_required') return 'na'
+  if (check?.status === 'satisfied') return 'complete'
+  if (check?.status === 'pending_review') return 'pending'
+  return 'incomplete'
+}
+
+function readinessTitle(label, check) {
+  if (!check) return `${label}: readiness unavailable`
+  if (check.source === 'committee_override') {
+    const parts = ['committee override']
+    if (check.detail?.setAt) {
+      parts.push(new Date(check.detail.setAt).toLocaleDateString('en-AU'))
+    }
+    if (check.detail?.reason) parts.push(`Reason: ${check.detail.reason}`)
+    return `${label}: ${parts.join('. ')}`
   }
-  if (slugs.has('triples')) {
-    const trip = (triplesTeams ?? []).find(t => t.player1_id === uid || t.player2_id === uid || t.player3_id === uid)
-    if (!trip || !trip.confirmed) return false
+  const states = {
+    not_required: 'not required',
+    satisfied: 'complete',
+    pending_review: 'submitted and awaiting committee review',
+    rejected: 'rejected',
+    action_required: 'action required',
   }
-  return true
+  return `${label}: ${states[check.status] ?? 'unavailable'}`
+}
+
+function paymentStatus(check) {
+  if (check?.status === 'not_required') return 'na'
+  if (check?.status === 'satisfied') {
+    return (check.detail?.balanceCents ?? 0) < 0 ? 'overpaid' : 'paid'
+  }
+  return check?.source === 'partially_paid' ? 'partial' : 'unpaid'
 }
 
 // ── Status chips ────────────────────────────────────────────────────────────
-// Generic binary/N/A chip used for CoC, Ref Test, Media, Side Events, Extras.
+// Generic readiness chip used for CoC, Rules, Media, Side Events, and Extras.
 function StatusChip({ state, label, title }) {
-  // state: 'complete' | 'incomplete' | 'na'
+  // state: 'complete' | 'pending' | 'incomplete' | 'na'
   const meta = state === 'complete'
     ? { cls: 'bg-brand/10 text-brand border-brand/30', icon: '✓' }
+    : state === 'pending'
+      ? { cls: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30', icon: '…' }
     : state === 'na'
       ? { cls: 'bg-line/40 text-[#e5e5e5]/60 border-line', icon: '—' }
       : { cls: 'bg-red-500/10 text-red-400 border-red-500/30', icon: '✗' }
@@ -145,6 +137,7 @@ export default function CaptainHub() {
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [team, setTeam] = useState(null)
   const [event, setEvent] = useState(null)
   const [roster, setRoster] = useState([])
@@ -197,119 +190,70 @@ export default function CaptainHub() {
 
   // ── Load data ─────────────────────────────────────────────────────────────
   async function load() {
-    const [{ data: ev }, { data: t }] = await Promise.all([
-      supabase.from('zltac_events').select('id, name, year, status, require_ref_test, require_coc, require_payment, reg_close_date, event_starts_at, committee_email').eq('status', 'open').maybeSingle(),
-      supabase.from('teams').select('id, name, state, home_venue, colour, status, rejection_reason, logo_url').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
-    ])
-    setEvent(ev)
-    if (!t) { setLoading(false); return }
-    setTeam(t)
-    setSettingsForm({ name: t.name ?? '', state: t.state ?? '', home_venue: t.home_venue ?? '', colour: t.colour ?? '#00E6FF' })
-    if (ev?.year) await loadRoster(t, ev.year)
-    setLoading(false)
-  }
+    setLoading(true)
+    setLoadError('')
+    try {
+      const { data: ev, error: eventError } = await supabase
+        .from('public_zltac_events')
+        .select('id, name, year, status, start_date, timezone, require_ref_test, require_coc, require_payment, reg_open_date, reg_close_date, event_starts_at, committee_email')
+        .eq('status', 'open')
+        .maybeSingle()
+      if (eventError) throw eventError
 
-  async function loadRoster(t, eventYear) {
-    const { data: regsData } = await supabase
-      .from('zltac_registrations')
-      .select('id, user_id, side_events, dinner_guests, status, emergency_contact_name')
-      .eq('team_id', t.id)
-      .eq('year', eventYear)
+      setEvent(ev ?? null)
+      if (!ev) {
+        setTeam(null)
+        setRoster([])
+        setCompletionMap({})
+        return
+      }
 
-    const rows = regsData ?? []
+      const { data: t, error: teamError } = await supabase
+        .from('own_zltac_teams')
+        .select('id, event_id, name, state, home_venue, colour, status, rejection_reason, logo_url, viewer_role')
+        .eq('event_id', ev.id)
+        .eq('viewer_role', 'captain')
+        .maybeSingle()
+      if (teamError) throw teamError
 
-    if (rows.length > 0) {
-      const userIds = rows.map(r => r.user_id).filter(Boolean)
-      const { profiles: profData } = await apiFetch('/api/profiles', {
-        method: 'POST',
-        body: JSON.stringify({ ids: userIds }),
-      })
-      const profMap = Object.fromEntries((profData ?? []).map(p => [p.id, p]))
-      const enriched = rows.map(r => ({ ...r, profiles: profMap[r.user_id] ?? null }))
-      setRoster(enriched)
-      await loadCompletions(enriched.map(r => r.user_id), eventYear)
-    } else {
-      setRoster([])
-      setCompletionMap({})
+      if (!t) {
+        setTeam(null)
+        setRoster([])
+        setCompletionMap({})
+        return
+      }
+
+      setTeam(t)
+      setSettingsForm({ name: t.name ?? '', state: t.state ?? '', home_venue: t.home_venue ?? '', colour: t.colour ?? '#00E6FF' })
+      await loadRoster(t, ev)
+    } catch (err) {
+      console.error('[CaptainHub] load failed:', err)
+      setLoadError(err?.message || 'Could not load your Team Hub. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
-  async function loadCompletions(playerIds, eventYear) {
-    if (!playerIds.length) return
-    const {
-      coc_sigs, ref_results, u18_subs, media_subs,
-      regs_status, doubles_pairs, triples_teams,
-      paid_cents_by_user, overrides,
-    } = await apiFetch(
-      '/api/captain',
-      { method: 'POST', body: JSON.stringify({ action: 'team-completions', playerIds, eventYear }) },
-    )
-    const cocSet   = new Set((coc_sigs  ?? []).map(c => c.user_id))
-    const testMap  = Object.fromEntries((ref_results ?? []).map(t => [t.user_id, t]))
-    const u18Set   = new Set((u18_subs  ?? []).map(u => u.user_id))
-    const mediaSet = new Set((media_subs ?? []).map(m => m.user_id))
-    const regsByUser = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, r]))
-    const paidByUser = paid_cents_by_user ?? {}
-    const overridesByUser = overrides ?? {}
-
-    // Audit suffix for chip tooltips when the committee has overridden a
-    // concern. Includes the date + reason so the captain can see why a
-    // teammate was waived, without exposing which admin recorded it.
-    const overrideSuffix = (setAt, reason) => {
-      const parts = []
-      if (setAt) {
-        const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
-        parts.push(`on ${d}`)
-      }
-      if (reason) parts.push(`Reason: ${reason}`)
-      return parts.length > 0 ? ` ${parts.join('. ')}.` : ''
-    }
-
-    const comp = {}
-    playerIds.forEach(uid => {
-      const reg = regsByUser[uid]
-      // Committee manual overrides are tri-state: null = follow real completion,
-      // true = force complete, false = force incomplete. A concern reads
-      // satisfied per the effective rule (ov == null ? real : ov === true), so a
-      // force-incomplete reads NOT satisfied even when the real record exists.
-      // The OVR badge + audit detail stay force-complete-only (truthy ov.*).
-      const ov = overridesByUser[uid] ?? {}
-      // Rules Test section breakdown for the chip tooltip. Real result → section
-      // scores (or legacy note for pre-section rows); override → audit note.
-      const tRow = testMap[uid]
-      const testDetail = tRow
-        ? (tRow.safety_total != null
-            ? `Safety ${tRow.safety_correct ?? 0}/${tRow.safety_total}, General ${tRow.general_correct ?? 0}/${tRow.general_total ?? 0}`
-            : 'Legacy result — no section breakdown')
-        : (ov.ref_test
-            ? `Committee override.${overrideSuffix(ov.ref_test_set_at, ov.ref_test_reason)}`
-            : null)
-      comp[uid] = {
-        coc:           ov.coc == null ? cocSet.has(uid) : ov.coc === true,
-        cocOverride:   !!ov.coc,
-        cocOverrideDetail: ov.coc
-          ? `Committee override.${overrideSuffix(ov.coc_set_at, ov.coc_reason)}`
-          : null,
-        test:          ov.ref_test == null ? testMap[uid]?.passed === true : ov.ref_test === true,
-        testOverride:  !!ov.ref_test,
-        testScore:     testMap[uid]?.score,
-        testDetail,
-        u18:           ov.u18 == null ? u18Set.has(uid) : ov.u18 === true,
-        u18Override:   !!ov.u18,
-        u18OverrideDetail: ov.u18
-          ? `Committee override.${overrideSuffix(ov.u18_set_at, ov.u18_reason)}`
-          : null,
-        media:         ov.media == null ? mediaSet.has(uid) : ov.media === true,
-        mediaOverride: !!ov.media,
-        mediaOverrideDetail: ov.media
-          ? `Committee override.${overrideSuffix(ov.media_set_at, ov.media_reason)}`
-          : null,
-        sideEvents:    deriveSideEventsStatus(reg, doubles_pairs, triples_teams),
-        extras:        !!reg?.has_confirmed_extras,
-        paymentStatus: derivePaymentStatus(reg, paidByUser[uid] ?? 0),
-      }
+  async function loadRoster(t, currentEvent) {
+    const result = await apiFetch('/api/captain', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'team-readiness',
+        teamId: t.id,
+        eventId: currentEvent.id,
+      }),
     })
-    setCompletionMap(comp)
+    if (result.event?.id !== currentEvent.id || result.team?.id !== t.id) {
+      throw new Error('The server returned readiness for a different event or team.')
+    }
+
+    const profileMap = Object.fromEntries((result.profiles ?? []).map(profile => [profile.id, profile]))
+    const rows = (result.registrations ?? []).map(row => ({
+      ...row,
+      profiles: profileMap[row.user_id] ?? null,
+    }))
+    setRoster(rows)
+    setCompletionMap(result.readinessByUser ?? {})
   }
 
   // ── Player search ─────────────────────────────────────────────────────────
@@ -323,40 +267,27 @@ export default function CaptainHub() {
   }
 
   async function runSearch(term) {
-    if (!event?.year || !team) return
+    if (!event?.id || !team?.id) return
     setSearching(true)
-
-    // Get registered user_ids with no team for current event, excluding the captain
-    const { data: unassigned } = await supabase
-      .from('zltac_registrations')
-      .select('user_id')
-      .eq('year', event.year)
-      .is('team_id', null)
-      .neq('user_id', user.id)
-
-    const unassignedIds = (unassigned ?? []).map(r => r.user_id).filter(Boolean)
-
-    if (unassignedIds.length === 0) {
+    try {
+      const { profiles } = await apiFetch('/api/captain', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'search-players',
+          teamId: team.id,
+          eventId: event.id,
+          term,
+        }),
+      })
+      setSearchResults(profiles ?? [])
+      setSearchDone(true)
+    } catch (err) {
+      showToast(`Search failed: ${err?.message || 'Please try again.'}`)
       setSearchResults([])
       setSearchDone(true)
+    } finally {
       setSearching(false)
-      return
     }
-
-    const { profiles: allProfiles } = await apiFetch('/api/profiles', {
-      method: 'POST',
-      body: JSON.stringify({ ids: unassignedIds }),
-    })
-    const q = term.toLowerCase()
-    const matches = (allProfiles ?? []).filter(p =>
-      (p.first_name ?? '').toLowerCase().includes(q) ||
-      (p.last_name ?? '').toLowerCase().includes(q) ||
-      (p.alias ?? '').toLowerCase().includes(q)
-    ).slice(0, 10)
-
-    setSearchResults(matches)
-    setSearchDone(true)
-    setSearching(false)
   }
 
   async function addPlayer(profile) {
@@ -365,22 +296,18 @@ export default function CaptainHub() {
     try {
       await apiFetch('/api/captain', {
         method: 'POST',
-        body: JSON.stringify({ action: 'add-player', playerId: profile.id, teamId: team.id, year: event.year }),
+        body: JSON.stringify({ action: 'add-player', playerHandle: profile.handle, teamId: team.id, eventId: event.id }),
       })
+      await loadRoster(team, event)
     } catch (err) {
       showToast(`Error: ${err.message}`)
       return
     }
 
-    // Optimistically add to roster
-    const newRow = { id: `tmp-${profile.id}`, user_id: profile.id, profiles: profile, side_events: null, dinner_guests: 0, status: 'pending' }
-    setRoster(r => [...r, newRow])
-    setSearchResults(r => r.filter(p => p.id !== profile.id))
+    setSearchResults(r => r.filter(p => p.handle !== profile.handle))
     setSearchQuery('')
     setSearchDone(false)
-    showToast(`${profile.alias || profile.first_name} added to your team`)
-
-    if (team && event?.year) loadRoster(team, event.year)
+    showToast(`${profile.alias || 'Player'} added to your team`)
   }
 
   // ── Remove player ─────────────────────────────────────────────────────────
@@ -393,7 +320,7 @@ export default function CaptainHub() {
           action: 'remove-player',
           playerId: removeConfirm.userId,
           teamId: team?.id,
-          year: event?.year,
+          eventId: event?.id,
         }),
       })
     } catch (err) {
@@ -409,13 +336,13 @@ export default function CaptainHub() {
 
   // ── Disband team ──────────────────────────────────────────────────────────
   async function disbandTeam() {
-    if (!team?.id || !event?.year) return
+    if (!team?.id || !event?.id) return
     setDisbanding(true)
     setDisbandError('')
     try {
       await apiFetch('/api/captain', {
         method: 'POST',
-        body: JSON.stringify({ action: 'disband-team', teamId: team.id, year: event.year }),
+        body: JSON.stringify({ action: 'disband-team', teamId: team.id, eventId: event.id }),
       })
       navigate('/player-hub')
     } catch (err) {
@@ -430,13 +357,13 @@ export default function CaptainHub() {
   // captaincy, ZLTAC, draft/rejected status, and the >=5 roster count. We don't
   // swallow errors — they surface in submitError.
   async function submitTeam() {
-    if (!team?.id) return
+    if (!team?.id || !event?.id) return
     setSubmitting(true)
     setSubmitError('')
     try {
       const res = await apiFetch('/api/captain', {
         method: 'POST',
-        body: JSON.stringify({ action: 'submit-team', teamId: team.id }),
+        body: JSON.stringify({ action: 'submit-team', teamId: team.id, eventId: event.id }),
       })
       setTeam(t => ({ ...t, status: res?.status ?? 'pending', rejection_reason: null }))
       showToast('Team submitted for approval')
@@ -448,6 +375,35 @@ export default function CaptainHub() {
   }
 
   // ── Team settings ─────────────────────────────────────────────────────────
+  async function persistTeamSettings(overrides = {}) {
+    if (!team?.id || !event?.id) throw new Error('Team or event is not loaded yet.')
+    const has = key => Object.prototype.hasOwnProperty.call(overrides, key)
+    const result = await apiFetch('/api/captain', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'update-team-settings',
+        teamId: team.id,
+        eventId: event.id,
+        name: has('name') ? overrides.name : team.name,
+        state: has('state') ? overrides.state : (team.state ?? null),
+        homeVenue: has('homeVenue') ? overrides.homeVenue : (team.home_venue ?? null),
+        colour: has('colour') ? overrides.colour : team.colour,
+        logoUrl: has('logoUrl') ? overrides.logoUrl : (team.logo_url ?? null),
+      }),
+    })
+    if (!result?.team) throw new Error('The server did not return the updated team.')
+
+    const merged = { ...team, ...result.team }
+    setTeam(merged)
+    setSettingsForm({
+      name: merged.name ?? '',
+      state: merged.state ?? '',
+      home_venue: merged.home_venue ?? '',
+      colour: merged.colour ?? '#00E6FF',
+    })
+    return merged
+  }
+
   // ── Logo upload ──────────────────────────────────────────────────────────
   // Path convention: team-logos/{team_id}/{timestamp}.{ext}. Backed by the
   // team_logos_captain_team_write RLS policy (see 20260520000000 migration).
@@ -458,6 +414,10 @@ export default function CaptainHub() {
 
   function pickLogo() {
     setLogoError('')
+    if (eventPhase(event) !== 'open') {
+      setLogoError('Team settings are locked because registration has closed.')
+      return
+    }
     logoInputRef.current?.click()
   }
 
@@ -496,13 +456,7 @@ export default function CaptainHub() {
       const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
       const publicUrl = urlData.publicUrl
 
-      const { error: updErr } = await supabase
-        .from('teams')
-        .update({ logo_url: publicUrl })
-        .eq('id', team.id)
-      if (updErr) throw updErr
-
-      setTeam(t => ({ ...t, logo_url: publicUrl }))
+      await persistTeamSettings({ logoUrl: publicUrl })
       showToast('Logo updated')
     } catch (err) {
       setLogoError(err?.message || 'Logo upload failed. Please try again.')
@@ -514,17 +468,23 @@ export default function CaptainHub() {
 
   async function saveSettings() {
     if (!settingsForm.name.trim()) { setSettingsErr('Team name is required.'); return }
-    setSavingSettings(true); setSettingsErr('')
-    const { error } = await supabase.from('teams').update({
-      name: settingsForm.name.trim(),
-      state: settingsForm.state || null,
-      home_venue: settingsForm.home_venue.trim() || null,
-      colour: settingsForm.colour,
-    }).eq('id', team.id)
-    setSavingSettings(false)
-    if (error) { setSettingsErr(error.message); return }
-    setTeam(t => ({ ...t, ...settingsForm }))
-    setEditingSettings(false)
+    if (!settingsForm.state) { setSettingsErr('State / territory is required.'); return }
+    if (eventPhase(event) !== 'open') { setSettingsErr('Team settings are locked because registration has closed.'); return }
+    setSavingSettings(true)
+    setSettingsErr('')
+    try {
+      await persistTeamSettings({
+        name: settingsForm.name.trim(),
+        state: settingsForm.state || null,
+        homeVenue: settingsForm.home_venue.trim() || null,
+        colour: settingsForm.colour,
+      })
+      setEditingSettings(false)
+    } catch (err) {
+      setSettingsErr(err?.message || 'Could not save team settings. Please try again.')
+    } finally {
+      setSavingSettings(false)
+    }
   }
 
   // ── CSV export ────────────────────────────────────────────────────────────
@@ -534,48 +494,45 @@ export default function CaptainHub() {
       name: `${r.profiles?.first_name ?? ''} ${r.profiles?.last_name ?? ''}`.trim(),
       alias: r.profiles?.alias ?? '',
       state: r.profiles?.state ?? '',
-      dob: r.profiles?.dob ?? '',
+      dob: registrationDateOfBirth(r, r.profiles) ?? '',
       side_event_entries: (r.side_events ?? []).join('; '),
       dinner_guests: r.dinner_guests ?? 0,
       status: r.status ?? '',
-      coc:         !isCocRequired(event)
-                    ? 'N/A'
-                    : completionMap[r.user_id]?.coc    ? 'Yes' : 'No',
-      rules_test:  !isRefTestRequired(event)
-                    ? 'N/A'
-                    : completionMap[r.user_id]?.test   ? 'Yes' : 'No',
-      media:       completionMap[r.user_id]?.media     ? 'Yes' : 'No',
-      side_events_complete: completionMap[r.user_id]?.sideEvents ? 'Yes' : 'No',
-      extras:      completionMap[r.user_id]?.extras    ? 'Yes' : 'No',
-      payment:     !isPaymentRequired(event)
-                    ? 'N/A'
-                    : completionMap[r.user_id]?.paymentStatus ?? 'unpaid',
+      coc:         checkDone(completionMap[r.user_id]?.checks?.code_of_conduct) ? 'Yes' : 'No',
+      rules_test:  checkDone(completionMap[r.user_id]?.checks?.referee_test) ? 'Yes' : 'No',
+      media:       checkDone(completionMap[r.user_id]?.checks?.media_release) ? 'Yes' : 'No',
+      side_events_complete: checkDone(completionMap[r.user_id]?.checks?.side_events) ? 'Yes' : 'No',
+      extras:      checkDone(completionMap[r.user_id]?.checks?.extras) ? 'Yes' : 'No',
+      under_18:    completionMap[r.user_id]?.checks?.under_18?.status === 'pending_review'
+                    ? 'Pending committee'
+                    : checkDone(completionMap[r.user_id]?.checks?.under_18) ? 'Yes' : 'No',
+      payment:     paymentStatus(completionMap[r.user_id]?.checks?.payment),
+      readiness:   completionMap[r.user_id]?.overall?.state ?? 'action_required',
     }))
     const keys = Object.keys(rows[0])
-    const csv = [keys.join(','), ...rows.map(r => keys.map(k => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'roster.csv'; a.click()
+    const csv = buildCsv(keys, rows.map(row => keys.map(key => row[key])))
+    downloadCsv(csv, 'roster.csv')
   }
 
   function isPlayerReady(uid) {
-    const c = completionMap[uid]
-    if (!c) return false
-    const row = roster.find(r => r.user_id === uid)
-    const u18needed = isUnder18(row?.profiles?.dob, event?.year)
-    const refRequired = isRefTestRequired(event)
-    const cocRequired = isCocRequired(event)
-    const paymentRequired = isPaymentRequired(event)
-    return (
-      (!cocRequired || c.coc) &&
-      (!refRequired || c.test) &&
-      c.media && c.sideEvents && c.extras &&
-      (!paymentRequired || c.paymentStatus !== 'unpaid') &&
-      (!u18needed || c.u18)
-    )
+    return completionMap[uid]?.overall?.event_ready === true
   }
 
   // ── Guards ────────────────────────────────────────────────────────────────
   if (authLoading || loading) {
     return <div className="min-h-screen bg-base flex items-center justify-center"><div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+  }
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
+        <h1 className="text-2xl font-black text-white mb-2">Could not load Team Hub</h1>
+        <p className="text-red-300 text-sm mb-6 max-w-md">{loadError}</p>
+        <div className="flex items-center gap-3">
+          <button onClick={load} className="bg-brand hover:bg-brand-hover text-black font-bold px-5 py-2.5 rounded-xl text-sm transition-all">Try again</button>
+          <Link to="/dashboard" className="border border-line text-white px-5 py-2.5 rounded-xl text-sm font-semibold">Back to dashboard</Link>
+        </div>
+      </div>
+    )
   }
   if (!team) {
     return (
@@ -597,10 +554,10 @@ export default function CaptainHub() {
         {/* No-team placeholder */}
         <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
           <div className="text-4xl mb-4">👑</div>
-          <h2 className="text-2xl font-black text-white mb-2">No Team Found</h2>
-          <p className="text-[#e5e5e5]/60 text-sm mb-6">You haven't registered a team yet.</p>
+          <h2 className="text-2xl font-black text-white mb-2">{event ? 'No Team Found' : 'No Active Event'}</h2>
+          <p className="text-[#e5e5e5]/60 text-sm mb-6">{event ? "You haven't registered a team for this event yet." : 'There is no active ZLTAC event right now.'}</p>
           <Link to={event ? `/events/${event.year}/captain-register` : '/'} className="bg-brand hover:bg-brand-hover text-black font-bold px-6 py-3 rounded-xl text-sm transition-all">
-            Register a Team →
+            {event ? 'Register a Team →' : 'Back to home →'}
           </Link>
         </div>
       </div>
@@ -626,7 +583,10 @@ export default function CaptainHub() {
   const filteredRoster = roster.filter(r => {
     if (filter === 'ready') return isPlayerReady(r.user_id)
     if (filter === 'incomplete') return !isPlayerReady(r.user_id)
-    if (filter === 'unpaid') return completionMap[r.user_id]?.paymentStatus === 'unpaid'
+    if (filter === 'unpaid') {
+      const status = paymentStatus(completionMap[r.user_id]?.checks?.payment)
+      return status === 'unpaid' || status === 'partial'
+    }
     return true
   })
 
@@ -808,7 +768,7 @@ export default function CaptainHub() {
                     type="text"
                     value={searchQuery}
                     onChange={e => onSearchChange(e.target.value)}
-                    placeholder="Search by name or alias…"
+                    placeholder="Search by player alias…"
                     className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand transition-colors"
                   />
                   {searching && (
@@ -831,18 +791,13 @@ export default function CaptainHub() {
 
                 {searchResults.length > 0 && (
                   <div className="mt-2 border border-line rounded-xl overflow-hidden">
-                    {searchResults.map((p, i) => {
-                      const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || '—'
-                      return (
-                        <div key={p.id} className={`flex items-center gap-3 px-4 py-3 ${i !== 0 ? 'border-t border-line' : ''} hover:bg-line/30 transition-colors`}>
+                    {searchResults.map((p, i) => (
+                        <div key={p.handle} className={`flex items-center gap-3 px-4 py-3 ${i !== 0 ? 'border-t border-line' : ''} hover:bg-line/30 transition-colors`}>
                           <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-black flex-shrink-0" style={{ background: '#00E6FF' }}>
-                            {initials(name)}
+                            {initials(p.alias)}
                           </div>
                           <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                            <span className="text-white text-sm font-semibold">{name}</span>
-                            {p.alias && <span className="text-brand text-xs">"{p.alias}"</span>}
-                            <CommitteeBadge roles={p.roles} size="xs" />
-                            {p.state && <span className="text-[10px] bg-line text-[#e5e5e5]/60 px-1.5 py-0.5 rounded-full font-bold">{p.state}</span>}
+                            <span className="text-white text-sm font-semibold">{p.alias || 'Player'}</span>
                           </div>
                           <button
                             onClick={() => addPlayer(p)}
@@ -851,8 +806,7 @@ export default function CaptainHub() {
                             Add to Team
                           </button>
                         </div>
-                      )
-                    })}
+                    ))}
                   </div>
                 )}
               </>
@@ -895,11 +849,13 @@ export default function CaptainHub() {
                   const name = [r.profiles?.first_name, r.profiles?.last_name].filter(Boolean).join(' ') || '—'
                   const alias = r.profiles?.alias
                   const pState = r.profiles?.state
-                  const dob = r.profiles?.dob
                   const avatarUrl = r.profiles?.avatar_url
-                  const u18 = isUnder18(dob, eventYear)
                   const comp = completionMap[r.user_id] ?? {}
+                  const checks = comp.checks ?? {}
+                  const u18 = checks.under_18?.status !== 'not_required'
+                  const dobBlocked = checks.identity?.status !== 'satisfied'
                   const ready = isPlayerReady(r.user_id)
+                  const awaitingReview = comp.overall?.awaiting_committee === true
                   const isMe = r.user_id === user.id
 
                   return (
@@ -919,9 +875,10 @@ export default function CaptainHub() {
                             <CommitteeBadge roles={r.profiles?.roles} size="xs" />
                             {pState && <span className="text-[10px] bg-brand/10 text-brand border border-brand/20 px-1.5 py-0.5 rounded-full font-bold">{pState}</span>}
                             {u18 && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded-full font-bold">U18</span>}
+                            {dobBlocked && <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full font-bold">DOB required</span>}
                             {isMe && <span className="text-[10px] text-[#e5e5e5]/60 font-semibold">(You)</span>}
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ready ? 'bg-brand/10 text-brand' : 'bg-yellow-500/10 text-yellow-400'}`}>
-                              {ready ? 'Ready' : 'Incomplete'}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ready ? 'bg-brand/10 text-brand' : awaitingReview ? 'bg-yellow-500/10 text-yellow-300' : 'bg-red-500/10 text-red-300'}`}>
+                              {ready ? 'Ready' : awaitingReview ? 'Awaiting review' : 'Action required'}
                             </span>
                           </div>
 
@@ -929,64 +886,39 @@ export default function CaptainHub() {
                               On narrow viewports the strip wraps; each chip
                               still carries its full status word. */}
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {/* CoC chip renders N/A when the event has the
-                                requirement disabled. */}
-                            {(() => {
-                              const cocRequired = isCocRequired(event)
-                              const cocState = !cocRequired
-                                ? 'na'
-                                : comp.coc ? 'complete' : 'incomplete'
-                              const cocTitle = !cocRequired
-                                ? 'Code of Conduct: not required for this event'
-                                : comp.cocOverride
-                                  ? `Code of Conduct: ${comp.cocOverrideDetail}`
-                                  : comp.coc ? 'Code of Conduct: signed' : 'Code of Conduct: not yet signed'
-                              const cocLabel = comp.cocOverride ? 'CoC OVR' : 'CoC'
-                              return <StatusChip state={cocState} label={cocLabel} title={cocTitle} />
-                            })()}
-                            {/* Rules Test chip renders N/A when the event has
-                                disabled the requirement; otherwise reflects
-                                the player's own pass/fail state. Tooltip carries
-                                the Safety/General section breakdown when present. */}
-                            {(() => {
-                              const refRequired = isRefTestRequired(event)
-                              const refState = !refRequired
-                                ? 'na'
-                                : comp.test ? 'complete' : 'incomplete'
-                              const detailSuffix = comp.testDetail ? ` — ${comp.testDetail}` : ''
-                              const refTitle = !refRequired
-                                ? 'Rules Test: not required for this event'
-                                : comp.test
-                                  ? `Rules Test: passed${comp.testScore != null ? ` (${comp.testScore}%)` : ''}${detailSuffix}`
-                                  : 'Rules Test: not yet passed'
-                              const baseLabel = !refRequired
-                                ? 'Rules'
-                                : (comp.test && comp.testScore != null ? `Rules ${comp.testScore}%` : 'Rules')
-                              const refLabel = comp.testOverride ? `${baseLabel} OVR` : baseLabel
-                              return <StatusChip state={refState} label={refLabel} title={refTitle} />
-                            })()}
                             <StatusChip
-                              state={comp.media ? 'complete' : 'incomplete'}
-                              label={comp.mediaOverride ? 'Media OVR' : 'Media'}
-                              title={comp.mediaOverride
-                                ? `Media Release: ${comp.mediaOverrideDetail}`
-                                : (comp.media ? 'Media Release: signed' : 'Media Release: not yet signed')}
+                              state={checkChipState(checks.code_of_conduct)}
+                              label={checks.code_of_conduct?.source === 'committee_override' ? 'CoC OVR' : 'CoC'}
+                              title={readinessTitle('Code of Conduct', checks.code_of_conduct)}
                             />
                             <StatusChip
-                              state={comp.sideEvents ? 'complete' : 'incomplete'}
+                              state={checkChipState(checks.referee_test)}
+                              label={checks.referee_test?.source === 'committee_override' ? 'Rules OVR' : 'Rules'}
+                              title={readinessTitle('Rules Test', checks.referee_test)}
+                            />
+                            <StatusChip
+                              state={checkChipState(checks.media_release)}
+                              label={checks.media_release?.source === 'committee_override' ? 'Media OVR' : 'Media'}
+                              title={readinessTitle('Media Release', checks.media_release)}
+                            />
+                            <StatusChip
+                              state={checkChipState(checks.side_events)}
                               label="Side"
-                              title={comp.sideEvents
-                                ? 'Side events: confirmed (and any doubles/triples partners confirmed)'
-                                : 'Side events: not confirmed, or a doubles/triples partner has not confirmed yet'}
+                              title={readinessTitle('Side events', checks.side_events)}
                             />
                             <StatusChip
-                              state={comp.extras ? 'complete' : 'incomplete'}
+                              state={checkChipState(checks.extras)}
                               label="Extras"
-                              title={comp.extras ? 'Extras: confirmed' : 'Extras: not yet confirmed'}
+                              title={readinessTitle('Extras', checks.extras)}
                             />
-                            {/* Payment chip renders N/A when the event has
-                                the requirement disabled. */}
-                            <PaymentChip status={isPaymentRequired(event) ? comp.paymentStatus : 'na'} />
+                            {u18 && (
+                              <StatusChip
+                                state={checkChipState(checks.under_18)}
+                                label={checks.under_18?.source === 'committee_override' ? 'U18 OVR' : 'U18'}
+                                title={readinessTitle('Under-18 approval', checks.under_18)}
+                              />
+                            )}
+                            <PaymentChip status={paymentStatus(checks.payment)} />
                           </div>
                         </div>
 
@@ -1013,7 +945,7 @@ export default function CaptainHub() {
           <div className="bg-surface border border-line rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-white font-bold">Team Settings</h2>
-              {!editingSettings && (
+              {!editingSettings && !locked && (
                 <button onClick={() => setEditingSettings(true)} className="text-xs text-brand/60 hover:text-brand transition-colors">Edit</button>
               )}
             </div>
@@ -1033,19 +965,19 @@ export default function CaptainHub() {
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1">Team Logo</p>
                 <p className="text-xs text-[#e5e5e5]/60 mb-2 leading-relaxed">
-                  PNG, JPEG, WebP, or SVG · max 2 MB
+                  PNG, JPEG, or WebP · max 2 MB
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     ref={logoInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    accept="image/png,image/jpeg,image/webp"
                     onChange={onLogoFileChosen}
                     className="hidden"
                   />
                   <button
                     onClick={pickLogo}
-                    disabled={logoUploading}
+                    disabled={logoUploading || locked}
                     className="text-xs bg-brand/10 hover:bg-brand/20 text-brand border border-brand/20 font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
                   >
                     {logoUploading

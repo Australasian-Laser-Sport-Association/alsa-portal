@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { waitUntil } from '@vercel/functions'
 
 let lastWarnAt = 0
 
@@ -68,14 +69,18 @@ async function sendSentryEnvelope(error, context, extra = {}) {
     JSON.stringify(event),
   ].join('\n')
 
-  await fetch(parsed.envelopeUrl, {
+  const response = await fetch(parsed.envelopeUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-sentry-envelope',
       'X-Sentry-Auth': `Sentry sentry_version=7, sentry_key=${parsed.key}, sentry_client=alsa-portal-api/1.0`,
     },
     body: envelope,
+    signal: AbortSignal.timeout(3_000),
   })
+  if (!response.ok) {
+    throw new Error(`Sentry rejected the event with HTTP ${response.status}`)
+  }
 }
 
 export function captureServerException(error, context = 'api', extra = {}) {
@@ -83,10 +88,15 @@ export function captureServerException(error, context = 'api', extra = {}) {
   const dsn = sentryDsn()
   if (!dsn) return
 
-  sendSentryEnvelope(error, context, extra).catch(err => {
+  const delivery = sendSentryEnvelope(error, context, extra).catch(err => {
     const now = Date.now()
     if (now - lastWarnAt < 60_000) return
     lastWarnAt = now
     console.error('[server-telemetry] failed to send Sentry event:', err?.message || err)
   })
+
+  // Vercel may freeze an invocation as soon as its response completes.
+  // waitUntil registers this non-critical delivery with the request lifecycle;
+  // outside Vercel it safely returns while the promise continues normally.
+  waitUntil(delivery)
 }

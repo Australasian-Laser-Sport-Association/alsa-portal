@@ -17,6 +17,12 @@ export function captainTeamErrorResponse(error) {
   if (error?.code === 'P0002') {
     return { status: 404, error: message }
   }
+  if (error?.code === '42501') {
+    return { status: 403, error: message }
+  }
+  if (['23503', '23514', '40001', '40P01', '55000'].includes(error?.code)) {
+    return { status: 409, error: message }
+  }
   if (error?.code === 'P0001' && message.includes('Only the team captain')) {
     return { status: 403, error: message }
   }
@@ -26,13 +32,30 @@ export function captainTeamErrorResponse(error) {
   return { status: 500, error: message }
 }
 
-export function isAllowedTeamLogoUrl(value, supabaseUrl) {
+export function isAllowedTeamLogoUrl(value, supabaseUrl, allowedFolderIds = null) {
   if (value == null || value === '') return true
   try {
     const logo = new URL(value)
     const base = new URL(supabaseUrl)
-    return logo.origin === base.origin
-      && logo.pathname.startsWith('/storage/v1/object/public/team-logos/')
+    const prefix = '/storage/v1/object/public/team-logos/'
+    if (
+      logo.origin !== base.origin
+      || logo.username
+      || logo.password
+      || logo.search
+      || logo.hash
+      || !logo.pathname.startsWith(prefix)
+    ) return false
+
+    if (allowedFolderIds == null) return true
+    const folders = Array.isArray(allowedFolderIds)
+      ? allowedFolderIds
+      : [allowedFolderIds]
+    return folders.some(folderId => (
+      typeof folderId === 'string'
+      && folderId.length > 0
+      && logo.pathname.startsWith(`${prefix}${folderId}/`)
+    ))
   } catch {
     return false
   }

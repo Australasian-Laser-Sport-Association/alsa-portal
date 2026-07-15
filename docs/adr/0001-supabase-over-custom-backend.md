@@ -48,15 +48,31 @@ For operations that require bypassing RLS (committee admin, cross-user reads), t
 
 ### Hosting and cost model
 
-The portal is hosted on Supabase's free tier during initial rollout. The free tier provides enough database, auth, and storage capacity to comfortably cover ALSA's scale (low hundreds of active members, one major tournament per year, handful of side events). Upgrading to the Pro tier ($25/month/project) unlocks specific features we want eventually — leaked-password detection, higher email rate limits, daily backups — but is not required for launch.
+> **Production-readiness addendum (2026-07-14):** The original free-tier
+> launch assumption below is no longer an approved production configuration.
+> The portal currently deploys 12 direct Vercel Functions, which consumes the
+> full Hobby allowance, and Hobby is restricted to personal use. Production
+> must use a confirmed eligible Vercel plan, with Pro the expected choice for
+> this association-operated service. Supabase Free can pause during quiet
+> periods and has no managed daily backup entitlement, which is unsuitable for
+> an off-season member portal holding legal and financial records. Confirm
+> Supabase Pro for production and retain the independent encrypted backup and
+> restore controls in the operations runbook. Staging may use a lower tier if
+> its isolation and availability limits are explicitly accepted.
 
-Vercel hosts the frontend and API routes on its Hobby tier, also free for our traffic levels.
+The original decision assumed Supabase Free and Vercel Hobby for the initial
+rollout because their traffic and storage allowances fit ALSA's size. That
+historical cost assumption is superseded by the production-readiness addendum
+above; it is not approval to launch this association service on those tiers.
 
 ## Consequences
 
 ### Positive
 
-- **We do not operate a server.** No OS patching, no Node process supervision, no database backups script, no TLS certificate renewal, no log rotation. For a volunteer committee, this is the single largest benefit.
+- **We do not operate a server.** There is no OS patching, Node process
+  supervision, or TLS certificate renewal. The committee still owns monitoring,
+  encrypted off-project backups, restore drills, and retention evidence; those
+  controls are automated and documented rather than delegated away.
 
 - **Security model is database-native.** RLS policies are evaluated by Postgres itself. A bug in the application cannot bypass them. This aligns with our defence-in-depth philosophy (see [ADR-0002](./0002-rls-plus-grant-security-model.md)).
 

@@ -27,6 +27,7 @@ export default function Resources({ scope }) {
   const copy = SCOPE_COPY[scope] ?? SCOPE_COPY.alsa
   const [categories, setCategories] = useState([])
   const [documents, setDocuments] = useState([])
+  const [requiredDocuments, setRequiredDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -37,19 +38,26 @@ export default function Resources({ scope }) {
       setLoading(true)
       setError('')
       try {
-        const [categoryResult, documentResult] = await Promise.all([
-          supabase.from('document_categories').select('*').eq('scope', scope),
-          supabase.from('documents').select('*').eq('scope', scope),
+        const [categoryResult, documentResult, requiredResult] = await Promise.all([
+          supabase.from('document_categories').select('id, scope, name, sort_order').eq('scope', scope),
+          supabase.from('documents').select('id, scope, category_id, name, url, description, sort_order').eq('scope', scope),
+          scope === 'zltac'
+            ? fetch('/api/public?resource=required-documents')
+            : Promise.resolve(null),
         ])
         if (categoryResult.error) throw categoryResult.error
         if (documentResult.error) throw documentResult.error
+        if (requiredResult && !requiredResult.ok) throw new Error('Required documents could not be loaded')
+        const requiredPayload = requiredResult ? await requiredResult.json() : { documents: [] }
         if (cancelled) return
         setCategories((categoryResult.data ?? []).slice().sort(byOrder))
         setDocuments((documentResult.data ?? []).slice().sort(byOrder))
+        setRequiredDocuments(requiredPayload.documents ?? [])
       } catch {
         if (cancelled) return
         setCategories([])
         setDocuments([])
+        setRequiredDocuments([])
         setError("Couldn't load resources. Please try again.")
       } finally {
         if (!cancelled) setLoading(false)
@@ -67,6 +75,18 @@ export default function Resources({ scope }) {
     .filter(g => g.docs.length > 0)
   const other = documents.filter(d => !d.category_id || !knownIds.has(d.category_id))
   if (other.length > 0) groups.push({ key: 'other', name: 'Other', docs: other })
+  if (scope === 'zltac' && requiredDocuments.length > 0) {
+    groups.unshift({
+      key: 'required-documents',
+      name: 'Required documents',
+      docs: requiredDocuments.map(document => ({
+        id: document.id,
+        name: document.original_filename,
+        description: `Version ${document.version} - effective ${document.effective_date}`,
+        url: document.url,
+      })),
+    })
+  }
 
   return (
     <div className="bg-base text-white">

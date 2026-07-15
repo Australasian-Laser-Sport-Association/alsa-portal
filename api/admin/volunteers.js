@@ -1,5 +1,7 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
+import { sendServerError } from '../_lib/apiErrors.js'
+import { isUuid, validateUuidList } from '../_lib/idValidation.js'
 
 // Committee-gated volunteer admin. Dispatches by ?resource=:
 //   ?resource=roles    → volunteer_roles CRUD (GET / POST / PATCH&id / DELETE&id)
@@ -15,6 +17,16 @@ const VALID_STATUS = new Set(['pending', 'approved', 'declined'])
 const DEFAULT_CAVEAT = 'Note: Not all volunteers will be utilised. Selection is based on the operational capacity of the ZLTAC event.'
 const VOLUNTEER_ROLE_COLUMNS = 'id, code, name, short_description, target_count, min_count, requires_experience, experience_notes, is_default, sort_order, is_active, created_at, updated_at'
 const EVENT_VOLUNTEER_SETTINGS_COLUMNS = 'id, event_id, required_per_team, count_per_team, enforcement, caveat_message, created_at, updated_at'
+
+function sendVolunteerAdminMutationError(res, error, context) {
+  if (error?.code === '42501') return res.status(403).json({ error: 'Forbidden' })
+  if (error?.code === 'P0002') return res.status(404).json({ error: 'Volunteer record not found' })
+  if (error?.code === '22023') return res.status(400).json({ error: 'Invalid volunteer request.' })
+  if (error?.code === '55000' || error?.code === '23505') {
+    return res.status(409).json({ error: 'Volunteer state has changed. Refresh and try again.' })
+  }
+  return sendServerError(res, error, context)
+}
 
 // ── roles helpers ─────────────────────────────────────────────────────────────
 function parseCount(v) {
@@ -68,7 +80,7 @@ function validateAndBuild(body, { partial }) {
   return { payload: out }
 }
 
-async function handleRoles(req, res) {
+async function handleRoles(req, res, user) {
   const { id } = req.query
 
   if (req.method === 'GET') {
@@ -77,7 +89,7 @@ async function handleRoles(req, res) {
       .select(VOLUNTEER_ROLE_COLUMNS)
       .order('sort_order', { ascending: true })
       .order('code', { ascending: true })
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-volunteers:roles-list')
     return res.json({ roles: data ?? [] })
   }
 
@@ -85,34 +97,35 @@ async function handleRoles(req, res) {
     const { payload, error: vErr, field } = validateAndBuild(req.body ?? {}, { partial: false })
     if (vErr) return res.status(400).json({ error: vErr, field })
 
-    const { data, error } = await supabaseAdmin.from('volunteer_roles').insert(payload).select(VOLUNTEER_ROLE_COLUMNS).single()
+    const { data, error } = await supabaseAdmin.rpc('admin_upsert_volunteer_role', {
+      p_actor_id: user.id,
+      p_role_id: null,
+      p_changes: payload,
+    })
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'A role with this code already exists.', field: 'code' })
-      return res.status(500).json({ error: error.message })
+      return sendVolunteerAdminMutationError(res, error, 'admin-volunteers:role-create')
     }
-    if (payload.is_default) {
-      const { error: clrErr } = await supabaseAdmin.from('volunteer_roles').update({ is_default: false }).neq('id', data.id)
-      if (clrErr) return res.status(500).json({ error: clrErr.message })
-    }
-    return res.json({ role: data })
+    return res.json(data)
   }
 
   if (req.method === 'PATCH') {
     if (!id) return res.status(400).json({ error: 'id is required' })
+    if (!isUuid(id)) return res.status(400).json({ error: 'id must be a valid UUID' })
     const { payload, error: vErr, field } = validateAndBuild(req.body ?? {}, { partial: true })
     if (vErr) return res.status(400).json({ error: vErr, field })
     if (Object.keys(payload).length === 0) return res.status(400).json({ error: 'No fields to update' })
 
-    const { data, error } = await supabaseAdmin.from('volunteer_roles').update(payload).eq('id', id).select(VOLUNTEER_ROLE_COLUMNS).single()
+    const { data, error } = await supabaseAdmin.rpc('admin_upsert_volunteer_role', {
+      p_actor_id: user.id,
+      p_role_id: id,
+      p_changes: payload,
+    })
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'A role with this code already exists.', field: 'code' })
-      return res.status(500).json({ error: error.message })
+      return sendVolunteerAdminMutationError(res, error, 'admin-volunteers:role-update')
     }
-    if (payload.is_default === true) {
-      const { error: clrErr } = await supabaseAdmin.from('volunteer_roles').update({ is_default: false }).neq('id', id)
-      if (clrErr) return res.status(500).json({ error: clrErr.message })
-    }
-    return res.json({ role: data })
+    return res.json(data)
   }
 
   if (req.method === 'DELETE') {
@@ -122,7 +135,7 @@ async function handleRoles(req, res) {
       .from('volunteer_signup_roles')
       .select('id', { count: 'exact', head: true })
       .eq('role_id', id)
-    if (cntErr) return res.status(500).json({ error: cntErr.message })
+    if (cntErr) return sendServerError(res, cntErr, 'admin-volunteers:role-reference-count')
     if ((count ?? 0) > 0) {
       return res.status(409).json({
         error: `This role is referenced by ${count} volunteer signup${count === 1 ? '' : 's'} and can't be hard-deleted.`,
@@ -135,7 +148,7 @@ async function handleRoles(req, res) {
       if (delErr.code === '23503') {
         return res.status(409).json({ error: "This role is now in use and can't be hard-deleted.", referenceCount: null })
       }
-      return res.status(500).json({ error: delErr.message })
+      return sendServerError(res, delErr, 'admin-volunteers:role-delete')
     }
     return res.json({ ok: true })
   }
@@ -154,7 +167,7 @@ async function handleSettings(req, res) {
       .select(EVENT_VOLUNTEER_SETTINGS_COLUMNS)
       .eq('event_id', eventId)
       .maybeSingle()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-volunteers:settings-get')
     if (!data) return res.status(404).json({ error: 'No volunteer settings for this event' })
     return res.json({ settings: data })
   }
@@ -195,7 +208,7 @@ async function handleSettings(req, res) {
       .single()
     if (error) {
       if (error.code === '23503') return res.status(400).json({ error: 'Unknown event.' })
-      return res.status(500).json({ error: error.message })
+      return sendServerError(res, error, 'admin-volunteers:settings-save')
     }
     return res.json({ settings: data })
   }
@@ -241,11 +254,18 @@ async function fetchEnrichedSignups({ signupId = null, year = null } = {}) {
   const teamIds = [...new Set(signups.map(s => s.team_id).filter(Boolean))]
   const years   = [...new Set(signups.map(s => s.year).filter(v => v != null))]
 
-  const [{ data: profiles }, { data: teams }, { data: events }] = await Promise.all([
+  const [profileResult, teamResult, eventResult] = await Promise.all([
     userIds.length ? supabaseAdmin.from('profiles').select('id, first_name, last_name, alias, phone, email').in('id', userIds) : Promise.resolve({ data: [] }),
     teamIds.length ? supabaseAdmin.from('teams').select('id, name').in('id', teamIds) : Promise.resolve({ data: [] }),
     years.length ? supabaseAdmin.from('zltac_events').select('year, name').in('year', years) : Promise.resolve({ data: [] }),
   ])
+
+  const enrichmentError = profileResult.error ?? teamResult.error ?? eventResult.error
+  if (enrichmentError) return { error: enrichmentError }
+
+  const profiles = profileResult.data
+  const teams = teamResult.data
+  const events = eventResult.data
 
   const profMap = Object.fromEntries((profiles ?? []).map(p => [p.id, p]))
   const teamMap = Object.fromEntries((teams ?? []).map(t => [t.id, t.name]))
@@ -286,13 +306,13 @@ async function handleSignups(req, res, user) {
     if (event_id) {
       const { data: ev, error: evErr } = await supabaseAdmin
         .from('zltac_events').select('year').eq('id', event_id).maybeSingle()
-      if (evErr) return res.status(500).json({ error: evErr.message })
+      if (evErr) return sendServerError(res, evErr, 'admin-volunteers:event-load')
       if (!ev) return res.json({ signups: [] })
       year = ev.year
     }
 
     const { signups, error } = await fetchEnrichedSignups({ year })
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-volunteers:signups-list')
 
     let result = signups
     if (roleFilter.length) {
@@ -308,47 +328,28 @@ async function handleSignups(req, res, user) {
   if (req.method === 'PATCH') {
     const signupId = req.query.signup_id
     if (!signupId) return res.status(400).json({ error: 'signup_id is required' })
+    if (!isUuid(signupId)) return res.status(400).json({ error: 'signup_id must be a valid UUID' })
 
     const decisions = Array.isArray(req.body?.role_decisions) ? req.body.role_decisions : []
     if (decisions.length === 0) return res.status(400).json({ error: 'role_decisions is required' })
+    if (decisions.length > 50) return res.status(400).json({ error: 'No more than 50 role decisions may be submitted.' })
     for (const d of decisions) {
-      if (!d || !d.role_id || !VALID_STATUS.has(d.status)) {
+      if (!d || !isUuid(d.role_id) || !VALID_STATUS.has(d.status)) {
         return res.status(400).json({ error: 'Each decision needs a role_id and a valid status.' })
       }
     }
 
-    const { data: signup, error: sErr } = await supabaseAdmin
-      .from('volunteer_signups').select('id').eq('id', signupId).maybeSingle()
-    if (sErr) return res.status(500).json({ error: sErr.message })
-    if (!signup) return res.status(404).json({ error: 'Signup not found' })
-
-    const { data: existingRows, error: erErr } = await supabaseAdmin
-      .from('volunteer_signup_roles').select('id, role_id').eq('signup_id', signupId)
-    if (erErr) return res.status(500).json({ error: erErr.message })
-    const rowIdByRole = Object.fromEntries((existingRows ?? []).map(r => [r.role_id, r.id]))
-
-    const nowIso = new Date().toISOString()
-    const uniq = Object.values(Object.fromEntries(decisions.map(d => [d.role_id, d])))
-
-    const inserts = []
-    for (const d of uniq) {
-      const decided = d.status !== 'pending'
-      const fields = { status: d.status, decided_by: decided ? user.id : null, decided_at: decided ? nowIso : null }
-      if (rowIdByRole[d.role_id]) {
-        const { error } = await supabaseAdmin
-          .from('volunteer_signup_roles').update(fields).eq('id', rowIdByRole[d.role_id])
-        if (error) return res.status(500).json({ error: error.message })
-      } else {
-        inserts.push({ signup_id: signupId, role_id: d.role_id, ...fields })
-      }
-    }
-    if (inserts.length) {
-      const { error } = await supabaseAdmin.from('volunteer_signup_roles').insert(inserts)
-      if (error) return res.status(500).json({ error: error.message })
+    const { error: decisionError } = await supabaseAdmin.rpc('admin_set_volunteer_role_decisions', {
+      p_actor_id: user.id,
+      p_signup_id: signupId,
+      p_decisions: decisions,
+    })
+    if (decisionError) {
+      return sendVolunteerAdminMutationError(res, decisionError, 'admin-volunteers:signup-decisions')
     }
 
     const { signups, error: fErr } = await fetchEnrichedSignups({ signupId })
-    if (fErr) return res.status(500).json({ error: fErr.message })
+    if (fErr) return sendServerError(res, fErr, 'admin-volunteers:signup-refresh')
     return res.json({ signup: signups[0] ?? null })
   }
 
@@ -356,42 +357,31 @@ async function handleSignups(req, res, user) {
   if (req.method === 'POST') {
     const { registration_id, role_ids, notes } = req.body ?? {}
     if (!registration_id) return res.status(400).json({ error: 'registration_id is required' })
-    const roleIds = Array.isArray(role_ids) ? [...new Set(role_ids.filter(Boolean))] : []
+    if (!isUuid(registration_id)) return res.status(400).json({ error: 'registration_id must be a valid UUID' })
+    const checkedRoles = validateUuidList(role_ids, { name: 'role_ids', max: 50 })
+    if (checkedRoles.error) return res.status(400).json({ error: checkedRoles.error })
+    const roleIds = [...new Set(checkedRoles.ids)]
     if (roleIds.length === 0) return res.status(400).json({ error: 'Select at least one role.' })
 
-    const { data: reg, error: regErr } = await supabaseAdmin
-      .from('zltac_registrations').select('id').eq('id', registration_id).maybeSingle()
-    if (regErr) return res.status(500).json({ error: regErr.message })
-    if (!reg) return res.status(404).json({ error: 'Registration not found' })
-
-    const { data: existing, error: exErr } = await supabaseAdmin
-      .from('volunteer_signups').select('id').eq('registration_id', registration_id).maybeSingle()
-    if (exErr) return res.status(500).json({ error: exErr.message })
-    if (existing) {
-      return res.status(409).json({ error: 'This player already has a volunteer signup.', existing_signup_id: existing.id })
-    }
-
-    const { data: validRoles, error: vrErr } = await supabaseAdmin
-      .from('volunteer_roles').select('id').in('id', roleIds).eq('is_active', true)
-    if (vrErr) return res.status(500).json({ error: vrErr.message })
-    const validIds = new Set((validRoles ?? []).map(r => r.id))
-    if (roleIds.some(id => !validIds.has(id))) {
-      return res.status(400).json({ error: 'One or more selected roles are invalid or inactive.' })
-    }
-
     const cleanNotes = typeof notes === 'string' ? notes.slice(0, 1000).trim() : ''
-    const { data: created, error: insErr } = await supabaseAdmin
-      .from('volunteer_signups').insert({ registration_id, notes: cleanNotes || null }).select('id').single()
-    if (insErr) return res.status(500).json({ error: insErr.message })
+    const { data: created, error: createError } = await supabaseAdmin.rpc('admin_create_volunteer_signup', {
+      p_actor_id: user.id,
+      p_registration_id: registration_id,
+      p_role_ids: roleIds,
+      p_notes: cleanNotes,
+    })
+    if (createError) {
+      return sendVolunteerAdminMutationError(res, createError, 'admin-volunteers:signup-create')
+    }
+    if (!created?.created) {
+      return res.status(409).json({
+        error: 'This player already has a volunteer signup.',
+        existing_signup_id: created?.signup_id ?? null,
+      })
+    }
 
-    const nowIso = new Date().toISOString()
-    const { error: rolesErr } = await supabaseAdmin.from('volunteer_signup_roles').insert(
-      roleIds.map(role_id => ({ signup_id: created.id, role_id, status: 'approved', decided_by: user.id, decided_at: nowIso }))
-    )
-    if (rolesErr) return res.status(500).json({ error: rolesErr.message })
-
-    const { signups, error: fErr } = await fetchEnrichedSignups({ signupId: created.id })
-    if (fErr) return res.status(500).json({ error: fErr.message })
+    const { signups, error: fErr } = await fetchEnrichedSignups({ signupId: created.signup_id })
+    if (fErr) return sendServerError(res, fErr, 'admin-volunteers:signup-refresh')
     return res.status(201).json({ signup: signups[0] ?? null })
   }
 
@@ -400,12 +390,20 @@ async function handleSignups(req, res, user) {
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  const { user, error: authErr } = await verifyCommittee(req)
-  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+  try {
+    const { user, error: authErr } = await verifyCommittee(req)
+    if (authErr) {
+      const status = statusForAuthError(authErr)
+      if (status === 500) return sendServerError(res, new Error(authErr), 'admin-volunteers:auth')
+      return res.status(status).json({ error: authErr })
+    }
 
-  const resource = req.query.resource
-  if (resource === 'roles')    return handleRoles(req, res)
-  if (resource === 'settings') return handleSettings(req, res)
-  if (resource === 'signups')  return handleSignups(req, res, user)
-  return res.status(400).json({ error: 'resource query param must be "roles", "settings", or "signups"' })
+    const resource = req.query.resource
+    if (resource === 'roles') return await handleRoles(req, res, user)
+    if (resource === 'settings') return await handleSettings(req, res)
+    if (resource === 'signups') return await handleSignups(req, res, user)
+    return res.status(400).json({ error: 'resource query param must be "roles", "settings", or "signups"' })
+  } catch (error) {
+    return sendServerError(res, error, 'admin-volunteers')
+  }
 }

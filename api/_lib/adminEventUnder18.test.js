@@ -63,13 +63,11 @@ describe('admin event under-18-approvals resource', () => {
     expect(response.statusCode).toBe(400)
     expect(response.body).toEqual({ error: 'user_id must be a valid UUID' })
     expect(from).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('stamps new approvals with the verified committee user server-side', async () => {
-    const single = vi.fn().mockResolvedValue({ data: { id: APPROVAL_ID }, error: null })
-    const select = vi.fn(() => ({ single }))
-    const insert = vi.fn(() => ({ select }))
-    from.mockReturnValueOnce({ insert })
+  it('creates approvals through the actor-bound transactional RPC', async () => {
+    rpc.mockResolvedValueOnce({ data: { id: APPROVAL_ID }, error: null })
 
     const response = res()
     await handler(req('POST', {
@@ -81,28 +79,18 @@ describe('admin event under-18-approvals resource', () => {
 
     expect(response.statusCode).toBe(201)
     expect(response.body).toEqual({ ok: true, id: APPROVAL_ID })
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
-      user_id: USER_ID,
-      event_year: 2026,
-      status: 'approved',
-      notes: 'emailed form',
-      approved_by: COMMITTEE_ID,
-    }))
-    expect(insert.mock.calls[0][0].approved_at).toEqual(expect.any(String))
+    expect(rpc).toHaveBeenCalledWith('committee_create_under_18_approval', {
+      p_actor_id: COMMITTEE_ID,
+      p_user_id: USER_ID,
+      p_event_year: 2026,
+      p_status: 'approved',
+      p_notes: 'emailed form',
+    })
+    expect(from).not.toHaveBeenCalled()
   })
 
-  it('updates approval status through the service-role route', async () => {
-    const maybeSingle = vi.fn().mockResolvedValue({
-      data: { id: APPROVAL_ID, status: 'pending', approved_at: null, approved_by: null },
-      error: null,
-    })
-    const lookupEq = vi.fn(() => ({ maybeSingle }))
-    const select = vi.fn(() => ({ eq: lookupEq }))
-    const updateEq = vi.fn().mockResolvedValue({ error: null })
-    const update = vi.fn(() => ({ eq: updateEq }))
-    from
-      .mockReturnValueOnce({ select })
-      .mockReturnValueOnce({ update })
+  it('decides approvals through the actor-bound transactional RPC', async () => {
+    rpc.mockResolvedValueOnce({ data: [{ id: APPROVAL_ID }], error: null })
 
     const response = res()
     await handler(req('PATCH', {
@@ -113,12 +101,30 @@ describe('admin event under-18-approvals resource', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.body).toEqual({ ok: true })
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      status: 'approved',
-      notes: null,
-      approved_by: COMMITTEE_ID,
-    }))
-    expect(update.mock.calls[0][0].approved_at).toEqual(expect.any(String))
-    expect(updateEq).toHaveBeenCalledWith('id', APPROVAL_ID)
+    expect(rpc).toHaveBeenCalledWith('committee_decide_under_18_approval', {
+      p_actor_id: COMMITTEE_ID,
+      p_approval_id: APPROVAL_ID,
+      p_status: 'approved',
+      p_notes: null,
+    })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('returns a conflict when the RPC observes an archived event', async () => {
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: '55000', message: 'Archived event' },
+    })
+
+    const response = res()
+    await handler(req('PATCH', {
+      id: APPROVAL_ID,
+      status: 'rejected',
+      notes: 'wrong form',
+    }), response)
+
+    expect(response.statusCode).toBe(409)
+    expect(response.body.error).toMatch(/event cannot accept/i)
+    expect(from).not.toHaveBeenCalled()
   })
 })

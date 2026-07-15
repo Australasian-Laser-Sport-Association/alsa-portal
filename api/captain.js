@@ -1,13 +1,32 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { sendServerError } from './_lib/apiErrors.js'
-import { verifyUser, getActiveEventYear } from './_lib/auth.js'
+import { statusForAuthError, verifyUser } from './_lib/auth.js'
 import { requireOpenPhase } from './_lib/eventPhase.js'
 import { captainTeamErrorResponse, isAllowedTeamLogoUrl } from './_lib/captainTeam.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
-import { validateUuidList } from './_lib/idValidation.js'
+import { isUuid } from './_lib/idValidation.js'
+import { getCaptainCurrentTeamReadiness } from './_lib/zltacReadinessData.js'
+import {
+  OpaqueProfileHandleError,
+  PROFILE_HANDLE_PURPOSES,
+  ProfileHandleConfigurationError,
+  issueOpaqueProfileHandle,
+  verifyOpaqueProfileHandle,
+} from './_lib/opaqueProfileHandle.js'
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
+const TEAM_PRESENTATION_FIELDS = new Set(['action', 'teamId', 'eventId', 'name', 'state', 'homeVenue', 'colour', 'logoUrl'])
+
+function captainRosterScope(eventYear) {
+  return `event-year:${eventYear}`
+}
+
+function sendCaptainMutationError(res, error, context) {
+  const mapped = captainTeamErrorResponse(error)
+  if (mapped.status === 500) return sendServerError(res, error, context)
+  return res.status(mapped.status).json({ error: mapped.error })
+}
 
 async function denyIfLocked(res, year) {
   const guard = await requireOpenPhase(year)
@@ -16,11 +35,34 @@ async function denyIfLocked(res, year) {
   return true
 }
 
+async function getOwnedCurrentTeamScope(captainId, teamId, eventId) {
+  const { data: event, error: eventError } = await supabaseAdmin
+    .from('zltac_events')
+    .select('id, year, status')
+    .eq('id', eventId)
+    .eq('status', 'open')
+    .maybeSingle()
+  if (eventError) throw eventError
+  if (!event) return null
+
+  const { data: team, error: teamError } = await supabaseAdmin
+    .from('teams')
+    .select('id, captain_id, event_id, status')
+    .eq('id', teamId)
+    .eq('event_id', event.id)
+    .eq('captain_id', captainId)
+    .maybeSingle()
+  if (teamError) throw teamError
+  if (!team) return null
+
+  return { event, team }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { user, error } = await verifyUser(req)
-  if (error) return res.status(401).json({ error })
+  if (error) return res.status(statusForAuthError(error)).json({ error })
 
   if (!await enforceRateLimit(req, res, {
     identifier: user.id,
@@ -42,12 +84,13 @@ export default async function handler(req, res) {
     const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : ''
 
     if (!Number.isInteger(year)) return res.status(400).json({ error: 'year is required' })
+    if (await denyIfLocked(res, year)) return
     if (!name || name.length > 80) return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
     if (!TEAM_ENTRY_TYPES.has(entryType)) return res.status(400).json({ error: 'Select State Association Team or Direct Entry Team.' })
     if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
     if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
     if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
-    if (!isAllowedTeamLogoUrl(logoUrl, process.env.VITE_SUPABASE_URL)) {
+    if (!isAllowedTeamLogoUrl(logoUrl, process.env.VITE_SUPABASE_URL, user.id)) {
       return res.status(400).json({ error: 'Invalid team logo URL.' })
     }
 
@@ -62,40 +105,132 @@ export default async function handler(req, res) {
       p_logo_url: logoUrl || null,
     })
     if (createErr) {
-      const mapped = captainTeamErrorResponse(createErr)
-      return res.status(mapped.status).json({ error: mapped.error })
+      return sendCaptainMutationError(res, createErr, 'captain:create-team')
+    }
+    return res.json(data)
+  }
+
+  if (action === 'update-team-settings') {
+    const unexpected = Object.keys(body).filter(key => !TEAM_PRESENTATION_FIELDS.has(key))
+    if (unexpected.length > 0) {
+      return res.status(400).json({ error: `Unsupported field(s): ${unexpected.join(', ')}` })
+    }
+
+    const { teamId, eventId } = body
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
+    }
+
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const state = typeof body.state === 'string' ? body.state.trim() : ''
+    const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
+    const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
+    const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : ''
+
+    if (!name || name.length > 80) {
+      return res.status(400).json({ error: 'Team name is required and must be 80 characters or fewer.' })
+    }
+    if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
+    if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
+    if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
+    // Initial team creation happens before the team UUID is known, so that
+    // upload lives under the captain UUID. Subsequent uploads live under the
+    // team UUID. Both folders are RLS-owned by this captain/team.
+    if (!isAllowedTeamLogoUrl(
+      logoUrl,
+      process.env.VITE_SUPABASE_URL,
+      [teamId, user.id],
+    )) {
+      return res.status(400).json({ error: 'Invalid team logo URL.' })
+    }
+
+    const { data, error: updateErr } = await supabaseAdmin.rpc('captain_mutate_zltac_team', {
+      p_actor_id: user.id,
+      p_team_id: teamId,
+      p_event_id: eventId,
+      p_action: 'settings',
+      p_changes: {
+        name,
+        state,
+        home_venue: homeVenue || null,
+        colour: colour || null,
+        logo_url: logoUrl || null,
+      },
+    })
+    if (updateErr) {
+      return sendCaptainMutationError(res, updateErr, 'captain:update-team-settings')
     }
     return res.json(data)
   }
 
   if (action === 'add-player') {
-    const { playerId, teamId, year } = body
-    if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
+    const { playerHandle, teamId, eventId } = body
+    if (body.playerId != null) {
+      return res.status(400).json({ error: 'Use the player selection returned by search.' })
+    }
+    if (typeof playerHandle !== 'string' || !isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'playerHandle and valid teamId/eventId values are required' })
+    }
+    let scope
+    try {
+      scope = await getOwnedCurrentTeamScope(user.id, teamId, eventId)
+    } catch (scopeError) {
+      return sendServerError(res, scopeError, 'captain:add-player-scope')
+    }
+    if (!scope) return res.status(404).json({ error: 'Current team not found' })
+    if (await denyIfLocked(res, scope.event.year)) return
+
+    let playerId
+    try {
+      playerId = verifyOpaqueProfileHandle({
+        handle: playerHandle,
+        purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_CAPTAIN_ROSTER,
+        actorId: user.id,
+        scope: captainRosterScope(scope.event.year),
+      }).profileId
+    } catch (handleError) {
+      if (handleError instanceof ProfileHandleConfigurationError) {
+        return sendServerError(res, handleError, 'captain:add-player-handle-config')
+      }
+      if (handleError instanceof OpaqueProfileHandleError) {
+        return res.status(400).json({ error: 'Invalid or expired player selection.' })
+      }
+      return sendServerError(res, handleError, 'captain:add-player-handle')
+    }
+
     const { data, error: addErr } = await supabaseAdmin.rpc('add_zltac_team_player', {
       p_captain_id: user.id,
       p_player_id: playerId,
       p_team_id: teamId,
-      p_year: Number.parseInt(year, 10),
+      p_year: scope.event.year,
     })
     if (addErr) {
-      const mapped = captainTeamErrorResponse(addErr)
-      return res.status(mapped.status).json({ error: mapped.error })
+      return sendCaptainMutationError(res, addErr, 'captain:add-player')
     }
     return res.json({ data })
   }
 
   if (action === 'remove-player') {
-    const { playerId, teamId, year } = body
-    if (!playerId || !teamId || !year) return res.status(400).json({ error: 'playerId, teamId and year are required' })
+    const { playerId, teamId, eventId } = body
+    if (!isUuid(playerId) || !isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'playerId, teamId and eventId must be valid UUIDs' })
+    }
+    let scope
+    try {
+      scope = await getOwnedCurrentTeamScope(user.id, teamId, eventId)
+    } catch (scopeError) {
+      return sendServerError(res, scopeError, 'captain:remove-player-scope')
+    }
+    if (!scope) return res.status(404).json({ error: 'Current team not found' })
+    if (await denyIfLocked(res, scope.event.year)) return
     const { data, error: removeErr } = await supabaseAdmin.rpc('remove_zltac_team_player', {
       p_captain_id: user.id,
       p_player_id: playerId,
       p_team_id: teamId,
-      p_year: Number.parseInt(year, 10),
+      p_year: scope.event.year,
     })
     if (removeErr) {
-      const mapped = captainTeamErrorResponse(removeErr)
-      return res.status(mapped.status).json({ error: mapped.error })
+      return sendCaptainMutationError(res, removeErr, 'captain:remove-player')
     }
     return res.json({ data })
   }
@@ -136,248 +271,134 @@ export default async function handler(req, res) {
   }
 
   if (action === 'disband-team') {
-    const { teamId, year } = body
-    if (!teamId || !year) return res.status(400).json({ error: 'teamId and year are required' })
+    const { teamId, eventId } = body
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
+    }
+    let scope
+    try {
+      scope = await getOwnedCurrentTeamScope(user.id, teamId, eventId)
+    } catch (scopeError) {
+      return sendServerError(res, scopeError, 'captain:disband-team-scope')
+    }
+    if (!scope) return res.status(404).json({ error: 'Current team not found' })
+    if (await denyIfLocked(res, scope.event.year)) return
     const { data, error: disbandErr } = await supabaseAdmin.rpc('disband_zltac_team', {
       p_captain_id: user.id,
       p_team_id: teamId,
-      p_year: Number.parseInt(year, 10),
+      p_year: scope.event.year,
     })
     if (disbandErr) {
-      const mapped = captainTeamErrorResponse(disbandErr)
-      return res.status(mapped.status).json({ error: mapped.error })
+      return sendCaptainMutationError(res, disbandErr, 'captain:disband-team')
     }
     return res.json({ ok: true, ...data })
   }
 
-  if (action === 'team-completions') {
-    const { playerIds, eventYear: bodyEventYear } = body
-    if (!Array.isArray(playerIds) || playerIds.length === 0) {
-      return res.json({ coc_sigs: [], payments: [], ref_results: [], u18_subs: [], media_subs: [] })
-    }
-    const playerIdValidation = validateUuidList(playerIds, { name: 'playerIds', max: 500 })
-    if (playerIdValidation.error) return res.status(400).json({ error: playerIdValidation.error })
-
-    const eventYear = bodyEventYear ?? await getActiveEventYear()
-    if (!eventYear) return res.status(400).json({ error: 'eventYear is required (no active event)' })
-
-    // Caller must captain a ZLTAC team. Filtering on event_id IS NOT NULL
-    // scopes this to ZLTAC (the xor CHECK on teams excludes pre-nats rows).
-    // Functionally the downstream zltac_registrations join already shields the
-    // result, but scoping at the source removes a future-bug surface.
-    const { data: captainedTeams, error: ctErr } = await supabaseAdmin
-      .from('teams')
-      .select('id')
-      .eq('captain_id', user.id)
-      .not('event_id', 'is', null)
-    if (ctErr) return sendServerError(res, ctErr, 'captain:ct')
-
-    const captainedTeamIds = (captainedTeams ?? []).map(t => t.id)
-    if (captainedTeamIds.length === 0) {
-      return res.status(403).json({ error: 'You do not captain any team' })
+  if (action === 'team-readiness') {
+    const { teamId, eventId } = body
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
     }
 
-    // Roster of those teams in the target event year.
-    const { data: rosters, error: rosterErr } = await supabaseAdmin
+    try {
+      const result = await getCaptainCurrentTeamReadiness({
+        captainId: user.id,
+        teamId,
+        eventId,
+      })
+      if (!result) return res.status(404).json({ error: 'Current team not found' })
+      const userIds = result.registrations.map(row => row.user_id).filter(Boolean)
+      let profiles = []
+      if (userIds.length > 0) {
+        const { data, error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .select('id, first_name, last_name, alias, state, avatar_url, roles')
+          .in('id', userIds)
+        if (profileError) return sendServerError(res, profileError, 'captain:team-readiness-profiles')
+        profiles = data ?? []
+      }
+      return res.json({ ...result, profiles })
+    } catch (readinessError) {
+      return sendServerError(res, readinessError, 'captain:team-readiness')
+    }
+  }
+
+  if (action === 'search-players') {
+    const { teamId, eventId } = body
+    const term = typeof body.term === 'string' ? body.term.trim() : ''
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
+    }
+    if (term.length < 3 || term.length > 100) {
+      return res.status(400).json({ error: 'Search term must be between 3 and 100 characters' })
+    }
+
+    let scope
+    try {
+      scope = await getOwnedCurrentTeamScope(user.id, teamId, eventId)
+    } catch (scopeError) {
+      return sendServerError(res, scopeError, 'captain:search-player-scope')
+    }
+    if (!scope) return res.status(404).json({ error: 'Current team not found' })
+    if (await denyIfLocked(res, scope.event.year)) return
+
+    const { data: unassigned, error: registrationError } = await supabaseAdmin
       .from('zltac_registrations')
       .select('user_id')
-      .eq('year', eventYear)
-      .in('team_id', captainedTeamIds)
-    if (rosterErr) return sendServerError(res, rosterErr, 'captain:roster')
+      .eq('year', scope.event.year)
+      .is('team_id', null)
+      .neq('status', 'cancelled')
+      .neq('user_id', user.id)
+    if (registrationError) return sendServerError(res, registrationError, 'captain:search-player-registrations')
 
-    const allowedPlayerIds = new Set((rosters ?? []).map(r => r.user_id))
-    if (allowedPlayerIds.size === 0) {
-      return res.status(403).json({ error: 'You do not captain a team in this event year' })
-    }
+    const userIds = (unassigned ?? []).map(row => row.user_id).filter(Boolean)
+    if (userIds.length === 0) return res.json({ profiles: [] })
+    const { data: profiles, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, alias')
+      .eq('is_placeholder', false)
+      .eq('suspended', false)
+      .in('id', userIds)
+      .ilike('alias', `%${term.replace(/[\\%_]/g, match => `\\${match}`)}%`)
+      .limit(10)
+    if (profileError) return sendServerError(res, profileError, 'captain:search-player-profiles')
 
-    const outsideIds = playerIds.filter(id => !allowedPlayerIds.has(id))
-    if (outsideIds.length > 0) {
-      return res.status(403).json({
-        error: 'One or more playerIds are not on your team',
-        outsideIds,
+    try {
+      return res.json({
+        profiles: (profiles ?? []).map(profile => ({
+          alias: profile.alias,
+          handle: issueOpaqueProfileHandle({
+            profileId: profile.id,
+            purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_CAPTAIN_ROSTER,
+            actorId: user.id,
+            scope: captainRosterScope(scope.event.year),
+          }),
+        })),
       })
+    } catch (handleError) {
+      return sendServerError(res, handleError, 'captain:search-player-handles')
     }
-
-    // Legal acceptances + under-18 approvals come from the unified Phase 1/2/3
-    // tables. Acceptances are joined to legal_documents to filter by document_type.
-    //
-    // regs_status / doubles_pairs / triples_teams provide the raw data for the
-    // CaptainHub team-readiness chips (side events, extras, payment). The
-    // service-role client bypasses RLS so a plain captain (non-committee) can
-    // see other roster members' data via this endpoint.
-    const [
-      { data: acceptances, error: e1 },
-      { data: payments, error: e2 },
-      { data: ref_results, error: e3 },
-      { data: u18_approvals, error: e4 },
-      { data: regs_status, error: e5 },
-      { data: doubles_pairs, error: e6 },
-      { data: triples_teams, error: e7 },
-      { data: pay_records, error: e8 },
-    ] = await Promise.all([
-      supabaseAdmin
-        .from('legal_acceptances')
-        .select('user_id, document:legal_documents!document_id(document_type)')
-        .in('user_id', playerIds)
-        .eq('event_year', eventYear),
-      supabaseAdmin.from('payments').select('user_id, status').in('user_id', playerIds).eq('event_year', eventYear),
-      supabaseAdmin.from('referee_test_results').select('user_id, passed, score, safety_correct, safety_total, general_correct, general_total').in('user_id', playerIds),
-      supabaseAdmin
-        .from('under_18_approvals')
-        .select('user_id, status')
-        .in('user_id', playerIds)
-        .eq('event_year', eventYear),
-      supabaseAdmin
-        .from('zltac_registrations')
-        .select('user_id, side_events, has_confirmed_side_events, has_confirmed_extras, amount_owing, admin_override_coc, admin_override_coc_set_at, admin_override_coc_reason, admin_override_media, admin_override_media_set_at, admin_override_media_reason, admin_override_ref_test, admin_override_ref_test_set_at, admin_override_ref_test_reason, admin_override_u18, admin_override_u18_set_at, admin_override_u18_reason')
-        .in('user_id', playerIds)
-        .eq('year', eventYear),
-      supabaseAdmin
-        .from('doubles_pairs')
-        .select('player1_id, player2_id, confirmed')
-        .eq('event_year', eventYear)
-        .or(`player1_id.in.(${playerIds.join(',')}),player2_id.in.(${playerIds.join(',')})`),
-      supabaseAdmin
-        .from('triples_teams')
-        .select('player1_id, player2_id, player3_id, confirmed')
-        .eq('event_year', eventYear)
-        .or(`player1_id.in.(${playerIds.join(',')}),player2_id.in.(${playerIds.join(',')}),player3_id.in.(${playerIds.join(',')})`),
-      // payment_records joined to registrations (year-scoped). Used to compute
-      // per-player amount_paid so the captain hub Payment chip can derive
-      // 'paid'/'partial'/'overpaid' instead of reading amount_owing alone.
-      supabaseAdmin
-        .from('payment_records')
-        .select('amount, zltac_registrations!inner(user_id, year)')
-        .eq('zltac_registrations.year', eventYear),
-    ])
-
-    const errs = [e1, e2, e3, e4, e5, e6, e7, e8].filter(Boolean)
-    if (errs.length) return sendServerError(res, new Error(errs.map(e => e.message).join(' | ')), 'captain:team-completions')
-
-    // Sum payment_records per user, restricted to the requested playerIds.
-    const playerIdSet = new Set(playerIds)
-    const paid_cents_by_user = {}
-    for (const rec of (pay_records ?? [])) {
-      const uid = rec.zltac_registrations?.user_id
-      if (uid && playerIdSet.has(uid)) {
-        paid_cents_by_user[uid] = (paid_cents_by_user[uid] ?? 0) + (rec.amount ?? 0)
-      }
-    }
-
-    // Preserve the response shape that CaptainHub.jsx already consumes:
-    // each array is just rows of { user_id }, used to build a Set of completed users.
-    const coc_sigs = (acceptances ?? [])
-      .filter(a => a.document?.document_type === 'code_of_conduct')
-      .map(a => ({ user_id: a.user_id }))
-    const media_subs = (acceptances ?? [])
-      .filter(a => a.document?.document_type === 'media_release')
-      .map(a => ({ user_id: a.user_id }))
-    // u18_subs: any approval row that isn't rejected counts as "submitted".
-    const u18_subs = (u18_approvals ?? [])
-      .filter(a => a.status !== 'rejected')
-      .map(a => ({ user_id: a.user_id }))
-
-    // Committee manual overrides per user, from the registration row. Each is
-    // tri-state: null = follow real completion, true = force complete, false =
-    // force incomplete. Sent RAW (not coerced) so the client can apply the
-    // effective rule. Each override carries its set_at + reason so the chip
-    // tooltip can surface the audit metadata without a second round-trip.
-    const overrides = Object.fromEntries((regs_status ?? []).map(r => [r.user_id, {
-      coc:      r.admin_override_coc ?? null,
-      coc_set_at: r.admin_override_coc_set_at ?? null,
-      coc_reason: r.admin_override_coc_reason ?? null,
-      media:    r.admin_override_media ?? null,
-      media_set_at: r.admin_override_media_set_at ?? null,
-      media_reason: r.admin_override_media_reason ?? null,
-      ref_test: r.admin_override_ref_test ?? null,
-      ref_test_set_at: r.admin_override_ref_test_set_at ?? null,
-      ref_test_reason: r.admin_override_ref_test_reason ?? null,
-      u18:      r.admin_override_u18 ?? null,
-      u18_set_at: r.admin_override_u18_set_at ?? null,
-      u18_reason: r.admin_override_u18_reason ?? null,
-    }]))
-
-    return res.json({
-      coc_sigs,
-      payments: payments ?? [],
-      ref_results: ref_results ?? [],
-      u18_subs,
-      media_subs,
-      regs_status: regs_status ?? [],
-      doubles_pairs: doubles_pairs ?? [],
-      triples_teams: triples_teams ?? [],
-      paid_cents_by_user,
-      overrides,
-    })
   }
 
   if (action === 'submit-team') {
-    // Captain submits a ZLTAC team draft for committee approval (draft|rejected
-    // -> pending). Runs as the service role so it bypasses the Batch-1 status
-    // trigger that blocks captain-driven status changes — but does its own auth
-    // and re-validates every gate server-side. No client count is trusted.
-    const { teamId } = body
-    if (!teamId) return res.status(400).json({ error: 'teamId is required' })
-
-    const { data: team, error: teamErr } = await supabaseAdmin
-      .from('teams')
-      .select('id, captain_id, event_id, status')
-      .eq('id', teamId)
-      .maybeSingle()
-    if (teamErr) return sendServerError(res, teamErr, 'captain:team')
-    if (!team) return res.status(404).json({ error: 'Team not found' })
-
-    // Auth: caller must be this team's captain.
-    if (team.captain_id !== user.id) {
-      return res.status(403).json({ error: 'Only the team captain can submit the team for approval' })
+    // The event-first RPC locks ownership, lifecycle, roster eligibility,
+    // membership parity, minimum size, and the draft/rejected -> pending move.
+    const { teamId, eventId } = body
+    if (!isUuid(teamId) || !isUuid(eventId)) {
+      return res.status(400).json({ error: 'teamId and eventId must be valid UUIDs' })
     }
 
-    // ZLTAC teams only (event_id set). Competition teams are out of scope.
-    if (!team.event_id) {
-      return res.status(400).json({ error: 'Only ZLTAC teams can be submitted for approval' })
+    const { data, error: submitErr } = await supabaseAdmin.rpc('captain_mutate_zltac_team', {
+      p_actor_id: user.id,
+      p_team_id: teamId,
+      p_event_id: eventId,
+      p_action: 'submit',
+      p_changes: {},
+    })
+    if (submitErr) {
+      return sendCaptainMutationError(res, submitErr, 'captain:submit-team')
     }
-
-    // Submit is allowed from draft or rejected (re-submit after a reject).
-    if (team.status !== 'draft' && team.status !== 'rejected') {
-      return res.status(409).json({ error: `Team is already ${team.status} and cannot be submitted again.` })
-    }
-
-    // Canonical roster = zltac_registrations rows pointing at this team for the
-    // event's year (captain included). Re-counted here; the client count is
-    // never trusted.
-    const { data: ev, error: evErr } = await supabaseAdmin
-      .from('zltac_events')
-      .select('year')
-      .eq('id', team.event_id)
-      .maybeSingle()
-    if (evErr) return sendServerError(res, evErr, 'captain:ev')
-    if (!ev) return res.status(404).json({ error: 'Event not found for team' })
-
-    const { count, error: countErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id', { count: 'exact', head: true })
-      .eq('team_id', teamId)
-      .eq('year', ev.year)
-    if (countErr) return sendServerError(res, countErr, 'captain:count')
-
-    const rosterCount = count ?? 0
-    const MIN_PLAYERS = 5
-    if (rosterCount < MIN_PLAYERS) {
-      return res.status(400).json({
-        error: `A team needs at least ${MIN_PLAYERS} players to submit (currently ${rosterCount}).`,
-        count: rosterCount,
-      })
-    }
-
-    // Flip to pending; clear any prior rejection reason so a re-submit starts
-    // clean. Service role bypasses the status trigger.
-    const { error: updErr } = await supabaseAdmin
-      .from('teams')
-      .update({ status: 'pending', rejection_reason: null })
-      .eq('id', teamId)
-    if (updErr) return sendServerError(res, updErr, 'captain:upd')
-
-    return res.json({ ok: true, status: 'pending', count: rosterCount })
+    return res.json({ ok: true, ...data })
   }
 
   return res.status(400).json({ error: 'Invalid action' })

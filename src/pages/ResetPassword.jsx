@@ -1,6 +1,7 @@
 import { useEffect, useState, useId } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/useAuth'
 import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from '../lib/passwordPolicy'
 
 // Landing page for the password-reset email link. Supabase's reset email
@@ -20,7 +21,8 @@ import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from
 
 export default function ResetPassword() {
   const navigate = useNavigate()
-  const [ready, setReady] = useState(false)        // recovery session detected
+  const { passwordRecovery, clearPasswordRecovery } = useAuth()
+  const [ready, setReady] = useState(passwordRecovery)
   const [checking, setChecking] = useState(true)
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
@@ -37,19 +39,14 @@ export default function ResetPassword() {
       }
     })
 
-    // Race the subscription with a session probe. If a session already
-    // exists (Supabase parsed the URL hash before this mount), we treat it
-    // as recovery-capable; updateUser will surface a clearer error if not.
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setReady(true)
-      }
-      // Allow ~1.2s for the PASSWORD_RECOVERY event to fire if it hasn't yet.
-      setTimeout(() => setChecking(false), 1200)
-    })
+    // An ordinary session is not recovery proof. Only the event emitted after
+    // Supabase verifies the reset link can unlock the password form.
+    const timer = setTimeout(() => setChecking(false), 1200)
 
-    return () => { subscription.unsubscribe() }
+    return () => { clearTimeout(timer); subscription.unsubscribe() }
   }, [])
+
+  const recoveryReady = ready || passwordRecovery
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -70,6 +67,7 @@ export default function ResetPassword() {
       setError(updErr.message)
       return
     }
+    clearPasswordRecovery()
     navigate('/dashboard', { replace: true })
   }
 
@@ -81,11 +79,11 @@ export default function ResetPassword() {
           Choose a new password for your ALSA account.
         </p>
 
-        {checking ? (
+        {checking && !recoveryReady ? (
           <div className="flex justify-center py-6">
             <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : !ready ? (
+        ) : !recoveryReady ? (
           <div className="space-y-4">
             <div className="bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-3 text-sm text-red-400">
               This page must be opened from the password-reset email link.

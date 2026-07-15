@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate, formatDateTime } from '../../lib/dateFormat'
 
 const DOC_LABELS = {
@@ -52,38 +52,19 @@ export default function AdminSignedDocuments() {
       setLoading(true)
       setError(null)
 
-      const [docsResult, acceptancesResult] = await Promise.all([
-        supabase
-          .from('legal_documents')
-          .select('id, document_type, version, original_filename, effective_date, is_active')
-          .in('document_type', SIGNED_DOC_TYPES)
-          .order('document_type', { ascending: true })
-          .order('version', { ascending: false }),
-        supabase
-          .from('legal_acceptances')
-          .select(`
-            id,
-            document_id,
-            event_year,
-            accepted_at,
-            document:legal_documents!document_id(id, document_type, version, original_filename, effective_date),
-            profile:profiles!user_id(id, alias, first_name, last_name)
-          `)
-          .order('accepted_at', { ascending: false }),
-      ])
-
-      if (cancelled) return
-
-      if (docsResult.error || acceptancesResult.error) {
+      try {
+        const data = await apiFetch('/api/admin/event?resource=signed-documents')
+        if (cancelled) return
+        setDocuments((data.documents ?? []).filter(document => SIGNED_DOC_TYPES.includes(document.document_type)))
+        setAcceptances(data.acceptances ?? [])
+      } catch (loadError) {
+        if (cancelled) return
         setDocuments([])
         setAcceptances([])
-        setError(docsResult.error?.message || acceptancesResult.error?.message || 'Signed documents could not be loaded.')
-      } else {
-        setDocuments(docsResult.data ?? [])
-        setAcceptances(acceptancesResult.data ?? [])
+        setError(loadError.message || 'Signed documents could not be loaded.')
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-
-      setLoading(false)
     }
 
     load()

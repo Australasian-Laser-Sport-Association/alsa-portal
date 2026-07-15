@@ -9,6 +9,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState(null)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   // Tracks the user id whose profile is currently in-flight or already loaded,
   // so the getSession() recovery and the SIGNED_IN emit don't double-fetch on
@@ -77,12 +78,16 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const u = session?.user ?? null
       setUserStable(u)
+      if (event === 'PASSWORD_RECOVERY' && u) {
+        setPasswordRecovery(true)
+      }
       if (event === 'SIGNED_IN' && u) {
         fetchProfile(u.id)
       }
       if (event === 'SIGNED_OUT') {
         fetchedForUserId.current = null
         setProfile(null)
+        setPasswordRecovery(false)
       }
     })
 
@@ -96,10 +101,11 @@ export function AuthProvider({ children }) {
   const userRoles = profile?.roles ?? ['player']
   const isAdmin = isCommittee(profile)
   function hasRole(role) { return userRoles.includes(role) }
-  function refreshProfile() { if (user) fetchProfile(user.id, { force: true }) }
+  function refreshProfile() { return user ? fetchProfile(user.id, { force: true }) : Promise.resolve() }
+  function clearPasswordRecovery() { setPasswordRecovery(false) }
 
   return (
-    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, hasRole, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, hasRole, refreshProfile, passwordRecovery, clearPasswordRecovery }}>
       {children}
     </AuthContext.Provider>
   )

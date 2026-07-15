@@ -72,7 +72,6 @@ The reasoning behind this split is documented in [ADR-0002: RLS + GRANT Security
 | Security documentation | `docs/security/` |
 | Operational runbook | `docs/operations/runbook.md` |
 | Environment variable reference | `docs/operations/environment-variables.md` |
-| Running to-do / backlog | `docs/BACKLOG.md` |
 | Brand guidelines | `brand.md` |
 
 ## Who can do what
@@ -89,6 +88,5 @@ The precise table-by-table permissions are recorded in the [Data Access Matrix](
 
 - [ADR index](../adr/) — architectural decisions with reasoning
 - [Data Access Matrix](../security/data-access-matrix.md) — authoritative per-table permissions
-- [Runbook](./runbook.md) — day-to-day operations
-- [Environment variables](./environment-variables.md) — configuration reference
-- [Backlog](../BACKLOG.md) — current priorities and open work
+- [Runbook](../operations/runbook.md) — day-to-day operations
+- [Environment variables](../operations/environment-variables.md) — configuration reference

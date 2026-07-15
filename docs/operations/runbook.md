@@ -1,7 +1,7 @@
 # Operational Runbook
 
 **Status:** Draft
-**Last updated:** 2026-06-16
+**Last updated:** 2026-07-15
 
 ---
 
@@ -30,7 +30,7 @@ use the staging Supabase project described below. If Preview-scope Vercel env
 vars are ever pointed at production, do not run destructive admin flows from a
 preview deployment.
 
-### Preview Supabase isolation
+### Preview environment isolation
 
 Preview deploys must use a separate staging Supabase project before launch. The
 application code uses the same variable names in every environment; isolation is
@@ -48,17 +48,26 @@ Setup checklist:
      Vercel preview URL pattern used for PR previews and the local dev URL.
 4. Recreate required Storage buckets and policies via migrations or reviewed
    SQL, not dashboard-only changes.
-5. Add Vercel Preview-scope variables using staging values:
+5. Add Vercel Preview-scope variables using staging or non-production values:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
-6. Keep Vercel Production-scope variables pointed at production Supabase.
-7. Create a PR preview deployment and perform a write test with disposable data.
-8. Confirm the disposable test row appears in staging and does not appear in
+   - `RESEND_API_KEY` and `CRON_SECRET`
+   - browser and server Sentry DSNs
+   - the Upstash REST URL and token
+6. Use a separate Preview Upstash database, a separate sending-only Resend key,
+   a different `CRON_SECRET`, and non-production Sentry DSNs. Do not reuse the
+   corresponding Production credentials or state stores.
+7. Keep Vercel Production-scope variables pointed at Production resources.
+8. Create a PR preview deployment and perform a write test with disposable data.
+9. Confirm the disposable test row appears in staging and does not appear in
    production.
-9. Confirm admin/API routes still work in preview with the staging service-role
+10. Confirm admin/API routes still work in preview with the staging service-role
    key.
-10. Document the staging project reference and date verified in the private
+11. Send only approved email and Sentry canaries. Confirm they appear in the
+    non-production provider records and do not trigger Production alerting.
+12. Document the staging project reference, non-secret provider resource
+    identifiers, and date verified in the private
     audit notes.
 
 Never copy the production service-role key into the Preview scope. If that
@@ -89,19 +98,89 @@ If a Supabase key is exposed (committed to a public repo, leaked in a screenshot
 
 The anon key is designed to be public — its security posture assumes it is visible in the browser bundle. A leaked anon key is not a security incident on its own; a leaked service role key is.
 
+## Hosting plan and region gate
+
+Do not approve production while the portal is assumed to run on personal free
+tiers. Record the owning organisation, plan, billing contact, region, limits,
+and renewal owner in the private operations register.
+
+- Confirm Vercel Pro or another plan explicitly eligible for an
+  association-operated service. The repository currently deploys 12 direct
+  functions, which is the entire Hobby allowance, and Vercel restricts Hobby
+  to personal use. There must be function headroom and an active billing alert.
+- Confirm Supabase Pro for production. Free projects can pause during quiet
+  off-season periods and have no managed daily-backup entitlement. Managed
+  backups remain only one layer; the off-project restore drill below is still
+  mandatory.
+- Confirm the Supabase database region is in Australia and record it beside the
+  Vercel `syd1` function region. Investigate any cross-region configuration
+  before measuring or approving the deployed journeys.
+
+References: [Vercel Function limits](https://vercel.com/docs/functions/runtimes),
+[Vercel Hobby eligibility](https://vercel.com/docs/plans/hobby), and
+[Supabase database backups](https://supabase.com/docs/guides/platform/backups).
+
+## Authentication configuration gate
+
+Before staging sign-off and again before production launch, compare the live
+Supabase Auth settings with ADR-0003. Capture a private, timestamped checklist
+showing email confirmation, the documented password requirements,
+leaked-password protection, secure password/email changes, OTP expiry/length,
+disabled anonymous access, and the intended provider list. Do not infer these
+dashboard settings from application code.
+
+Require MFA and recovery ownership for every GitHub, Vercel, Supabase, Resend,
+Sentry, Upstash, backup-provider, DNS, and registrar account that can alter,
+observe, deploy, or recover production. Keep at least two authorised recovery
+custodians and test the documented recovery path before launch.
+
+References: [Supabase password security](https://supabase.com/docs/guides/auth/password-security)
+and [Supabase platform MFA](https://supabase.com/docs/guides/platform/multi-factor-authentication).
+
 ## Supabase: database backups
 
-The free tier does **not** include automated daily backups. The Pro tier does.
+Free projects need regular off-site logical exports. Pro, Team, and Enterprise
+projects have managed daily database backups, but those backups are removed
+with the project and do not contain Storage object bytes. Managed backups are
+therefore the first recovery layer, not the only one.
 
-Until the portal is on Pro, a manual backup via `pg_dump` against the Supabase connection string is the fallback. For a small dataset this is a one-liner that can be run ad hoc; worth doing before any risky migration.
-
-Upgrading to Pro is tracked in the backlog and is the recommended medium-term step.
+The scheduled, encrypted off-project workflow and its required credentials are
+documented in [backup-restore.md](./backup-restore.md). Do not enable it until a
+manual run has restored both the database and every Storage bucket into a
+disposable project. Take an additional verified backup before every risky
+production migration.
 
 ## Environment variables
 
-All environment variables live in the Vercel dashboard: project → Settings → Environment Variables.
+Application, API-runtime, and build environment variables live in the Vercel
+dashboard: project → Settings → Environment Variables. Disaster-recovery
+workflow secrets and variables live in GitHub as documented below.
 
 Never commit a real `.env` file. The repo's `.env.example` documents which variables exist. A detailed reference for each variable is in [environment-variables.md](./environment-variables.md).
+
+Before a preview is approved or a production deployment is promoted, verify
+both scopes without printing or writing secret values. The guarded runner
+rejects root dotenv overrides and removes already-exported inspected values
+before Vercel injects the selected remote scope. First authenticate the Vercel
+CLI and independently compare this checkout's linked project with the private
+release record; the runner refuses an unlinked checkout and clears project-ID
+shell overrides:
+
+```sh
+vercel env ls production
+vercel env ls preview
+
+node scripts/run-vercel-release-environment-check.mjs --target production --expected-supabase-project-ref '<production-project-ref>' --forbid-supabase-project-ref '<staging-project-ref>'
+
+node scripts/run-vercel-release-environment-check.mjs --target preview --git-branch '<release-branch>' --expected-supabase-project-ref '<staging-project-ref>' --forbid-supabase-project-ref '<production-project-ref>'
+```
+
+Take both project references from the independently maintained private release
+record. The checker logs names and pass/fail results only, and the guarded
+runner keeps those references out of the spawned command. Move any real root
+dotenv file outside the repository for the check and do not retain a new
+environment export. After the structural check passes, complete the disposable
+preview write-isolation proof above.
 
 When adding or changing an env var:
 
@@ -112,8 +191,9 @@ When adding or changing an env var:
 
 ## Vercel function cap
 
-The app deliberately keeps API routes multiplexed because Vercel's free tier
-has a low Serverless Function count. The current deployable API files are:
+The app deliberately keeps API routes multiplexed because function limits and
+operational comprehension still matter even on the required production plan.
+The current deployable API files are:
 
 - `api/admin/alsa.js`
 - `api/admin/event.js`
@@ -133,6 +213,11 @@ That is exactly 12 functions. Do not add a new top-level `api/*.js` or
 whether the new behaviour should be added to an existing multiplexed route via
 a `?resource=` dispatch. Helper files belong under `api/_lib/` and do not count
 as deployable functions.
+
+`api/admin/event.js` also runs the scheduled portal backup. Its explicit
+300-second `maxDuration` in `vercel.json` is a release requirement, not spare
+latency for ordinary admin requests. Confirm the selected Vercel plan supports
+that duration and alert on backup runs that approach it.
 
 ## Common issues
 
@@ -154,7 +239,29 @@ This is a database permissions issue. See the debugging table in the [Data Acces
 
 ### "Auth emails aren't arriving"
 
-The default Supabase sender (`noreply@mail.supabase.io`) is rate-limited to 4/hour and occasionally gets filtered by strict mail providers. Check spam folders first. Moving to a custom SMTP provider is a P1 backlog item; it will resolve this class of issue.
+The production design uses Resend custom SMTP; falling back to Supabase's shared
+default sender is not an acceptable fix.
+
+1. Check the Resend status page and the separate Auth/contact API-key logs.
+2. Check Supabase Auth SMTP settings, Auth logs, and the configured email rate
+   limits.
+3. Confirm SPF, DKIM, and DMARC still pass for `lasersport.org.au`.
+4. Check spam handling and one approved recipient-domain canary.
+5. Rotate only the affected environment/key, update its Vercel or Supabase
+   scope, and redeploy before retesting.
+
+### "API requests return 503 when Redis is unavailable"
+
+This is the intended fail-closed behavior in Preview and Production. Check the
+scope-specific Upstash service and both REST variables. Do not switch a
+deployed environment to the in-memory fallback or temporarily point Preview at
+the Production Redis database.
+
+### "Expected errors are missing from Sentry"
+
+Confirm the browser and server DSNs are present in the correct Vercel scope,
+redeploy after any change, and send a controlled canary. Preview canaries must
+remain in non-production monitoring and must not trigger Production alerting.
 
 ## Making schema changes
 
@@ -196,4 +303,4 @@ Do this before deploying any API or frontend code that depends on the new schema
 - [Environment variables](./environment-variables.md)
 - [Data Access Matrix](../security/data-access-matrix.md)
 - [ADR index](../adr/)
-- [Backlog](../BACKLOG.md)
+- [Security remediation rollout](./security-remediation-rollout.md)

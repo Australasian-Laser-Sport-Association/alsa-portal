@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel superseded runs on the same ref (e.g. rapid pushes to a PR branch).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,51 +14,103 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Lint baseline + build
+  application:
+    name: Lint, unit tests, and build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          # Single source of truth: the same pin used locally and on Vercel.
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          node-version-file: .nvmrc
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint baseline gate
-        run: |
-          # ESLint currently reports a known backlog of problems. Rather than
-          # block on a clean tree (not yet achievable), this gate holds the line
-          # at a fixed baseline and fails only if the total grows.
-          #
-          # BASELINE = 7 is the current count (errors + warnings, all files).
-          # Lower it as the backlog is cleared; never raise it.
-          #
-          # We do NOT rely on eslint's exit code (it returns non-zero whenever
-          # any error exists). Instead we emit JSON and sum the counts ourselves.
-          npx eslint . -f json > eslint-report.json || true
-          node -e '
-            const fs = require("fs");
-            const results = JSON.parse(fs.readFileSync("eslint-report.json", "utf8"));
-            const errors = results.reduce((n, f) => n + f.errorCount, 0);
-            const warnings = results.reduce((n, f) => n + f.warningCount, 0);
-            const total = errors + warnings;
-            const BASELINE = 7;
-            console.log(`ESLint: ${total} problems (${errors} errors, ${warnings} warnings); baseline ${BASELINE}`);
-            if (total > BASELINE) {
-              console.error(`::error::ESLint problems (${total}) exceed the baseline (${BASELINE}). Fix new lint issues or do not raise the baseline.`);
-              process.exit(1);
-            }
-          '
+      - name: Audit dependency tree
+        # Build and test tooling executes in CI, so audit dev dependencies as
+        # well as packages shipped in the runtime bundle.
+        run: npm audit
 
-      - name: Test
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit and API tests
         run: npm test
 
-      - name: Build
+      - name: Production build
         run: npm run build
+
+  database:
+    name: Supabase migrations, pgTAP, and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: 2.90.0
+
+      - name: Start disposable Supabase
+        run: supabase start
+
+      - name: Run database tests
+        run: supabase test db
+
+      - name: Run remediation verification scripts
+        run: npm run test:db:verify
+        env:
+          REMEDIATION_VERIFY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+      - name: Lint database schema
+        run: supabase db lint --local --level warning --fail-on warning
+
+      - name: Stop disposable Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  browser:
+    name: Playwright Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser journeys
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

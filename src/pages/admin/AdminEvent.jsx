@@ -1,7 +1,8 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { useCallback } from 'react'
 import { apiFetch } from '../../lib/apiFetch.js'
+import { uploadAuthorizedAsset } from '../../lib/authorizedAssetUpload.js'
 import { arePaymentsOpen } from '../../lib/payments'
 import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
 import { maskStorageUrl, storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
@@ -146,7 +147,13 @@ export default function AdminEvent() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
-  const [deleteCounts, setDeleteCounts] = useState({ regs: null, teams: null })
+  const [deleteCounts, setDeleteCounts] = useState({
+    regs: null,
+    teams: null,
+    legalAcceptances: null,
+    under18Approvals: null,
+    blockedByEvidence: false,
+  })
 
   // Form state
   const [form, setForm] = useState({})
@@ -173,30 +180,7 @@ export default function AdminEvent() {
   const [showAddCustom, setShowAddCustom] = useState(false)
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM)
 
-  useEffect(() => { loadCurrentEvent() }, [])
-
-  async function loadCurrentEvent() {
-    setLoading(true)
-    setLoadError('')
-    try {
-      const { data, error } = await supabase
-        .from('zltac_events')
-        .select('*')
-        .neq('status', 'archived')
-        .order('year', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (error) throw error
-      if (data) populateForm(data)
-      setEvent(data)
-    } catch (error) {
-      setLoadError(error.message || 'Could not load the active event.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function populateForm(ev) {
+  const populateForm = useCallback(ev => {
     setForm({
       name: ev.name ?? '',
       year: ev.year ?? new Date().getFullYear() + 1,
@@ -247,7 +231,23 @@ export default function AdminEvent() {
     })
     setLogoFile(null)
     setLogoPreview(maskStorageUrl(ev.logo_url ?? null))
-  }
+  }, [])
+
+  const loadCurrentEvent = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const { event: data } = await apiFetch('/api/admin/event?resource=event')
+      if (data) populateForm(data)
+      setEvent(data)
+    } catch (error) {
+      setLoadError(error.message || 'Could not load the active event.')
+    } finally {
+      setLoading(false)
+    }
+  }, [populateForm])
+
+  useEffect(() => { loadCurrentEvent() }, [loadCurrentEvent])
 
   function handleTabClick(i) {
     setActiveTab(i)
@@ -264,12 +264,19 @@ export default function AdminEvent() {
 
   async function uploadLogo() {
     if (!logoFile) return form.logo_url ?? ''
+    if (!event?.id) throw new Error('Save the event before uploading its logo.')
     setUploadingLogo(true)
-    const ext = logoFile.name.split('.').pop()
-    const { data, error } = await supabase.storage.from('event-logos').upload(`${Date.now()}.${ext}`, logoFile, { upsert: true })
-    setUploadingLogo(false)
-    if (error) { setMsg({ type: 'error', text: `Logo upload failed: ${error.message}` }); return form.logo_url ?? '' }
-    return supabase.storage.from('event-logos').getPublicUrl(data.path).data.publicUrl
+    try {
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: 'event-logo',
+        scopeId: event?.id,
+        file: logoFile,
+      })
+      return uploaded.url
+    } finally {
+      setUploadingLogo(false)
+    }
   }
 
   async function uploadPhoto(file) {
@@ -277,17 +284,19 @@ export default function AdminEvent() {
     if (!event?.id) { setMsg({ type: 'error', text: 'Save the event first before adding photos.' }); return }
     if (file.size > 5 * 1024 * 1024) { setMsg({ type: 'error', text: 'Photo must be under 5MB.' }); return }
     setPhotoUploading(true)
-    const ext = file.name.split('.').pop()
-    const path = `events/${event.id}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
-    if (error) {
+    try {
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: 'event-photo',
+        scopeId: event.id,
+        file,
+      })
+      setForm(f => ({ ...f, photo_urls: [...(f.photo_urls ?? []), uploaded.url] }))
+    } catch (error) {
       setMsg({ type: 'error', text: `Photo upload failed: ${error.message}` })
+    } finally {
       setPhotoUploading(false)
-      return
     }
-    const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
-    setForm(f => ({ ...f, photo_urls: [...(f.photo_urls ?? []), publicUrl] }))
-    setPhotoUploading(false)
   }
 
   function removePhoto(idx) {
@@ -319,14 +328,13 @@ export default function AdminEvent() {
     setMsg(null)
     setCoverUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${event.id}/${Date.now()}.${ext}`
-      const { data: up, error: upErr } = await supabase.storage
-        .from('event-covers')
-        .upload(path, file, { upsert: false, contentType: file.type })
-      if (upErr) throw upErr
-      const { data: urlData } = supabase.storage.from('event-covers').getPublicUrl(up.path)
-      const publicUrl = urlData.publicUrl
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: 'event-cover',
+        scopeId: event.id,
+        file,
+      })
+      const publicUrl = uploaded.url
       await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,8 +374,14 @@ export default function AdminEvent() {
   async function handleSave() {
     setSaving(true)
     setMsg(null)
-    const logo_url = await uploadLogo()
-    if (msg?.type === 'error') { setSaving(false); return }
+    let logo_url
+    try {
+      logo_url = await uploadLogo()
+    } catch (err) {
+      setMsg({ type: 'error', text: `Logo upload failed: ${err?.message || 'Please try again.'}` })
+      setSaving(false)
+      return
+    }
 
     const payload = {
       name: form.name,
@@ -463,7 +477,7 @@ export default function AdminEvent() {
     try {
       const result = await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
-        body: JSON.stringify({ action: 'archive', eventId: event.id, year: event.year }),
+        body: JSON.stringify({ action: 'archive', eventId: event.id }),
       })
       setArchiving(false)
       setArchiveOpen(false)
@@ -487,28 +501,37 @@ export default function AdminEvent() {
     if (!event) return
     setDeleteError('')
     setDeleteConfirmInput('')
-    setDeleteCounts({ regs: null, teams: null })
+    setDeleteCounts({
+      regs: null,
+      teams: null,
+      legalAcceptances: null,
+      under18Approvals: null,
+      blockedByEvidence: false,
+    })
     setDeleteOpen(true)
     try {
-      const [{ count: regs }, { count: teams }] = await Promise.all([
-        supabase.from('zltac_registrations').select('id', { count: 'exact', head: true }).eq('year', event.year),
-        supabase.from('teams').select('id', { count: 'exact', head: true }).eq('event_id', event.id),
-      ])
-      setDeleteCounts({ regs: regs ?? 0, teams: teams ?? 0 })
+      const impact = await apiFetch(`/api/admin/event?resource=event-delete-impact&eventId=${encodeURIComponent(event.id)}`)
+      setDeleteCounts({
+        regs: impact.registrations ?? 0,
+        teams: impact.teams ?? 0,
+        legalAcceptances: impact.legalAcceptances ?? 0,
+        under18Approvals: impact.under18Approvals ?? 0,
+        blockedByEvidence: impact.blockedByEvidence === true,
+      })
     } catch (err) {
       console.error('[AdminEvent] openDeleteModal count fetch failed:', err)
-      setDeleteCounts({ regs: 0, teams: 0 })
+      setDeleteError(err?.message || 'Could not verify the event deletion impact.')
     }
   }
 
   async function handleDelete() {
-    if (!event || deleteConfirmInput !== String(event.year)) return
+    if (!event || deleteCounts.blockedByEvidence || deleteConfirmInput !== String(event.year)) return
     setDeleting(true)
     setDeleteError('')
     try {
       await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
-        body: JSON.stringify({ action: 'delete', eventId: event.id, year: event.year }),
+        body: JSON.stringify({ action: 'delete', eventId: event.id }),
       })
       setDeleting(false)
       setDeleteOpen(false)
@@ -619,21 +642,33 @@ export default function AdminEvent() {
         <Dialog open onClose={() => { setDeleteOpen(false); setDeleteError(''); setDeleteConfirmInput('') }} variant="center" size="sm" className="p-6">
           <Dialog.Title as="p" className="text-white font-bold mb-2">Delete {event?.name} {event?.year}?</Dialog.Title>
             <p className="text-[#e5e5e5]/60 text-sm mb-3">
-              This permanently deletes the event and ALL associated data:{' '}
+              This permanently deletes the event and its operational data:{' '}
               <span className="text-white font-semibold">
                 {deleteCounts.regs ?? '…'} registration{deleteCounts.regs === 1 ? '' : 's'}
               </span>,{' '}
               <span className="text-white font-semibold">
                 {deleteCounts.teams ?? '…'} team{deleteCounts.teams === 1 ? '' : 's'}
-              </span>, plus all payments, forms, and checklist items for this year.
-              This cannot be undone. Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
+              </span>, plus payments and non-evidence checklist data for this year.
+              This cannot be undone.
             </p>
+            {deleteCounts.blockedByEvidence ? (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2 mb-4">
+                <p className="text-amber-300 text-xs">
+                  Hard deletion is disabled because this event has {deleteCounts.legalAcceptances ?? 0} legal acceptance{deleteCounts.legalAcceptances === 1 ? '' : 's'} and {deleteCounts.under18Approvals ?? 0} under-18 decision{deleteCounts.under18Approvals === 1 ? '' : 's'}. Archive the event so its evidence remains defensible.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[#e5e5e5]/60 text-xs mb-3">
+                Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
+              </p>
+            )}
             <input
               type="text"
               value={deleteConfirmInput}
               onChange={e => setDeleteConfirmInput(e.target.value)}
               placeholder={`Type ${event?.year ?? ''}`}
-              autoFocus
+              autoFocus={!deleteCounts.blockedByEvidence}
+              disabled={deleteCounts.blockedByEvidence}
               className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-red-400 transition-colors mb-4"
             />
             {deleteError && (
@@ -644,7 +679,7 @@ export default function AdminEvent() {
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
-                disabled={deleting || deleteConfirmInput !== String(event?.year)}
+                disabled={deleting || deleteCounts.blockedByEvidence || deleteCounts.regs === null || deleteConfirmInput !== String(event?.year)}
                 className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
               >
                 {deleting ? 'Deleting…' : 'Delete event permanently'}
@@ -743,7 +778,7 @@ export default function AdminEvent() {
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
               className="w-full bg-base border border-line rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-brand disabled:opacity-40"
             >
-              {['draft', 'open', 'closed', 'archived'].map(s => <option key={s} value={s}>{s}</option>)}
+              {['draft', 'open', 'closed'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
 

@@ -61,6 +61,7 @@ describe('admin event team-roster resource', () => {
     expect(response.statusCode).toBe(200)
     expect(response.body).toEqual({ ok: true, registrationId: 'reg-1', team_id: TEAM_ID, amountOwing: 1234 })
     expect(rpc).toHaveBeenCalledWith('committee_set_zltac_team_roster', {
+      p_actor_id: 'committee-1',
       p_user_id: USER_ID,
       p_year: 2026,
       p_team_id: TEAM_ID,
@@ -73,6 +74,7 @@ describe('admin event team-roster resource', () => {
 
     expect(response.statusCode).toBe(200)
     expect(rpc).toHaveBeenCalledWith('committee_set_zltac_team_roster', {
+      p_actor_id: 'committee-1',
       p_user_id: USER_ID,
       p_year: 2026,
       p_team_id: null,

@@ -412,7 +412,6 @@ export default function RegistrationEditModal({
                 <select id={`${uid}-status`} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
-                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
             </div>

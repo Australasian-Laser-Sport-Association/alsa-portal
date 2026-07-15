@@ -23,5 +23,14 @@ describe('captain team creation boundary', () => {
     expect(isAllowedTeamLogoUrl(`${base}/storage/v1/object/public/team-logos/user/logo.png`, base)).toBe(true)
     expect(isAllowedTeamLogoUrl('https://attacker.example/logo.png', base)).toBe(false)
     expect(isAllowedTeamLogoUrl(`${base}/storage/v1/object/public/avatars/user/avatar.png`, base)).toBe(false)
+    expect(isAllowedTeamLogoUrl(`${base}/storage/v1/object/public/team-logos/user/logo.png?token=unexpected`, base)).toBe(false)
+  })
+
+  it('binds a supplied logo URL to one of the allowed captain or team folders', () => {
+    const base = 'https://project.supabase.co'
+    const logo = folder => `${base}/storage/v1/object/public/team-logos/${folder}/logo.png`
+    expect(isAllowedTeamLogoUrl(logo('captain-id'), base, 'captain-id')).toBe(true)
+    expect(isAllowedTeamLogoUrl(logo('team-id'), base, ['team-id', 'captain-id'])).toBe(true)
+    expect(isAllowedTeamLogoUrl(logo('other-team'), base, ['team-id', 'captain-id'])).toBe(false)
   })
 })

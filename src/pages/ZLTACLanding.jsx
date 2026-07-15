@@ -43,7 +43,7 @@ export default function ZLTACLanding() {
     let cancelled = false
 
     supabase
-      .from('zltac_event_history')
+      .from('public_zltac_event_history')
       .select('year, team_count, location_city, location_state, location_venue, location_country, is_cancelled, is_upcoming, description, historic_note')
       .order('year', { ascending: false })
       .then(({ data, error }) => {
@@ -159,9 +159,9 @@ export default function ZLTACLanding() {
             <p className="text-center text-[#e5e5e5]/60 text-sm">Committee details will appear here soon.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
-              {committee.map(p => (
+              {committee.map((p, index) => (
                 <div
-                  key={p.id}
+                  key={`${p.alias ?? memberFullName(p)}-${index}`}
                   className="bg-base border border-line hover:border-brand/30 rounded-2xl p-4 md:p-5 flex flex-col items-center text-center transition-all"
                 >
                   <div className="w-16 h-16 rounded-full flex items-center justify-center mb-5 flex-shrink-0 bg-brand/20 mx-auto overflow-hidden">

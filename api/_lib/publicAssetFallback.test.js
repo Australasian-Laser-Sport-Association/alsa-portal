@@ -80,4 +80,33 @@ describe('public asset proxy renderer fallback', () => {
     expect(fetch.mock.calls[0][0]).toContain('/storage/v1/render/image/public/event-covers/event-id/cover.png')
     expect(fetch.mock.calls[1][0]).toContain('/storage/v1/object/public/event-covers/event-id/cover.png')
   })
+
+  it('forwards a single byte range and preserves partial-content headers', async () => {
+    const request = req()
+    request.query = {
+      resource: 'asset',
+      bucket: 'referee-test-media',
+      path: 'rules/demo.mp4',
+    }
+    request.headers.range = 'bytes=100-199'
+    const fetch = vi.fn().mockResolvedValue(new Response('partial-video', {
+      status: 206,
+      headers: {
+        'content-type': 'video/mp4',
+        'content-range': 'bytes 100-199/1000',
+        'accept-ranges': 'bytes',
+      },
+    }))
+    vi.stubGlobal('fetch', fetch)
+
+    const response = res()
+    await handler(request, response)
+
+    expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      headers: { Range: 'bytes=100-199' },
+    }))
+    expect(response.statusCode).toBe(206)
+    expect(response.headers['content-range']).toBe('bytes 100-199/1000')
+    expect(response.headers['accept-ranges']).toBe('bytes')
+  })
 })

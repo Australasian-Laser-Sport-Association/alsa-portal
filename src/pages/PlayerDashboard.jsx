@@ -8,6 +8,7 @@ import { storageImageUrl } from '../lib/assetUrl'
 import { isCommittee, ROLE_ORDER } from '../lib/roles'
 import { COMMITTEE_EMAIL } from '../lib/eventPhase'
 import { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENT_TEXT, validatePassword } from '../lib/passwordPolicy'
+import { isValidDateOfBirth } from '../lib/dateOfBirth.js'
 import CommitteeBadge from '../components/CommitteeBadge'
 import MemberBadge from '../components/MemberBadge'
 
@@ -61,7 +62,7 @@ function membershipStatusText(membership) {
 }
 
 // ── Profile Card ─────────────────────────────────────────────────────────────
-function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUpdated }) {
+function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobLocked, onUpdated }) {
   const uid = useId()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -93,8 +94,19 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
   }
 
   async function save() {
-    setSaving(true)
     setMsg(null)
+    if (dobLocked && dob !== (profile?.dob ?? '')) {
+      setMsg({
+        type: 'error',
+        text: `Your date of birth is locked because you have registered for an event. Email ${COMMITTEE_EMAIL} to correct it.`,
+      })
+      return
+    }
+    if (!dobLocked && dob && !isValidDateOfBirth(dob)) {
+      setMsg({ type: 'error', text: 'Enter a valid date of birth that is not in the future.' })
+      return
+    }
+    setSaving(true)
     // Alias is omitted from the payload when locked so the save never trips the
     // enforce_alias_lock trigger; the existing alias is carried forward
     // unchanged. The disabled field already prevents edits, this is defence in
@@ -102,12 +114,12 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
     const payload = {
       first_name: firstName.trim() || null,
       last_name: lastName.trim() || null,
-      dob: dob || null,
       home_arena: homeArena.trim() || null,
       phone: phone.trim() || null,
       emergency_contact_name: ecName.trim() || null,
       emergency_contact_phone: ecPhone.trim() || null,
     }
+    if (!dobLocked) payload.dob = dob || null
     if (!aliasLocked) payload.alias = alias.trim() || null
     if (!aliasLocked) payload.state = state || null
     const { error } = await supabase.from('profiles').update(payload).eq('id', userId)
@@ -200,7 +212,24 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, onUp
               <Input label="Alias (in-game name)" value={alias} onChange={setAlias} placeholder="e.g. DarkShot" />
             )}
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
+              {dobLocked ? (
+                <div>
+                  <label htmlFor={`${uid}-dob`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Date of Birth</label>
+                  <input
+                    id={`${uid}-dob`}
+                    type="date"
+                    value={dob}
+                    disabled
+                    readOnly
+                    className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white/60 cursor-not-allowed focus:outline-none"
+                  />
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-3 py-2 mt-1.5 text-xs text-yellow-200/80">
+                    Your date of birth is locked because it affects event eligibility and under-18 approval. To correct it, email <a href={`mailto:${COMMITTEE_EMAIL}`} className="text-yellow-300 hover:text-yellow-100 underline">{COMMITTEE_EMAIL}</a>.
+                  </div>
+                </div>
+              ) : (
+                <Input label="Date of Birth" type="date" value={dob} onChange={setDob} />
+              )}
               {aliasLocked ? (
                 <div>
                   <label htmlFor={`${uid}-state`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">State / Territory</label>
@@ -460,18 +489,26 @@ export default function PlayerDashboard() {
 
   async function load() {
     const { data: ev } = await supabase
-      .from('zltac_events').select('name, year').eq('status', 'open').maybeSingle()
+      .from('public_zltac_events').select('name, year').eq('status', 'open').maybeSingle()
     setOpenEvent(ev)
 
     let reg = null
     if (ev?.year) {
       const { data } = await supabase
         .from('zltac_registrations')
-        .select('id, year, status, team_id, teams(name)')
+        .select('id, year, status, team_id')
         .eq('user_id', user.id)
         .eq('year', ev.year)
         .maybeSingle()
       reg = data
+      if (reg?.team_id) {
+        const { data: team } = await supabase
+          .from('public_zltac_teams')
+          .select('name')
+          .eq('id', reg.team_id)
+          .maybeSingle()
+        reg = { ...reg, teams: team ?? null }
+      }
       setRegistration(reg)
     }
 
@@ -494,10 +531,8 @@ export default function PlayerDashboard() {
     // Mirrors NavBar: own a ZLTAC team as captain OR manager (event_id IS NOT
     // NULL scopes to ZLTAC; pre-nats has its own hub surface).
     const { data: ownTeam } = await supabase
-      .from('teams')
+      .from('own_zltac_teams')
       .select('id')
-      .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
-      .not('event_id', 'is', null)
       .limit(1)
       .maybeSingle()
     setOwnsTeam(!!ownTeam)
@@ -568,6 +603,7 @@ export default function PlayerDashboard() {
           userEmail={user.email}
           membership={membership}
           aliasLocked={aliasLocked}
+          dobLocked={aliasLocked}
           onUpdated={refreshProfile}
         />
 

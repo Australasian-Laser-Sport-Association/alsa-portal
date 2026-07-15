@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { clientIp, enforceRateLimit } from './_lib/rateLimit.js'
+import { captureServerException } from './_lib/serverTelemetry.js'
 
 const ALLOWED_SUBJECTS = new Set([
   'General Enquiry',
@@ -11,9 +12,49 @@ const ALLOWED_SUBJECTS = new Set([
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function safeReportUrl(value) {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    return `${url.origin}${url.pathname}`.slice(0, 500)
+  } catch {
+    return value.slice(0, 500)
+  }
+}
+
+async function handleCspReport(req, res) {
+  if (!await enforceRateLimit(req, res, {
+    identifier: clientIp(req),
+    limit: 30,
+    window: '1 m',
+    prefix: 'csp-report',
+    requireDistributed: true,
+  })) return
+
+  const modern = Array.isArray(req.body) ? req.body[0]?.body : null
+  const report = req.body?.['csp-report'] ?? modern ?? req.body ?? {}
+  const effectiveDirective = String(report['effective-directive'] ?? report.effectiveDirective ?? '').slice(0, 120)
+  const blockedUrl = safeReportUrl(report['blocked-uri'] ?? report.blockedURL)
+  captureServerException(new Error(`CSP violation: ${effectiveDirective || 'unknown directive'}`), 'browser-csp-report', {
+    effectiveDirective,
+    violatedDirective: String(report['violated-directive'] ?? '').slice(0, 200),
+    disposition: String(report.disposition ?? '').slice(0, 30),
+    documentUrl: safeReportUrl(report['document-uri'] ?? report.documentURL),
+    blockedUrl,
+    sourceFile: safeReportUrl(report['source-file'] ?? report.sourceFile),
+    lineNumber: Number(report['line-number'] ?? report.lineNumber) || null,
+    columnNumber: Number(report['column-number'] ?? report.columnNumber) || null,
+  })
+  return res.status(204).end()
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (req.query?.resource === 'csp-report') {
+    return handleCspReport(req, res)
   }
 
   if (!await enforceRateLimit(req, res, {
@@ -48,7 +89,7 @@ export default async function handler(req, res) {
 
   const oneLine = messageTrim.replace(/\s+/g, ' ').trim()
   const truncated = oneLine.length > 60 ? oneLine.slice(0, 60) + '...' : oneLine
-  const emailSubject = `[ALSA Contact — ${subjectTrim}] ${truncated}`
+  const emailSubject = `[ALSA Contact - ${subjectTrim}] ${truncated}`
 
   const submittedAt = new Date().toISOString()
   const text = [

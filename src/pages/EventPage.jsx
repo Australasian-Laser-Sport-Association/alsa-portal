@@ -245,21 +245,21 @@ function RegisteredTeamsSection({ teams, regs, loading = false }) {
 }
 
 // ── Doubles Entries Section ──────────────────────────────────────────────────
-function DoublesEntriesSection({ pairs, profileMap }) {
+function DoublesEntriesSection({ pairs }) {
   const confirmed = pairs.filter(p => p.confirmed)
   if (!confirmed.length && !pairs.length) return null
 
-  function PlayerChip({ playerId }) {
+  function PlayerChip({ alias }) {
     // Alias only, matching the masked roster — never a real name.
-    const alias = profileMap[playerId]?.alias || '—'
-    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
+    const displayAlias = alias || 'Not set'
+    const inits = alias ? displayAlias.slice(0, 2).toUpperCase() : '?'
     return (
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <div className="w-8 h-8 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-xs font-black flex-shrink-0">
           {inits}
         </div>
         <div className="min-w-0">
-          <p className="text-white text-sm font-semibold truncate">{alias}</p>
+          <p className="text-white text-sm font-semibold truncate">{displayAlias}</p>
         </div>
       </div>
     )
@@ -278,9 +278,9 @@ function DoublesEntriesSection({ pairs, profileMap }) {
             {confirmed.map(pair => (
               <div key={pair.id} className="bg-base border border-line rounded-2xl p-5">
                 <div className="flex items-center gap-3 mb-3">
-                  <PlayerChip playerId={pair.player1_id} />
+                  <PlayerChip alias={pair.player1_alias} />
                   <span className="text-brand font-black text-base flex-shrink-0">&amp;</span>
-                  <PlayerChip playerId={pair.player2_id} />
+                  <PlayerChip alias={pair.player2_alias} />
                 </div>
                 <div className="flex justify-end">
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border bg-green-500/15 text-green-400 border-green-500/30">
@@ -297,15 +297,14 @@ function DoublesEntriesSection({ pairs, profileMap }) {
 }
 
 // ── Triples Entries Section ──────────────────────────────────────────────────
-function TriplesEntriesSection({ teams, profileMap }) {
+function TriplesEntriesSection({ teams }) {
   const confirmed = teams.filter(t => t.confirmed)
   if (!confirmed.length && !teams.length) return null
 
-  function PlayerRow({ playerId }) {
-    if (!playerId) return null
+  function PlayerRow({ alias }) {
+    if (!alias) return null
     // Alias only, matching the masked roster — never a real name.
-    const alias = profileMap[playerId]?.alias || '—'
-    const inits = alias !== '—' ? alias.slice(0, 2).toUpperCase() : '?'
+    const inits = alias.slice(0, 2).toUpperCase()
     return (
       <div className="flex items-center gap-3 py-1.5">
         <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
@@ -331,9 +330,9 @@ function TriplesEntriesSection({ teams, profileMap }) {
             {confirmed.map(team => (
               <div key={team.id} className="bg-base border border-line rounded-2xl p-5">
                 <div className="divide-y divide-line/50 mb-3">
-                  <PlayerRow playerId={team.player1_id} />
-                  <PlayerRow playerId={team.player2_id} />
-                  <PlayerRow playerId={team.player3_id} />
+                  <PlayerRow alias={team.player1_alias} />
+                  <PlayerRow alias={team.player2_alias} />
+                  <PlayerRow alias={team.player3_alias} />
                 </div>
                 <div className="flex justify-end">
                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded border bg-green-500/15 text-green-400 border-green-500/30">
@@ -457,7 +456,6 @@ export default function EventPage() {
   const [ownedTeam, setOwnedTeam] = useState(null)
   const [doublesPairs, setDoublesPairs] = useState([])
   const [triplesTeams, setTriplesTeams] = useState([])
-  const [pairProfileMap, setPairProfileMap] = useState({})
 
   // Photo lightbox
   const [lightboxUrl, setLightboxUrl] = useState(null)
@@ -466,9 +464,9 @@ export default function EventPage() {
     async function loadAuthenticatedRoster(yearInt, eventId) {
       const [{ data: teamsData }, { data: regsData }, { data: rosterData }, { data: ownedTeamData }] = await Promise.all([
         supabase
-          .from('teams')
-          .select('id, name, status, logo_url, captain_id, manager_id')
-          .eq('status', 'approved')
+          .from('public_zltac_teams')
+          .select('id, event_id, name, status, logo_url, captain_alias, captain_state')
+          .eq('event_id', eventId)
           .order('name'),
         supabase
           .from('zltac_registrations')
@@ -479,10 +477,9 @@ export default function EventPage() {
           .select('team_id, year, side_events, alias, state')
           .eq('year', yearInt),
         supabase
-          .from('teams')
-          .select('id, name, status, logo_url, captain_id, manager_id')
+          .from('own_zltac_teams')
+          .select('id, name, status, logo_url, viewer_role')
           .eq('event_id', eventId)
-          .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -494,7 +491,10 @@ export default function EventPage() {
       // Render the core event data immediately. Profile details are optional
       // enrichment and must not make the registered-team list disappear when
       // that API or its rate-limit store is temporarily unavailable.
-      setTeams(rawTeams.map(t => ({ ...t, profiles: null })))
+      setTeams(rawTeams.map(t => ({
+        ...t,
+        profiles: { alias: t.captain_alias, state: t.captain_state },
+      })))
       setRegs(rawRegs.map(r => ({ ...r, profiles: null })))
 
       // Registered Teams section is driven by the masked, all-rows roster (same
@@ -510,15 +510,14 @@ export default function EventPage() {
       })))
 
       const playerIds = rawRegs.map(r => r.user_id).filter(Boolean)
-      const captainIds = rawTeams.map(t => t.captain_id).filter(Boolean)
-      const allIds = [...new Set([...playerIds, ...captainIds])]
+      const allIds = [...new Set(playerIds)]
 
       let profileMap = {}
       if (allIds.length > 0) {
         try {
           const { profiles: profileData } = await apiFetch('/api/profiles', {
             method: 'POST',
-            body: JSON.stringify({ ids: allIds }),
+            body: JSON.stringify({ ids: allIds, year: yearInt }),
           })
           profileMap = Object.fromEntries((profileData ?? []).map(p => [p.id, p]))
         } catch (err) {
@@ -526,7 +525,10 @@ export default function EventPage() {
         }
       }
 
-      setTeams(rawTeams.map(t => ({ ...t, profiles: profileMap[t.captain_id] ?? null })))
+      setTeams(rawTeams.map(t => ({
+        ...t,
+        profiles: { alias: t.captain_alias, state: t.captain_state },
+      })))
       setRegs(rawRegs.map(r => ({ ...r, profiles: profileMap[r.user_id] ?? null })))
 
       let doublesData = []
@@ -540,36 +542,18 @@ export default function EventPage() {
       }
       setDoublesPairs(doublesData)
       setTriplesTeams(triplesData)
-
-      const pairIds = new Set()
-      doublesData.forEach(d => { if (d.player1_id) pairIds.add(d.player1_id); if (d.player2_id) pairIds.add(d.player2_id) })
-      triplesData.forEach(t => { if (t.player1_id) pairIds.add(t.player1_id); if (t.player2_id) pairIds.add(t.player2_id); if (t.player3_id) pairIds.add(t.player3_id) })
-      const missingIds = [...pairIds].filter(id => !profileMap[id])
-      let fullPairMap = { ...profileMap }
-      if (missingIds.length > 0) {
-        try {
-          const { profiles: extraProfs } = await apiFetch('/api/profiles', {
-            method: 'POST',
-            body: JSON.stringify({ ids: missingIds }),
-          })
-          ;(extraProfs ?? []).forEach(p => { fullPairMap[p.id] = p })
-        } catch (err) {
-          console.error('EventPage: side-event profile enrichment unavailable:', err)
-        }
-      }
-      setPairProfileMap(fullPairMap)
     }
 
-    async function loadPublicRoster(yearInt) {
-      // Anonymous fetch: teams (RLS allows public read) and the masked
+    async function loadPublicRoster(yearInt, eventId) {
+      // Anonymous fetch: the explicit team-display view and the masked
       // public_event_roster view (alias + state only). DoublesEntriesSection
       // and TriplesEntriesSection are hidden client-side for anon viewers
       // because the spec excludes partner pairings.
       const [{ data: teamsData }, { data: rosterData }] = await Promise.all([
         supabase
-          .from('teams')
-          .select('id, name, status, logo_url, captain_id, manager_id')
-          .eq('status', 'approved')
+          .from('public_zltac_teams')
+          .select('id, event_id, name, status, logo_url, captain_alias, captain_state')
+          .eq('event_id', eventId)
           .order('name'),
         supabase
           .from('public_event_roster')
@@ -594,12 +578,14 @@ export default function EventPage() {
         profiles: { alias: r.alias, state: r.state },
       }))
 
-      // Captain profile is intentionally not fetched (real names hidden).
-      setTeams(rawTeams.map(t => ({ ...t, profiles: null })))
+      // The team view supplies only the captain's display alias and state.
+      setTeams(rawTeams.map(t => ({
+        ...t,
+        profiles: { alias: t.captain_alias, state: t.captain_state },
+      })))
       setRegs(synthRegs)
       setDoublesPairs([])
       setTriplesTeams([])
-      setPairProfileMap({})
     }
 
     async function load() {
@@ -612,7 +598,7 @@ export default function EventPage() {
           profileResult,
         ] = await Promise.all([
           supabase
-            .from('zltac_events')
+            .from('public_zltac_events')
             .select(EVENT_PAGE_COLUMNS)
             .eq('year', yearInt)
             .maybeSingle(),
@@ -634,7 +620,7 @@ export default function EventPage() {
             // Anonymous path — fetches only the masked public_event_roster
             // (alias + state). Captain real names, partner pairings,
             // completion data, and personal contact info are all withheld.
-            await loadPublicRoster(yearInt)
+            await loadPublicRoster(yearInt, ev.id)
           }
         }
       } catch (err) {
@@ -717,8 +703,8 @@ export default function EventPage() {
         ))}
         {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
           <>
-            <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
-            <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />
+            <DoublesEntriesSection pairs={doublesPairs} />
+            <TriplesEntriesSection teams={triplesTeams} />
           </>
         )}
         <Footer />
@@ -755,7 +741,7 @@ export default function EventPage() {
   // ── Open / Closed / Draft (admin) ──────────────────────────────────────────
   const myReg = user ? regs.find(r => r.user_id === user.id) : null
   const myTeam = (myReg?.team_id ? teams.find(t => t.id === myReg.team_id) : null) ?? ownedTeam
-  const isCaptainOrManager = !!(myTeam && user && (myTeam.captain_id === user.id || myTeam.manager_id === user.id))
+  const isCaptainOrManager = ['captain', 'manager'].includes(ownedTeam?.viewer_role)
   // Mask full-size gallery URLs once for the lightbox; thumbnails use
   // transformed responsive URLs.
   const photoUrls = event.photo_urls ?? []
@@ -1042,8 +1028,8 @@ export default function EventPage() {
               anonymous viewers — spec calls them out as private. */}
           {user && (doublesPairs.length > 0 || triplesTeams.length > 0) && (
             <>
-              <DoublesEntriesSection pairs={doublesPairs} profileMap={pairProfileMap} />
-              <TriplesEntriesSection teams={triplesTeams} profileMap={pairProfileMap} />
+              <DoublesEntriesSection pairs={doublesPairs} />
+              <TriplesEntriesSection teams={triplesTeams} />
             </>
           )}
         </>

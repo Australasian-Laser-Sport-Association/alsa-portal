@@ -1,42 +1,31 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/apiFetch.js'
 import Dialog from './Dialog'
 
-// Chunk 2 placeholder-claim banner + modal, shared by PlayerHub (post-
-// registration view) and PlayerRegister (pre-registration view). Each instance
-// fetches its own matches from /api/player?resource=claimable on mount and
-// filters per-device dismissals out of the list.
-//
-// Imperative API (via ref):
-//   openForPlaceholder(id) — opens the modal focused on a specific placeholder
-//   (used when the server precheck returns 'placeholder_exists' so we can
-//   surface the relevant match even if the user previously dismissed it).
+// Placeholder-claim banner + modal, shared by PlayerHub and PlayerRegister.
+// The server returns only records tied to the account's verified Auth email;
+// this component filters per-device dismissals out of that authorized list.
 //
 // Dismissals are keyed by (userId, placeholderId) in localStorage. Cross-device
 // re-prompt is accepted for v1.
 
-const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
-  { userId, onClaimed },
-  ref,
-) {
+export default function PlaceholderClaimPrompt({ userId, onClaimed }) {
   const [matches, setMatches] = useState([])
   const [open, setOpen] = useState(false)
   const [error, setError] = useState(null)
   const [working, setWorking] = useState(null)   // placeholder id being submitted
-  const [focusId, setFocusId] = useState(null)   // pre-selected placeholder id
 
   const dismissKey = useCallback(
     (phId) => `placeholder_dismissed_${userId}_${phId}`,
     [userId],
   )
 
-  const refresh = useCallback(async ({ extraIds = [] } = {}) => {
+  const refresh = useCallback(async () => {
     try {
       const { matches: data } = await apiFetch('/api/player?resource=claimable')
-      const visible = (data ?? []).filter(m => {
-        if (extraIds.includes(m.placeholder.id)) return true
-        return !localStorage.getItem(dismissKey(m.placeholder.id))
-      })
+      const visible = (data ?? []).filter(
+        match => !localStorage.getItem(dismissKey(match.placeholder.id)),
+      )
       setMatches(visible)
       return visible
     } catch (err) {
@@ -49,22 +38,6 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
     if (!userId) return
     refresh()
   }, [userId, refresh])
-
-  useImperativeHandle(ref, () => ({
-    async openForPlaceholder(phId) {
-      // Clear any prior dismissal for this id and refetch so the placeholder
-      // shows in the list even if the user previously hit "Not me".
-      try { localStorage.removeItem(dismissKey(phId)) } catch { /* private mode */ }
-      const visible = await refresh({ extraIds: [phId] })
-      setFocusId(phId)
-      setError(null)
-      // Only open if we actually have a match to show; otherwise the modal
-      // would render an empty state which is confusing.
-      if (visible.some(m => m.placeholder.id === phId)) {
-        setOpen(true)
-      }
-    },
-  }))
 
   async function claim(phId) {
     setWorking(phId)
@@ -94,12 +67,6 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
 
   if (matches.length === 0) return null
 
-  // Order so that any focused placeholder (from openForPlaceholder) renders
-  // first in the modal list.
-  const orderedMatches = focusId
-    ? [...matches].sort((a, b) => (a.placeholder.id === focusId ? -1 : b.placeholder.id === focusId ? 1 : 0))
-    : matches
-
   return (
     <>
       <div className="bg-surface border border-brand/30 rounded-2xl p-5 mb-5">
@@ -107,12 +74,12 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
           We found {matches.length} registration{matches.length === 1 ? '' : 's'} that might be yours
         </p>
         <p className="text-white text-sm mb-4 leading-relaxed">
-          The committee created {matches.length === 1 ? 'a placeholder profile' : 'placeholder profiles'} that match your alias or email.
+          The committee created {matches.length === 1 ? 'a registration' : 'registrations'} using your verified account email.
           Review the details and claim {matches.length === 1 ? 'it' : 'them'} if {matches.length === 1 ? "it's" : "they're"} yours.
         </p>
         <button
           type="button"
-          onClick={() => { setError(null); setFocusId(null); setOpen(true) }}
+          onClick={() => { setError(null); setOpen(true) }}
           className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all"
         >
           Review and claim
@@ -125,7 +92,7 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
               <div>
                 <Dialog.Title as="p" className="text-white font-bold text-lg">Claim a registration</Dialog.Title>
                 <p className="text-white text-xs mt-1">
-                  Each match is a placeholder profile that shares your alias or email. Claim only the ones that are actually you.
+                  Each match was recorded against your verified account email. Claim only registrations that are actually yours.
                 </p>
               </div>
               <button
@@ -133,7 +100,7 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
                 onClick={() => setOpen(false)}
                 aria-label="Dismiss"
                 className="text-white text-xl leading-none px-2"
-              >×</button>
+              >x</button>
             </div>
 
             {error && (
@@ -143,23 +110,17 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
             )}
 
             <div className="space-y-3">
-              {orderedMatches.map(m => {
+              {matches.map(m => {
                 const ph = m.placeholder
-                const fullName = [ph.first_name, ph.last_name].filter(Boolean).join(' ')
-                const isFocused = ph.id === focusId
                 return (
                   <div
                     key={ph.id}
-                    className={`bg-base border rounded-xl p-4 ${isFocused ? 'border-brand/60' : 'border-line'}`}
+                    className="bg-base border border-line rounded-xl p-4"
                   >
                     <div className="mb-2">
                       <p className="text-white font-semibold text-sm">
-                        {fullName || ph.alias || 'Unnamed placeholder'}
-                        {ph.alias && <span className="text-brand ml-2">"{ph.alias}"</span>}
+                        {ph.alias ? <>Alias: <span className="text-brand">{ph.alias}</span></> : 'Committee-created registration'}
                       </p>
-                      {ph.placeholder_email && (
-                        <p className="text-white text-xs mt-0.5">Email on file: {ph.placeholder_email}</p>
-                      )}
                     </div>
                     {m.registrations.length > 0 ? (
                       <div className="bg-surface border border-line rounded-lg p-3 mb-3">
@@ -168,9 +129,6 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
                           {m.registrations.map(r => (
                             <li key={`${ph.id}_${r.year}`} className="text-white text-xs">
                               <span className="font-semibold">ZLTAC {r.year}</span>
-                              {r.payment_reference && (
-                                <span className="font-mono ml-2">{r.payment_reference}</span>
-                              )}
                               {r.side_events && r.side_events.length > 0 && (
                                 <span className="ml-2">side events: {r.side_events.join(', ')}</span>
                               )}
@@ -207,6 +165,4 @@ const PlaceholderClaimPrompt = forwardRef(function PlaceholderClaimPrompt(
       )}
     </>
   )
-})
-
-export default PlaceholderClaimPrompt
+}

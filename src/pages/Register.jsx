@@ -48,7 +48,7 @@ export default function Register() {
         data: {
           first_name: form.firstName,
           last_name: form.lastName,
-          alias: form.alias || null,
+          alias: form.alias.trim() || null,
           dob: form.dateOfBirth || null,
           phone: form.phone || null,
           state: form.state || null,

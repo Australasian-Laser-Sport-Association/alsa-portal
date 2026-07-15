@@ -36,6 +36,13 @@ function StepCircle({ Icon, status }) {
       </div>
     )
   }
+  if (status === 'pending') {
+    return (
+      <div className={`${base} bg-yellow-500/10 border-2 border-yellow-400/60 text-yellow-300 text-xl font-black`}>
+        …
+      </div>
+    )
+  }
   // future
   return (
     <div className={`${base} bg-base border-2 border-line opacity-40`}>
@@ -46,38 +53,34 @@ function StepCircle({ Icon, status }) {
 
 export default function PlayerHubProgress({
   eventName,
-  hasTeam,
-  cocRequired = true,
-  cocSigned,
-  refRequired = true,
-  refPassed,
-  mediaSubmitted,
-  paymentRequired = true,
-  paid,
-  sideEventsConfirmed,
-  extrasConfirmed,
-  u18Required,
-  u18Submitted,
+  readiness,
 }) {
   const safeName = eventName ?? 'the event'
+  const checks = readiness?.checks ?? {}
+  const status = key => checks[key]?.status
+  const eventDone = key => status(key) === 'satisfied' || status(key) === 'not_required'
+  const playerDone = key => eventDone(key) || status(key) === 'pending_review'
+  const include = key => status(key) !== 'not_required'
 
   const baseSteps = [
-    { Icon: PersonIcon, label: 'Register as a player', description: 'You\'ve created your ALSA account and signed up.', done: true },
-    { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Create a team as captain, or get added to one by your captain.', done: hasTeam },
-    // CoC step only appears when the event requires it.
-    ...(cocRequired ? [{ Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct.', done: cocSigned }] : []),
-    // Rules-test step only appears when the event requires it.
-    ...(refRequired ? [{ Icon: RefTestIcon, label: 'Pass the Rules Test', description: 'Complete the rules knowledge test.', done: refPassed }] : []),
-    { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.', done: mediaSubmitted },
-    { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).', done: sideEventsConfirmed },
-    { Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.', done: extrasConfirmed },
-    ...(u18Required ? [{ Icon: CocDocumentIcon, label: 'Submit Under-18 form', description: 'Required for players under 18 on event date.', done: u18Submitted }] : []),
-    // Payment step only appears when the event requires it.
-    ...(paymentRequired ? [{ Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.', done: paid }] : []),
-  ]
+    { key: 'identity', Icon: PersonIcon, label: 'Register as a player', description: 'Your current-event identity details are recorded.' },
+    ...(include('team') ? [{ key: 'team', Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Join a team and wait for committee approval if required.' }] : []),
+    ...(include('code_of_conduct') ? [{ key: 'code_of_conduct', Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Accept the current required version.' }] : []),
+    ...(include('referee_test') ? [{ key: 'referee_test', Icon: RefTestIcon, label: 'Pass the Rules Test', description: 'Complete the rules knowledge test.' }] : []),
+    ...(include('media_release') ? [{ key: 'media_release', Icon: CameraIcon, label: 'Sign the Media Release', description: 'Accept the current required version.' }] : []),
+    ...(include('side_events') ? [{ key: 'side_events', Icon: SideEventsIcon, label: 'Confirm side events', description: 'Confirm selections and any required partner rosters.' }] : []),
+    ...(include('extras') ? [{ key: 'extras', Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.' }] : []),
+    ...(include('under_18') ? [{ key: 'under_18', Icon: CocDocumentIcon, label: 'Under-18 approval', description: 'Submit the current form and wait for committee approval.' }] : []),
+    ...(include('payment') ? [{ key: 'payment', Icon: PaymentIcon, label: 'Pay your fees', description: 'Pay the full outstanding balance.' }] : []),
+  ].map(step => ({
+    ...step,
+    done: eventDone(step.key),
+    playerDone: playerDone(step.key),
+    pendingReview: status(step.key) === 'pending_review',
+  }))
 
-  const allDone = baseSteps.every(s => s.done)
-  const doneCount = baseSteps.filter(s => s.done).length
+  const allDone = readiness?.overall?.event_ready === true
+  const doneCount = baseSteps.filter(s => s.playerDone).length
 
   const steps = [
     ...baseSteps,
@@ -87,14 +90,16 @@ export default function PlayerHubProgress({
       description: `Fully registered for ${safeName}. See you on the day.`,
       isFinal: true,
       done: allDone,
+      playerDone: allDone,
     },
   ]
 
   // First non-done step is the "current" step.
-  const currentIdx = steps.findIndex(s => !s.done)
+  const currentIdx = steps.findIndex(s => !s.playerDone)
 
   function statusFor(i, step) {
     if (step.isFinal) return allDone ? 'celebration' : 'future'
+    if (step.pendingReview) return 'pending'
     if (step.done) return 'done'
     if (i === currentIdx) return 'current'
     return 'future'
@@ -103,6 +108,7 @@ export default function PlayerHubProgress({
   function labelColor(status) {
     if (status === 'celebration') return 'text-brand'
     if (status === 'done' || status === 'current') return 'text-white'
+    if (status === 'pending') return 'text-yellow-300'
     return 'text-[#e5e5e5]/60'
   }
 
@@ -112,7 +118,7 @@ export default function PlayerHubProgress({
     const a = steps[i]
     const b = steps[i + 1]
     if (!a || !b) return false
-    return a.done && (b.done || i + 1 === currentIdx)
+    return a.playerDone && (b.playerDone || i + 1 === currentIdx)
   }
 
   return (
@@ -120,10 +126,14 @@ export default function PlayerHubProgress({
       <div className="text-center mb-8">
         <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-3">Your progress</p>
         <h2 className="text-2xl md:text-3xl font-black text-white mb-2">
-          {allDone ? `You're all set for ${safeName}` : `Your path to ${safeName}`}
+          {allDone
+            ? `You're all set for ${safeName}`
+            : readiness?.overall?.awaiting_committee
+              ? 'Your actions are complete. Committee review is pending.'
+              : `Your path to ${safeName}`}
         </h2>
         <p className="text-brand text-sm font-semibold">
-          {doneCount} of {baseSteps.length} complete
+          {doneCount} of {baseSteps.length} player actions complete
         </p>
       </div>
 

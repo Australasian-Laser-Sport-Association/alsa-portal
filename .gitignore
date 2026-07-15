@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Automated test and disposable verification outputs
+playwright-report/
+test-results/
+coverage/
+.codex-pg-test-live/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -41,5 +47,3 @@ lint-output.txt
 # Sentry Config File
 .env.sentry-build-plugin
 audits/
- 
- 

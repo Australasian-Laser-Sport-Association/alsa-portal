@@ -201,7 +201,7 @@ function ManagerPanel({ competition, onCountChanged }) {
     const handle = setTimeout(async () => {
       setSearching(true)
       try {
-        const list = await apiFetch(`/api/superadmin/profile-search?q=${encodeURIComponent(q)}`)
+        const list = await apiFetch(`/api/superadmin/profile-search?purpose=competition-manager-grant&q=${encodeURIComponent(q)}`)
         setResults(list)
       } catch (err) {
         console.error('[AdminCompetitions] profile search failed:', err)
@@ -219,7 +219,7 @@ function ManagerPanel({ competition, onCountChanged }) {
     try {
       await apiFetch('/api/superadmin/competition-managers', {
         method: 'POST',
-        body: JSON.stringify({ competition_id: competition.id, user_id: profile.id }),
+        body: JSON.stringify({ competition_id: competition.id, profile_handle: profile.handle }),
       })
       setQuery('')
       setResults([])
@@ -347,26 +347,21 @@ function ManagerPanel({ competition, onCountChanged }) {
             {!searching && results.length === 0 && (
               <p className="text-white text-xs opacity-50 italic">No matching users.</p>
             )}
-            {results.map(p => {
-              const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ')
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => grant(p)}
-                  disabled={granting}
-                  className="w-full flex items-center justify-between gap-3 bg-surface hover:bg-line/40 border border-line rounded-xl px-3 py-2 text-left transition-colors disabled:opacity-50"
-                >
-                  <div className="min-w-0">
-                    <p className="text-white text-sm font-semibold">
-                      {p.alias && <span className="text-brand">"{p.alias}"</span>}
-                      {fullName && <span className="ml-2">{fullName}</span>}
-                    </p>
-                    <p className="text-white text-[11px] opacity-40 mt-0.5 font-mono">ID {p.alsa_id_short.slice(-4)}</p>
-                  </div>
-                  <span className="text-brand text-xs font-bold">Grant</span>
-                </button>
-              )
-            })}
+            {results.map(p => (
+              <button
+                key={p.handle}
+                onClick={() => grant(p)}
+                disabled={granting}
+                className="w-full flex items-center justify-between gap-3 bg-surface hover:bg-line/40 border border-line rounded-xl px-3 py-2 text-left transition-colors disabled:opacity-50"
+              >
+                <div className="min-w-0">
+                  <p className="text-white text-sm font-semibold">
+                    {p.alias && <span className="text-brand">"{p.alias}"</span>}
+                  </p>
+                </div>
+                <span className="text-brand text-xs font-bold">Grant</span>
+              </button>
+            ))}
           </div>
         )}
       </div>

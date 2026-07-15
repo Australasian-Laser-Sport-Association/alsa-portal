@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const from = vi.fn()
+const rpc = vi.fn()
 const verifyUser = vi.fn()
 const enforceRateLimit = vi.fn()
-const cleanupFormerSideEventMembers = vi.fn()
 
 vi.mock('./supabase.js', () => ({
-  default: { from },
+  default: { from, rpc },
 }))
 
 vi.mock('./auth.js', () => ({
   verifyUser,
+  statusForAuthError: vi.fn(error => (error === 'Unauthorized' ? 401 : error === 'Account suspended' ? 403 : 500)),
   getActiveEventYear: vi.fn(),
 }))
 
@@ -23,12 +24,6 @@ vi.mock('./eventPhase.js', () => ({
   getEventPhase: vi.fn(() => Promise.resolve({ phase: 'open' })),
 }))
 
-vi.mock('./sideEventCleanup.js', () => ({
-  cleanupFormerSideEventMember: vi.fn(),
-  cleanupFormerSideEventMembers,
-  ensureSideEventMember: vi.fn(),
-}))
-
 vi.mock('./computeAmountOwing.js', () => ({
   computeAndWriteAmountOwing: vi.fn(),
 }))
@@ -38,43 +33,7 @@ vi.mock('./placeholders.js', () => ({
 }))
 
 const { default: handler } = await import('../player.js')
-const { computeAndWriteAmountOwing } = await import('./computeAmountOwing.js')
-
 const USER_ID = '123e4567-e89b-42d3-a456-426614174000'
-
-function selectMaybeSingle(data) {
-  return {
-    select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn(() => Promise.resolve({ data, error: null })),
-        })),
-        maybeSingle: vi.fn(() => Promise.resolve({ data, error: null })),
-      })),
-    })),
-  }
-}
-
-function deleteEq() {
-  return {
-    delete: vi.fn(() => ({
-      eq: vi.fn(() => Promise.resolve({ error: null })),
-    })),
-  }
-}
-
-function sideEventRows(rows) {
-  return {
-    select: vi.fn(() => ({
-      eq: vi.fn(() => ({
-        or: vi.fn(() => Promise.resolve({ data: rows, error: null })),
-      })),
-    })),
-    delete: vi.fn(() => ({
-      in: vi.fn(() => Promise.resolve({ error: null })),
-    })),
-  }
-}
 
 function req(body = { action: 'cancel', year: 2026 }) {
   return {
@@ -99,87 +58,86 @@ describe('player registration cancel', () => {
     vi.clearAllMocks()
     verifyUser.mockResolvedValue({ user: { id: USER_ID }, error: null })
     enforceRateLimit.mockResolvedValue(true)
-    cleanupFormerSideEventMembers.mockResolvedValue([])
+    rpc.mockResolvedValue({
+      data: { deleted: true, registration_id: 'reg-1', doubles_deleted: 1, triples_deleted: 1 },
+      error: null,
+    })
   })
 
-  it('batch-cleans former doubles and triples partners after deleting side-event rows', async () => {
-    from.mockImplementation(table => {
-      if (table === 'zltac_registrations') {
-        return from.mock.calls.filter(([name]) => name === 'zltac_registrations').length === 1
-          ? selectMaybeSingle({ id: 'reg-1', team_id: null })
-          : deleteEq()
-      }
-      if (table === 'doubles_pairs') {
-        return sideEventRows([
-          { id: 'double-1', player1_id: USER_ID, player2_id: 'partner-double' },
-        ])
-      }
-      if (table === 'triples_teams') {
-        return sideEventRows([
-          { id: 'triple-1', player1_id: USER_ID, player2_id: 'partner-triple-a', player3_id: 'partner-triple-b' },
-        ])
-      }
-      throw new Error(`unexpected table ${table}`)
-    })
-
+  it('cancels registration and side-event cleanup through one transaction RPC', async () => {
     const response = res()
     await handler(req(), response)
 
     expect(response.statusCode).toBe(200)
-    expect(response.body).toEqual({ ok: true })
-    expect(cleanupFormerSideEventMembers).toHaveBeenCalledTimes(2)
-    expect(cleanupFormerSideEventMembers).toHaveBeenCalledWith(expect.objectContaining({
-      table: 'doubles_pairs',
-      slug: 'doubles',
-      memberIds: ['partner-double'],
-      eventYear: 2026,
-    }))
-    expect(cleanupFormerSideEventMembers).toHaveBeenCalledWith(expect.objectContaining({
-      table: 'triples_teams',
-      slug: 'triples',
-      memberIds: expect.arrayContaining(['partner-triple-a', 'partner-triple-b']),
-      eventYear: 2026,
-    }))
+    expect(response.body).toEqual({
+      ok: true,
+      deleted: true,
+      registration_id: 'reg-1',
+      doubles_deleted: 1,
+      triples_deleted: 1,
+    })
+    expect(rpc).toHaveBeenCalledWith('cancel_zltac_registration', {
+      p_user_id: USER_ID,
+      p_event_year: 2026,
+    })
+    expect(from).not.toHaveBeenCalled()
   })
 
-  it('creates a player registration through service role using the authenticated user id', async () => {
-    const insert = vi.fn(() => ({
-      select: vi.fn(() => ({
-        single: vi.fn(() => Promise.resolve({ data: { id: 'reg-new' }, error: null })),
-      })),
-    }))
-
-    from.mockImplementation(table => {
-      if (table === 'zltac_registrations') {
-        const callNumber = from.mock.calls.filter(([name]) => name === 'zltac_registrations').length
-        if (callNumber === 1) return selectMaybeSingle(null)
-        return { insert }
-      }
-      if (table === 'profiles') return selectMaybeSingle({ alias: null })
-      if (table === 'zltac_events') return selectMaybeSingle({ max_players: null })
-      throw new Error(`unexpected table ${table}`)
+  it('creates a player registration only through the transactional RPC', async () => {
+    const registration = {
+      id: 'reg-new',
+      user_id: USER_ID,
+      year: 2027,
+      side_events: null,
+      has_confirmed_side_events: false,
+      dinner_guests: 0,
+      has_confirmed_extras: false,
+      dob_at_registration: '2000-01-02',
+    }
+    rpc.mockResolvedValueOnce({
+      data: { ok: true, id: 'reg-new', existing: false, registration, amountOwing: 5000 },
+      error: null,
     })
-    computeAndWriteAmountOwing.mockResolvedValue({ amountOwing: 5000, error: null })
 
     const response = res()
     await handler(req({
       action: 'register',
       year: 2027,
-      user_id: 'malicious-other-user',
+      dob: '2000-01-02',
       emergency_contact_name: ' Helper ',
       emergency_contact_phone: ' 0400 000 000 ',
     }), response)
 
     expect(response.statusCode).toBe(201)
-    expect(response.body).toEqual({ ok: true, id: 'reg-new', amountOwing: 5000 })
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
-      user_id: USER_ID,
-      year: 2027,
-      emergency_contact_name: 'Helper',
-      emergency_contact_phone: '0400 000 000',
-      status: 'pending',
-    }))
-    expect(insert.mock.calls[0][0].user_id).not.toBe('malicious-other-user')
-    expect(computeAndWriteAmountOwing).toHaveBeenCalledWith('reg-new')
+    expect(response.body).toEqual({ ok: true, id: 'reg-new', registration, amountOwing: 5000 })
+    expect(rpc).toHaveBeenCalledWith('register_zltac_player', {
+      p_user_id: USER_ID,
+      p_event_year: 2027,
+      p_dob: '2000-01-02',
+      p_emergency_contact_name: 'Helper',
+      p_emergency_contact_phone: '0400 000 000',
+    })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('returns a specific conflict when recorded payments block cancellation', async () => {
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: '55000',
+        hint: 'PAYMENT_RECORDS_EXIST',
+        message: 'A registration with recorded payments cannot be cancelled.',
+      },
+    })
+
+    const response = res()
+    await handler(req(), response)
+
+    expect(response.statusCode).toBe(409)
+    expect(response.body).toEqual({
+      error: 'A payment has been recorded for this registration. Contact the committee before cancelling.',
+      code: 'PAYMENT_RECORDS_EXIST',
+    })
+    expect(from).not.toHaveBeenCalled()
   })
 })

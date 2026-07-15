@@ -2,56 +2,294 @@ import { isIP } from 'node:net'
 import { sendServerError } from './_lib/apiErrors.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
 import supabaseAdmin from './_lib/supabase.js'
-import { verifyUser } from './_lib/auth.js'
-import { COMMITTEE_ROLES } from '../src/lib/roles.js'
-import { computeAndWriteAmountOwing } from './_lib/computeAmountOwing.js'
-import { cleanupFormerSideEventMember, cleanupFormerSideEventMembers, ensureSideEventMember } from './_lib/sideEventCleanup.js'
-import { requireOpenPhase, getEventPhase } from './_lib/eventPhase.js'
-import { anyPlaceholder } from './_lib/placeholders.js'
+import { statusForAuthError, verifyUser } from './_lib/auth.js'
+import { requireOpenPhase } from './_lib/eventPhase.js'
+import { under18Requirement } from '../src/lib/dateOfBirth.js'
+import { getPlayerCurrentZltacReadiness } from './_lib/zltacReadinessData.js'
+import { arePaymentsOpen } from '../src/lib/payments.js'
+import {
+  OpaqueProfileHandleError,
+  PROFILE_HANDLE_PURPOSES,
+  ProfileHandleConfigurationError,
+  issueOpaqueProfileHandle,
+  verifyOpaqueProfileHandle,
+} from './_lib/opaqueProfileHandle.js'
 
-const DOUBLES_PAIR_COLUMNS = 'id, event_year, player1_id, player2_id, confirmed, created_at'
-const TRIPLES_TEAM_COLUMNS = 'id, event_year, player1_id, player2_id, player3_id, player2_confirmed, player3_confirmed, confirmed, created_at'
+const UNDER_18_APPROVAL_COLUMNS = 'id, user_id, event_year, status, submitted_at, approved_at, approved_by, notes, document_id'
+const REGISTRATION_ACTION_FIELDS = {
+  register: new Set(['action', 'year', 'dob', 'emergency_contact_name', 'emergency_contact_phone']),
+  'confirm-side-events': new Set(['action', 'year', 'side_events']),
+  'confirm-extras': new Set(['action', 'year', 'dinner_guests']),
+  'submit-under-18': new Set(['action', 'year']),
+  'sign-legal': new Set(['action', 'documentId', 'eventYear']),
+}
+const DOUBLES_ACTION_FIELDS = {
+  create: new Set(['action', 'eventYear', 'partnerHandle']),
+  confirm: new Set(['action', 'id']),
+  delete: new Set(['action', 'id']),
+}
+const TRIPLES_ACTION_FIELDS = {
+  create: new Set(['action', 'eventYear', 'slot', 'partnerHandle']),
+  'add-slot': new Set(['action', 'id', 'eventYear', 'slot', 'partnerHandle']),
+  confirm: new Set(['action', 'id', 'mySlot']),
+  'clear-slot': new Set(['action', 'id', 'slot']),
+  disband: new Set(['action', 'id']),
+}
 
-// Helper: returns true and writes a 403 to res when the event for the
-// given year is not in 'open' phase. Used only by price-bearing player
-// mutations (registration cancel). Partner-pairing actions (doubles/triples)
-// are intentionally NOT guarded — shuffling partners within already-committed
-// side events doesn't change anyone's amount_owing, so it stays editable
-// after lock. The price-bearing writes (side_events array, extras, team
-// membership) remain frozen: side_events/extras via the client confirm
-// buttons + locked state, team membership via api/captain.js.
+const SAFE_REGISTRATION_FIELDS = Object.freeze([
+  'id',
+  'user_id',
+  'team_id',
+  'year',
+  'side_events',
+  'dinner_guests',
+  'emergency_contact_name',
+  'emergency_contact_phone',
+  'status',
+  'has_confirmed_side_events',
+  'has_confirmed_extras',
+  'created_at',
+  'payment_reference',
+  'amount_owing',
+  'dob_at_registration',
+])
+
+function safeRegistration(row) {
+  if (!row || typeof row !== 'object') return row ?? null
+  return Object.fromEntries(
+    SAFE_REGISTRATION_FIELDS
+      .filter(field => Object.hasOwn(row, field))
+      .map(field => [field, row[field]]),
+  )
+}
+
+function safePlayerReadiness(readiness) {
+  if (!readiness?.checks) return readiness ?? null
+  return {
+    ...readiness,
+    checks: Object.fromEntries(Object.entries(readiness.checks).map(([key, check]) => [
+      key,
+      check?.source === 'committee_override'
+        ? { status: check.status, source: check.source }
+        : check,
+    ])),
+  }
+}
+
+function partnerScope(eventYear) {
+  return `event-year:${eventYear}`
+}
+
+function resolvePartnerHandle({ handle, purpose, actorId, eventYear }) {
+  return verifyOpaqueProfileHandle({
+    handle,
+    purpose,
+    actorId,
+    scope: partnerScope(eventYear),
+  }).profileId
+}
+
+async function searchPartners(req, res, user, { purpose, sideEvent, rosterTable, rosterColumns }) {
+  const body = req.body ?? {}
+  const eventYear = validEventYear(body.eventYear)
+  const safeTerm = typeof body.term === 'string' ? body.term.trim() : ''
+  if (!eventYear || safeTerm.length < 2) {
+    return res.status(400).json({ error: 'A valid eventYear and search term are required' })
+  }
+  if (safeTerm.length > 64 || /[%,_()*.:\\]/.test(safeTerm)) {
+    return res.status(400).json({ error: 'Search term contains invalid characters' })
+  }
+
+  const phase = await requireOpenPhase(eventYear)
+  if (!phase.ok) return res.status(phase.status).json({ error: phase.error, phase: phase.phase })
+
+  const { data: registrations, error: registrationError } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('user_id')
+    .eq('year', eventYear)
+    .neq('status', 'cancelled')
+    .neq('user_id', user.id)
+    .contains('side_events', [sideEvent])
+    .limit(1000)
+  if (registrationError) {
+    return sendServerError(res, registrationError, 'player:partner-search-registrations')
+  }
+
+  const eligibleIds = [...new Set((registrations ?? []).map(row => row.user_id).filter(Boolean))]
+  if (eligibleIds.length === 0) return res.json({ results: [] })
+
+  const { data: rosters, error: rosterError } = await supabaseAdmin
+    .from(rosterTable)
+    .select(rosterColumns)
+    .eq('event_year', eventYear)
+  if (rosterError) return sendServerError(res, rosterError, 'player:partner-search-rosters')
+
+  const taken = new Set()
+  for (const roster of (rosters ?? [])) {
+    for (const field of rosterColumns.split(',').map(value => value.trim())) {
+      if (roster[field]) taken.add(roster[field])
+    }
+  }
+
+  const availableIds = eligibleIds.filter(id => !taken.has(id))
+  if (availableIds.length === 0) return res.json({ results: [] })
+
+  const { data: aliases, error: aliasesError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, alias')
+    .eq('is_placeholder', false)
+    .eq('suspended', false)
+    .in('id', availableIds)
+    .ilike('alias', `%${safeTerm}%`)
+    .limit(20)
+  if (aliasesError) return sendServerError(res, aliasesError, 'player:partner-search-profiles')
+  if (!aliases?.length) return res.json({ results: [] })
+
+  try {
+    return res.json({
+      results: aliases.map(profile => ({
+        alias: profile.alias,
+        handle: issueOpaqueProfileHandle({
+          profileId: profile.id,
+          purpose,
+          actorId: user.id,
+          scope: partnerScope(eventYear),
+        }),
+      })),
+    })
+  } catch (error) {
+    return sendServerError(res, error, 'player:partner-search-handles')
+  }
+}
+
+function rejectUnexpectedFields(res, body, allowed) {
+  const unexpected = Object.keys(body).filter(key => !allowed.has(key))
+  if (unexpected.length === 0) return false
+  res.status(400).json({ error: `Unsupported field(s): ${unexpected.join(', ')}` })
+  return true
+}
+
+function validDob(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  const today = new Date()
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
+  if (date.getTime() > todayUtc || year < 1900) return null
+  return value
+}
+
+function validUuid(value) {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+function normalizedEmail(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+function verifiedAuthEmail(user) {
+  if (!user?.email_confirmed_at) return null
+  return normalizedEmail(user.email) || null
+}
+
+function validEventYear(value) {
+  const year = Number(value)
+  return Number.isInteger(year) && year >= 2000 && year <= 2200 ? year : null
+}
+
+function sendSideEventRpcError(res, error, context) {
+  const expected = {
+    '22023': [400, 'Invalid side-event request.'],
+    '22P02': [400, 'Invalid side-event request.'],
+    '23503': [400, 'Every player must have an eligible registration for this event.'],
+    '23514': [409, 'The side-event roster conflicts with the event or player registrations.'],
+    '23505': [409, 'One or more players are already assigned to another side-event roster.'],
+    '40001': [409, 'The roster changed at the same time. Please try again.'],
+    '40P01': [409, 'The roster changed at the same time. Please try again.'],
+    '42501': [403, 'You are not allowed to change this side-event roster.'],
+    '55000': [409, 'This side-event roster can no longer be changed.'],
+    'P0002': [404, 'Side-event roster not found.'],
+  }
+  const mapped = expected[error?.code]
+  if (mapped) return res.status(mapped[0]).json({ error: mapped[1] })
+  return sendServerError(res, error, context)
+}
+
+function sendLegalLifecycleRpcError(res, error, context) {
+  const expected = {
+    '22023': [400, 'Invalid legal-document request.'],
+    '22P02': [400, 'Invalid legal-document request.'],
+    '23503': [400, 'An eligible registration and active published document are required.'],
+    '23514': [409, 'The legal-document state changed. Please review it and try again.'],
+    '23505': [409, 'This legal-document action has already been recorded.'],
+    '40001': [409, 'The legal-document state changed at the same time. Please try again.'],
+    '40P01': [409, 'The legal-document state changed at the same time. Please try again.'],
+    '42501': [403, 'This account is not allowed to complete that legal-document action.'],
+    '55000': [409, 'This event cannot accept legal-document changes.'],
+    'P0002': [404, 'The event or legal-document record was not found.'],
+  }
+  const mapped = expected[error?.code]
+  if (mapped) return res.status(mapped[0]).json({ error: mapped[1] })
+  return sendServerError(res, error, context)
+}
+
+function sendRegistrationMutationError(res, error, context) {
+  if (error?.hint === 'DOB_LOCKED') {
+    return res.status(409).json({
+      error: 'Date of birth is locked after event registration. Contact the committee to correct it.',
+      code: 'DOB_LOCKED',
+    })
+  }
+  if (error?.hint === 'REGISTRATION_CAP_REACHED') {
+    return res.status(400).json({ error: error.message })
+  }
+  if (error?.code === 'P0002') return res.status(404).json({ error: error.message })
+  if (error?.code === '42501') {
+    return res.status(403).json({ error: 'This account cannot register for the event.' })
+  }
+  if (['22001', '22023'].includes(error?.code)) {
+    return res.status(400).json({ error: error.message })
+  }
+  if (error?.code === '23505') {
+    return res.status(409).json({
+      error: 'This registration conflicts with an existing record. Check your Player Hub for a registration linked to your verified email, or contact the committee.',
+    })
+  }
+  if (error?.code === '23514') return res.status(409).json({ error: error.message })
+  if (error?.code === '55000') {
+    return res.status(409).json({ error: 'Registration changes are not open for this event.' })
+  }
+  if (['40001', '40P01'].includes(error?.code)) {
+    return res.status(409).json({ error: 'The registration changed at the same time. Please try again.' })
+  }
+  return sendServerError(res, error, context)
+}
+
+function rpcRecord(data) {
+  return Array.isArray(data) ? (data[0] ?? null) : data
+}
+
+async function mutateDoubles(res, args, deleted = false) {
+  const { data, error } = await supabaseAdmin.rpc('mutate_zltac_doubles_roster', args)
+  if (error) return sendSideEventRpcError(res, error, 'player:doubles-rpc')
+  return deleted ? res.json({ ok: true }) : res.json({ record: rpcRecord(data) })
+}
+
+async function mutateTriples(res, args, deleted = false) {
+  const { data, error } = await supabaseAdmin.rpc('mutate_zltac_triples_roster', args)
+  if (error) return sendSideEventRpcError(res, error, 'player:triples-rpc')
+  return deleted ? res.json({ ok: true }) : res.json({ record: rpcRecord(data) })
+}
+
+// Returns true and writes the lifecycle error when a non-RPC registration
+// mutation is attempted after the event locks. Side-event roster RPCs enforce
+// the equivalent gate while holding the event row lock.
 async function denyIfLocked(res, year) {
   const guard = await requireOpenPhase(year)
   if (guard.ok) return false
   res.status(guard.status).json({ error: guard.error, phase: guard.phase })
-  return true
-}
-
-// Partner invites/confirms auto-add the relevant side event ('doubles' /
-// 'triples') to the target player's side_events when they don't already
-// have it. In 'open' phase that's fine. After lock it would silently raise
-// that player's amount_owing, breaking price stability — so block it.
-// Returns true (and writes a 400) when, in a non-open phase, the target
-// player doesn't yet have `slug` selected. In 'open' phase always returns
-// false (auto-add behaviour unchanged).
-async function denyIfWouldAddSideEventAfterLock(res, year, targetUserId, slug) {
-  const { phase } = await getEventPhase(year)
-  if (phase === 'open') return false
-
-  const { data: reg } = await supabaseAdmin
-    .from('zltac_registrations')
-    .select('side_events')
-    .eq('user_id', targetUserId)
-    .eq('year', year)
-    .maybeSingle()
-
-  if ((reg?.side_events ?? []).includes(slug)) return false
-
-  const label = slug === 'doubles' ? 'Doubles' : slug === 'triples' ? 'Triples' : slug
-  res.status(400).json({
-    error: `This player isn't registered for ${label}. They need to add it themselves before the lock, or contact committee.`,
-    phase,
-  })
   return true
 }
 
@@ -71,130 +309,75 @@ async function handleDoubles(req, res, user) {
   const { action } = body
 
   if (action === 'search') {
-    const { eventYear, term } = body
-    const safeTerm = typeof term === 'string' ? term.trim() : ''
-    if (!eventYear || !safeTerm) return res.status(400).json({ error: 'eventYear and term are required' })
-    if (safeTerm.length > 100) return res.status(400).json({ error: 'Search term too long' })
-    if (/[,()*.:\\]/.test(safeTerm)) return res.status(400).json({ error: 'Search term contains invalid characters' })
-
-    const { data: eligible, error: eligErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id')
-      .eq('year', eventYear)
-      .neq('user_id', user.id)
-
-    if (eligErr) return sendServerError(res, eligErr, 'player:elig')
-
-    const eligibleIds = (eligible ?? []).map(r => r.user_id)
-    if (!eligibleIds.length) return res.json({ results: [] })
-
-    const { data: existingPairs, error: pairsErr } = await supabaseAdmin
-      .from('doubles_pairs')
-      .select('player1_id, player2_id')
-      .eq('event_year', eventYear)
-
-    if (pairsErr) return sendServerError(res, pairsErr, 'player:pairs')
-
-    const takenIds = new Set()
-    existingPairs?.forEach(p => {
-      if (p.player1_id) takenIds.add(p.player1_id)
-      if (p.player2_id) takenIds.add(p.player2_id)
+    return searchPartners(req, res, user, {
+      purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_DOUBLES_PARTNER,
+      sideEvent: 'doubles',
+      rosterTable: 'doubles_pairs',
+      rosterColumns: 'player1_id, player2_id',
     })
-
-    const availableIds = eligibleIds.filter(id => !takenIds.has(id))
-    if (!availableIds.length) return res.json({ results: [] })
-
-    const { data: profs, error: profsErr } = await supabaseAdmin
-      .from('profiles')
-      .select('id, first_name, last_name, alias, state, roles')
-      .in('id', availableIds)
-      .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
-
-    if (profsErr) return sendServerError(res, profsErr, 'player:profs')
-    if (!profs?.length) return res.json({ results: [] })
-
-    const profIds = profs.map(p => p.id)
-    const { data: teamRegs, error: teamRegsErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id, side_events, teams(name)')
-      .eq('year', eventYear)
-      .in('user_id', profIds)
-
-    if (teamRegsErr) return sendServerError(res, teamRegsErr, 'player:teamregs')
-
-    const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-    // sideEvents lets the client grey out players who haven't selected
-    // 'doubles' once registration is locked (price-stability guard mirror).
-    const sideMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.side_events ?? []]))
-    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null, sideEvents: sideMap[p.id] ?? [] })) })
   }
 
   if (action === 'create') {
-    const { eventYear, partnerId } = body
-    if (!eventYear || !partnerId) return res.status(400).json({ error: 'eventYear and partnerId are required' })
+    const { eventYear, partnerHandle } = body
+    if (rejectUnexpectedFields(res, body, DOUBLES_ACTION_FIELDS.create)) return
+    const year = validEventYear(eventYear)
+    if (!year || typeof partnerHandle !== 'string') {
+      return res.status(400).json({ error: 'A valid eventYear and partnerHandle are required' })
+    }
+    let partnerId
+    try {
+      partnerId = resolvePartnerHandle({
+        handle: partnerHandle,
+        purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_DOUBLES_PARTNER,
+        actorId: user.id,
+        eventYear: year,
+      })
+    } catch (error) {
+      if (error instanceof ProfileHandleConfigurationError) {
+        return sendServerError(res, error, 'player:doubles-handle-config')
+      }
+      if (error instanceof OpaqueProfileHandleError) {
+        return res.status(400).json({ error: 'Invalid or expired partner selection.' })
+      }
+      return sendServerError(res, error, 'player:doubles-handle')
+    }
+    if (partnerId === user.id) return res.status(400).json({ error: 'Choose another player as your partner' })
 
-    // Auto-confirm when the partner is a placeholder: a placeholder has no login
-    // to confirm from, so the pairing is confirmed on creation.
-    const confirmed = await anyPlaceholder([partnerId])
-
-    const { data: record, error: insertErr } = await supabaseAdmin
-      .from('doubles_pairs')
-      .insert({ event_year: eventYear, player1_id: user.id, player2_id: partnerId, confirmed })
-      .select()
-      .single()
-
-    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
-
-    // Creator commits on create — auto-add 'doubles' (no manual save needed).
-    await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear })
-
-    return res.json({ record })
+    return mutateDoubles(res, {
+      p_user_id: user.id,
+      p_action: 'create',
+      p_event_year: year,
+      p_roster_id: null,
+      p_partner_id: partnerId,
+    })
   }
 
   if (action === 'confirm') {
     const { id } = body
-    if (!id) return res.status(400).json({ error: 'id is required' })
+    if (rejectUnexpectedFields(res, body, DOUBLES_ACTION_FIELDS.confirm)) return
+    if (!validUuid(id)) return res.status(400).json({ error: 'A valid id is required' })
 
-    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select(DOUBLES_PAIR_COLUMNS).eq('id', id).maybeSingle()
-    if (pairErr) return sendServerError(res, pairErr, 'player:pair')
-    if (!pair) return res.status(404).json({ error: 'Pair not found' })
-    if (pair.player2_id !== user.id) return res.status(403).json({ error: 'Not a party to this pair' })
-    if (await denyIfWouldAddSideEventAfterLock(res, pair.event_year, user.id, 'doubles')) return
-
-    const { data: record, error: updateErr } = await supabaseAdmin
-      .from('doubles_pairs')
-      .update({ confirmed: true })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (updateErr) return sendServerError(res, updateErr, 'player:update')
-
-    // Accepter commits on confirm — auto-add 'doubles' for them.
-    await ensureSideEventMember({ slug: 'doubles', memberId: user.id, eventYear: pair.event_year })
-
-    return res.json({ record })
+    return mutateDoubles(res, {
+      p_user_id: user.id,
+      p_action: 'confirm',
+      p_event_year: null,
+      p_roster_id: id,
+      p_partner_id: null,
+    })
   }
 
   if (action === 'delete') {
     const { id } = body
-    if (!id) return res.status(400).json({ error: 'id is required' })
+    if (rejectUnexpectedFields(res, body, DOUBLES_ACTION_FIELDS.delete)) return
+    if (!validUuid(id)) return res.status(400).json({ error: 'A valid id is required' })
 
-    const { data: pair, error: pairErr } = await supabaseAdmin.from('doubles_pairs').select('player1_id, player2_id, event_year').eq('id', id).maybeSingle()
-    if (pairErr) return sendServerError(res, pairErr, 'player:pair')
-    if (!pair) return res.status(404).json({ error: 'Pair not found' })
-    if (pair.player1_id !== user.id && pair.player2_id !== user.id) {
-      return res.status(403).json({ error: 'Not a party to this pair' })
-    }
-
-    const { error: delErr } = await supabaseAdmin.from('doubles_pairs').delete().eq('id', id)
-    if (delErr) return sendServerError(res, delErr, 'player:del')
-
-    // The other former member keeps 'doubles' billed unless cleaned up.
-    const partnerId = pair.player1_id === user.id ? pair.player2_id : pair.player1_id
-    await cleanupFormerSideEventMember({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberId: partnerId, eventYear: pair.event_year })
-
-    return res.json({ ok: true })
+    return mutateDoubles(res, {
+      p_user_id: user.id,
+      p_action: 'delete',
+      p_event_year: null,
+      p_roster_id: id,
+      p_partner_id: null,
+    }, true)
   }
 
   return res.status(400).json({ error: `Unknown action: ${action}` })
@@ -207,217 +390,133 @@ async function handleTriples(req, res, user) {
   const { action } = body
 
   if (action === 'search') {
-    const { eventYear, term, existingPlayer2Id, existingPlayer3Id } = body
-    const safeTerm = typeof term === 'string' ? term.trim() : ''
-    if (!eventYear || !safeTerm) return res.status(400).json({ error: 'eventYear and term are required' })
-    if (safeTerm.length > 100) return res.status(400).json({ error: 'Search term too long' })
-    if (/[,()*.:\\]/.test(safeTerm)) return res.status(400).json({ error: 'Search term contains invalid characters' })
-
-    const { data: eligible, error: eligErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id')
-      .eq('year', eventYear)
-      .neq('user_id', user.id)
-
-    if (eligErr) return sendServerError(res, eligErr, 'player:elig')
-
-    let eligibleIds = (eligible ?? []).map(r => r.user_id)
-      .filter(id => id !== existingPlayer2Id && id !== existingPlayer3Id)
-
-    if (!eligibleIds.length) return res.json({ results: [] })
-
-    const { data: existingTriples, error: triplesErr } = await supabaseAdmin
-      .from('triples_teams')
-      .select('player1_id, player2_id, player3_id')
-      .eq('event_year', eventYear)
-
-    if (triplesErr) return sendServerError(res, triplesErr, 'player:triples')
-
-    const takenIds = new Set()
-    existingTriples?.forEach(t => {
-      if (t.player1_id) takenIds.add(t.player1_id)
-      if (t.player2_id) takenIds.add(t.player2_id)
-      if (t.player3_id) takenIds.add(t.player3_id)
+    return searchPartners(req, res, user, {
+      purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_TRIPLES_PARTNER,
+      sideEvent: 'triples',
+      rosterTable: 'triples_teams',
+      rosterColumns: 'player1_id, player2_id, player3_id',
     })
-
-    const availableIds = eligibleIds.filter(id => !takenIds.has(id))
-    if (!availableIds.length) return res.json({ results: [] })
-
-    const { data: profs, error: profsErr } = await supabaseAdmin
-      .from('profiles')
-      .select('id, first_name, last_name, alias, state, roles')
-      .in('id', availableIds)
-      .or(`first_name.ilike.%${safeTerm}%,last_name.ilike.%${safeTerm}%,alias.ilike.%${safeTerm}%`)
-
-    if (profsErr) return sendServerError(res, profsErr, 'player:profs')
-    if (!profs?.length) return res.json({ results: [] })
-
-    const profIds = profs.map(p => p.id)
-    const { data: teamRegs, error: teamRegsErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id, side_events, teams(name)')
-      .eq('year', eventYear)
-      .in('user_id', profIds)
-
-    if (teamRegsErr) return sendServerError(res, teamRegsErr, 'player:teamregs')
-
-    const teamMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.teams?.name ?? null]))
-    // sideEvents lets the client grey out players who haven't selected
-    // 'triples' once registration is locked (price-stability guard mirror).
-    const sideMap = Object.fromEntries((teamRegs ?? []).map(r => [r.user_id, r.side_events ?? []]))
-    return res.json({ results: profs.map(p => ({ ...p, teamName: teamMap[p.id] ?? null, sideEvents: sideMap[p.id] ?? [] })) })
   }
 
   if (action === 'create') {
-    const { eventYear, slot, partnerId } = body
-    if (!eventYear || !slot || !partnerId) return res.status(400).json({ error: 'eventYear, slot and partnerId are required' })
-
-    // Auto-confirm the partner's slot when the partner is a placeholder (no
-    // login to confirm from). The team stays unconfirmed until both partner
-    // slots are filled and confirmed.
-    const slotConfirmed = await anyPlaceholder([partnerId])
-
-    const { data: record, error: insertErr } = await supabaseAdmin
-      .from('triples_teams')
-      .insert({
-        event_year: eventYear,
-        player1_id: user.id,
-        [`player${slot}_id`]: partnerId,
-        confirmed: false,
-        player2_confirmed: false,
-        player3_confirmed: false,
-        [`player${slot}_confirmed`]: slotConfirmed,
+    const { eventYear, slot, partnerHandle } = body
+    if (rejectUnexpectedFields(res, body, TRIPLES_ACTION_FIELDS.create)) return
+    const year = validEventYear(eventYear)
+    if (!year || typeof partnerHandle !== 'string' || (slot !== 2 && slot !== 3)) {
+      return res.status(400).json({ error: 'A valid eventYear, slot and partnerHandle are required' })
+    }
+    let partnerId
+    try {
+      partnerId = resolvePartnerHandle({
+        handle: partnerHandle,
+        purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_TRIPLES_PARTNER,
+        actorId: user.id,
+        eventYear: year,
       })
-      .select()
-      .single()
+    } catch (error) {
+      if (error instanceof ProfileHandleConfigurationError) {
+        return sendServerError(res, error, 'player:triples-handle-config')
+      }
+      if (error instanceof OpaqueProfileHandleError) {
+        return res.status(400).json({ error: 'Invalid or expired partner selection.' })
+      }
+      return sendServerError(res, error, 'player:triples-handle')
+    }
+    if (partnerId === user.id) return res.status(400).json({ error: 'Choose another player as your partner' })
 
-    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
-
-    // Creator commits on create — auto-add 'triples' (no manual save needed).
-    await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear })
-
-    return res.json({ record })
+    return mutateTriples(res, {
+      p_user_id: user.id,
+      p_action: 'create',
+      p_event_year: year,
+      p_roster_id: null,
+      p_slot: slot,
+      p_partner_id: partnerId,
+    })
   }
 
   if (action === 'add-slot') {
-    const { id, slot, partnerId } = body
-    if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
-    if (!id || !slot || !partnerId) return res.status(400).json({ error: 'id, slot and partnerId are required' })
+    const { id, slot, partnerHandle } = body
+    if (rejectUnexpectedFields(res, body, TRIPLES_ACTION_FIELDS['add-slot'])) return
+    const requestYear = validEventYear(body.eventYear)
+    if (!validUuid(id) || typeof partnerHandle !== 'string' || (slot !== 2 && slot !== 3) || !requestYear) {
+      return res.status(400).json({ error: 'A valid id, eventYear, slot and partnerHandle are required' })
+    }
+    let partnerId
+    try {
+      partnerId = resolvePartnerHandle({
+        handle: partnerHandle,
+        purpose: PROFILE_HANDLE_PURPOSES.ZLTAC_TRIPLES_PARTNER,
+        actorId: user.id,
+        eventYear: requestYear,
+      })
+    } catch (error) {
+      if (error instanceof ProfileHandleConfigurationError) {
+        return sendServerError(res, error, 'player:triples-handle-config')
+      }
+      if (error instanceof OpaqueProfileHandleError) {
+        return res.status(400).json({ error: 'Invalid or expired partner selection.' })
+      }
+      return sendServerError(res, error, 'player:triples-handle')
+    }
+    if (partnerId === user.id) return res.status(400).json({ error: 'Choose another player as your partner' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin
-      .from('triples_teams')
-      .select('player1_id, event_year, player2_confirmed, player3_confirmed')
-      .eq('id', id)
-      .maybeSingle()
-    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
-    if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can add players' })
-
-    // Auto-confirm this slot when the added partner is a placeholder. The whole
-    // team is confirmed once both partner slots are confirmed.
-    const slotConfirmed = await anyPlaceholder([partnerId])
-    const otherField = slot === 2 ? 'player3_confirmed' : 'player2_confirmed'
-    const teamConfirmed = slotConfirmed && existing[otherField] === true
-
-    const { data: record, error: updateErr } = await supabaseAdmin
-      .from('triples_teams')
-      .update({ [`player${slot}_id`]: partnerId, [`player${slot}_confirmed`]: slotConfirmed, confirmed: teamConfirmed })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (updateErr) return sendServerError(res, updateErr, 'player:update')
-    return res.json({ record })
+    return mutateTriples(res, {
+      p_user_id: user.id,
+      p_action: 'add-slot',
+      p_event_year: requestYear,
+      p_roster_id: id,
+      p_slot: slot,
+      p_partner_id: partnerId,
+    })
   }
 
   if (action === 'confirm') {
     const { id, mySlot } = body
-    if (!id || !mySlot) return res.status(400).json({ error: 'id and mySlot are required' })
-
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select(TRIPLES_TEAM_COLUMNS).eq('id', id).maybeSingle()
-    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
-    if (!existing) return res.status(404).json({ error: 'Team not found' })
-    if (mySlot !== 2 && mySlot !== 3) return res.status(400).json({ error: 'mySlot must be 2 or 3' })
-    if (existing[`player${mySlot}_id`] !== user.id) return res.status(403).json({ error: 'You are not the player at this slot' })
-    if (await denyIfWouldAddSideEventAfterLock(res, existing.event_year, user.id, 'triples')) return
-
-    const myField = `player${mySlot}_confirmed`
-    const otherSlot = mySlot === 2 ? 3 : 2
-    const otherField = `player${otherSlot}_confirmed`
-    const otherConfirmed = existing[otherField] === true
-
-    const updates = {
-      [myField]: true,
-      ...(otherConfirmed ? { confirmed: true } : {}),
+    if (rejectUnexpectedFields(res, body, TRIPLES_ACTION_FIELDS.confirm)) return
+    if (!validUuid(id) || (mySlot !== 2 && mySlot !== 3)) {
+      return res.status(400).json({ error: 'A valid id and mySlot are required' })
     }
 
-    const { data: record, error: updateErr } = await supabaseAdmin
-      .from('triples_teams')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (updateErr) return sendServerError(res, updateErr, 'player:update')
-
-    // Accepter commits on confirm — auto-add 'triples' for them.
-    await ensureSideEventMember({ slug: 'triples', memberId: user.id, eventYear: existing.event_year })
-
-    return res.json({ record })
+    return mutateTriples(res, {
+      p_user_id: user.id,
+      p_action: 'confirm',
+      p_event_year: null,
+      p_roster_id: id,
+      p_slot: mySlot,
+      p_partner_id: null,
+    })
   }
 
   if (action === 'clear-slot') {
     const { id, slot } = body
-    if (slot !== 2 && slot !== 3) return res.status(400).json({ error: 'slot must be 2 or 3' })
-    if (!id || !slot) return res.status(400).json({ error: 'id and slot are required' })
+    if (rejectUnexpectedFields(res, body, TRIPLES_ACTION_FIELDS['clear-slot'])) return
+    if (!validUuid(id) || (slot !== 2 && slot !== 3)) {
+      return res.status(400).json({ error: 'A valid id and slot are required' })
+    }
 
-    const { data: existing, error: existingErr } = await supabaseAdmin.from('triples_teams').select('player1_id, player2_id, player3_id, event_year').eq('id', id).maybeSingle()
-    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
-    if (!existing || existing.player1_id !== user.id) return res.status(403).json({ error: 'Only the team creator can clear slots' })
-
-    const droppedId = existing[`player${slot}_id`]
-
-    const { data: record, error: updateErr } = await supabaseAdmin
-      .from('triples_teams')
-      .update({ [`player${slot}_id`]: null, [`player${slot}_confirmed`]: false, confirmed: false })
-      .eq('id', id)
-      .select()
-      .single()
-
-    if (updateErr) return sendServerError(res, updateErr, 'player:update')
-
-    // Only the dropped slot's player loses 'triples'; the remaining members
-    // stay in this (now unconfirmed) team row, so the guard keeps their slug.
-    await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId: droppedId, eventYear: existing.event_year })
-
-    return res.json({ record })
+    return mutateTriples(res, {
+      p_user_id: user.id,
+      p_action: 'clear-slot',
+      p_event_year: null,
+      p_roster_id: id,
+      p_slot: slot,
+      p_partner_id: null,
+    })
   }
 
   if (action === 'disband') {
     const { id } = body
-    if (!id) return res.status(400).json({ error: 'id is required' })
+    if (rejectUnexpectedFields(res, body, TRIPLES_ACTION_FIELDS.disband)) return
+    if (!validUuid(id)) return res.status(400).json({ error: 'A valid id is required' })
 
-    const { data: existing, error: existingErr } = await supabaseAdmin
-      .from('triples_teams')
-      .select('player1_id, player2_id, player3_id, event_year')
-      .eq('id', id)
-      .maybeSingle()
-
-    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
-    if (!existing) return res.status(404).json({ error: 'Team not found' })
-
-    const isParty = [existing.player1_id, existing.player2_id, existing.player3_id].includes(user.id)
-    if (!isParty) return res.status(403).json({ error: 'Not a party to this team' })
-
-    const { error: delErr } = await supabaseAdmin.from('triples_teams').delete().eq('id', id)
-    if (delErr) return sendServerError(res, delErr, 'player:del')
-
-    // Every other former member keeps 'triples' billed unless cleaned up.
-    const formerMembers = [existing.player1_id, existing.player2_id, existing.player3_id].filter(pid => pid && pid !== user.id)
-    for (const memberId of formerMembers) {
-      await cleanupFormerSideEventMember({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberId, eventYear: existing.event_year })
-    }
-
-    return res.json({ ok: true })
+    return mutateTriples(res, {
+      p_user_id: user.id,
+      p_action: 'disband',
+      p_event_year: null,
+      p_roster_id: id,
+      p_slot: null,
+      p_partner_id: null,
+    }, true)
   }
 
   return res.status(400).json({ error: `Unknown action: ${action}` })
@@ -429,110 +528,214 @@ async function handleRegistration(req, res, user) {
   const body = req.body ?? {}
   const { action } = body
 
+  if (action === 'confirm-side-events') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
+
+    const eventYear = validEventYear(body.year)
+    if (!eventYear) return res.status(400).json({ error: 'year is required' })
+    if (!Array.isArray(body.side_events)) return res.status(400).json({ error: 'side_events must be an array' })
+    if (body.side_events.length > 20) return res.status(400).json({ error: 'Too many side events selected' })
+
+    const selected = [...new Set(body.side_events)]
+    if (selected.some(slug => typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug))) {
+      return res.status(400).json({ error: 'side_events contains an invalid value' })
+    }
+    const { data, error } = await supabaseAdmin.rpc('confirm_zltac_registration_choices', {
+      p_user_id: user.id,
+      p_event_year: eventYear,
+      p_action: action,
+      p_side_events: selected,
+      p_dinner_guests: null,
+    })
+    if (error) return sendRegistrationMutationError(res, error, 'player:side-events-rpc')
+    const result = rpcRecord(data)
+    if (!result?.registration) {
+      return sendServerError(res, new Error('Registration confirmation RPC returned no registration.'), 'player:side-events-rpc-result')
+    }
+    return res.json({ ok: true, registration: safeRegistration(result.registration), amountOwing: result.amountOwing ?? 0 })
+  }
+
+  if (action === 'confirm-extras') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
+
+    const eventYear = Number.parseInt(body.year, 10)
+    const dinnerGuests = body.dinner_guests
+    if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'year is required' })
+    if (!Number.isInteger(dinnerGuests) || dinnerGuests < 0 || dinnerGuests > 10) {
+      return res.status(400).json({ error: 'dinner_guests must be an integer from 0 to 10' })
+    }
+    const { data, error } = await supabaseAdmin.rpc('confirm_zltac_registration_choices', {
+      p_user_id: user.id,
+      p_event_year: eventYear,
+      p_action: action,
+      p_side_events: null,
+      p_dinner_guests: dinnerGuests,
+    })
+    if (error) return sendRegistrationMutationError(res, error, 'player:extras-rpc')
+    const result = rpcRecord(data)
+    if (!result?.registration) {
+      return sendServerError(res, new Error('Registration confirmation RPC returned no registration.'), 'player:extras-rpc-result')
+    }
+    return res.json({ ok: true, registration: safeRegistration(result.registration), amountOwing: result.amountOwing ?? 0 })
+  }
+
+  if (action === 'submit-under-18') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
+
+    const eventYear = Number.parseInt(body.year, 10)
+    if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'year is required' })
+
+    const { data: registration, error: registrationErr } = await supabaseAdmin
+      .from('zltac_registrations')
+      .select('id, dob_at_registration')
+      .eq('user_id', user.id)
+      .eq('year', eventYear)
+      .maybeSingle()
+    if (registrationErr) return sendServerError(res, registrationErr, 'player:under18-registration')
+    if (!registration) return res.status(403).json({ error: 'Register for this event before submitting its under-18 form.' })
+    if (!validDob(registration.dob_at_registration)) {
+      return res.status(400).json({ error: 'A valid date of birth is required on the registration.' })
+    }
+    const { data: event, error: eventErr } = await supabaseAdmin
+      .from('zltac_events')
+      .select('id, status, start_date, event_starts_at, timezone')
+      .eq('year', eventYear)
+      .maybeSingle()
+    if (eventErr) return sendServerError(res, eventErr, 'player:under18-event')
+    if (!event || event.status === 'archived') {
+      return res.status(400).json({ error: 'This event is not available for under-18 submissions.' })
+    }
+
+    const ageRequirement = under18Requirement({
+      dob: registration.dob_at_registration,
+      eventStartsAt: event.event_starts_at,
+      startDate: event.start_date,
+      timezone: event.timezone,
+    })
+    if (ageRequirement.status === 'blocked') {
+      return res.status(400).json({ error: 'Under-18 eligibility could not be determined from the registration and event start date.' })
+    }
+    if (ageRequirement.status !== 'required') {
+      return res.status(400).json({ error: 'An under-18 form is not required for this registration.' })
+    }
+
+    const { data: activeDocument, error: documentErr } = await supabaseAdmin
+      .from('legal_documents')
+      .select('id, document_type, is_active, published_at, content_sha256, object_size')
+      .eq('document_type', 'under_18_form')
+      .eq('is_active', true)
+      .not('published_at', 'is', null)
+      .not('content_sha256', 'is', null)
+      .not('object_size', 'is', null)
+      .order('effective_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (documentErr) return sendServerError(res, documentErr, 'player:under18-document')
+    if (!activeDocument) {
+      return res.status(400).json({ error: 'The under-18 form is not currently available.' })
+    }
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from('under_18_approvals')
+      .select(UNDER_18_APPROVAL_COLUMNS)
+      .eq('user_id', user.id)
+      .eq('event_year', eventYear)
+      .maybeSingle()
+    if (existingErr) return sendServerError(res, existingErr, 'player:under18-existing')
+    if (existing?.status === 'approved') {
+      return res.status(409).json({ error: 'This under-18 form has already been approved.' })
+    }
+
+    const rpcResult = await supabaseAdmin.rpc('submit_under_18_approval', {
+      p_user_id: user.id,
+      p_event_year: eventYear,
+      p_document_id: activeDocument.id,
+    })
+    if (rpcResult.error) {
+      return sendLegalLifecycleRpcError(
+        res,
+        rpcResult.error,
+        'player:under18-submit',
+      )
+    }
+
+    let approval = null
+    if (rpcResult.data && !Array.isArray(rpcResult.data) && typeof rpcResult.data === 'object') {
+      approval = rpcResult.data
+    } else if (Array.isArray(rpcResult.data) && rpcResult.data.length > 0) {
+      approval = rpcResult.data[0]
+    }
+
+    if (!approval || approval.status !== 'pending') {
+      const { data, error: readErr } = await supabaseAdmin
+        .from('under_18_approvals')
+        .select(UNDER_18_APPROVAL_COLUMNS)
+        .eq('user_id', user.id)
+        .eq('event_year', eventYear)
+        .maybeSingle()
+      if (readErr) return sendServerError(res, readErr, 'player:under18-read')
+      approval = data
+    }
+    if (!approval || approval.status !== 'pending') {
+      return res.status(409).json({ error: 'Under-18 submission did not enter pending review.' })
+    }
+
+    return res.json({ ok: true, approval })
+  }
+
   if (action === 'sign-legal') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
     // Player (re)signs CoC / Media Release. Routed through the service role so
     // the clear_force_incomplete_on_resign AFTER-trigger updates
     // zltac_registrations with auth.uid() IS NULL — the system path the
     // protect_registration_admin_fields guard allows — instead of failing
     // under the player's own auth context.
     const { documentId } = body
-    const eventYear = Number.parseInt(body.eventYear, 10)
-    if (!documentId) return res.status(400).json({ error: 'documentId is required' })
-    if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'eventYear is required' })
-
-    // Defensive: only an active legal document may be signed. Never trust a
-    // client-supplied document_id for an arbitrary or retired row.
-    const { data: doc, error: docErr } = await supabaseAdmin
-      .from('legal_documents')
-      .select('id, is_active, document_type')
-      .eq('id', documentId)
-      .maybeSingle()
-    if (docErr) return sendServerError(res, docErr, 'player:doc')
-    const signableTypes = ['code_of_conduct', 'media_release']
-    if (!doc || !doc.is_active || !signableTypes.includes(doc.document_type)) {
-      return res.status(400).json({ error: 'Document is not available for signing.' })
+    const eventYear = validEventYear(body.eventYear)
+    if (!validUuid(documentId)) {
+      return res.status(400).json({ error: 'documentId must be a valid UUID' })
     }
-
-    const { data: registration, error: registrationErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('year', eventYear)
-      .maybeSingle()
-    if (registrationErr) return sendServerError(res, registrationErr, 'player:registration')
-    if (!registration) return res.status(403).json({ error: 'Register for this event before signing its documents.' })
+    if (!eventYear) return res.status(400).json({ error: 'eventYear is required' })
 
     // user_id is taken from the authenticated session, never the request body.
-    const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : null
+    const userAgent = typeof req.headers['user-agent'] === 'string'
+      ? req.headers['user-agent'].slice(0, 1024)
+      : null
     const forwardedFor = typeof req.headers['x-forwarded-for'] === 'string'
       ? req.headers['x-forwarded-for'].split(',')[0].trim()
       : null
     const rawIpAddress = forwardedFor || (typeof req.headers['x-real-ip'] === 'string' ? req.headers['x-real-ip'].trim() : null)
     const ipAddress = rawIpAddress && isIP(rawIpAddress) ? rawIpAddress : null
-    const { error: insertErr } = await supabaseAdmin
-      .from('legal_acceptances')
-      .insert({
-        user_id: user.id,
-        document_id: documentId,
-        event_year: eventYear,
-        accepted_at: new Date().toISOString(),
-        ip_address: ipAddress,
-        user_agent: userAgent,
-      })
-    if (insertErr) return sendServerError(res, insertErr, 'player:insert')
+    const { error: acceptanceError } = await supabaseAdmin.rpc(
+      'accept_legal_document',
+      {
+        p_user_id: user.id,
+        p_event_year: eventYear,
+        p_document_id: documentId,
+        p_ip_address: ipAddress,
+        p_user_agent: userAgent,
+      },
+    )
+    if (acceptanceError) {
+      return sendLegalLifecycleRpcError(
+        res,
+        acceptanceError,
+        'player:legal-acceptance',
+      )
+    }
 
     return res.json({ ok: true })
   }
 
   if (action === 'precheck-register') {
-    // Cap-check used by PlayerRegister / CaptainRegister before inserting
-    // a new registration row. Returns 400 with a user-facing message when
-    // the event would exceed max_players. Null cap = no limit. Already
-    // registered = no-op for cap purposes (upsert is idempotent count-wise).
+    // Best-effort cap check used by PlayerRegister / CaptainRegister before
+    // the atomic registration RPC. The RPC repeats the decision while holding
+    // the event lock. Do not use aliases to discover placeholder identities.
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })
     // Block new registrations once the event locks. RLS also blocks the
     // client-direct insert; this returns a clean message before the attempt.
     if (await denyIfLocked(res, year)) return
-
-    // Chunk 2: detect the placeholder-alias conflict that would otherwise hit
-    // the zltac_registrations.payment_reference UNIQUE constraint at insert
-    // time. We compare the caller's profile.alias (already populated by the
-    // signup metadata trigger) against the alias of any placeholder profile
-    // that has a registration for this year. The caller's own row is skipped
-    // (they're not a placeholder, but belt-and-braces). Returns ok:true with a
-    // placeholder_id so PlayerRegister can surface the claim flow directly.
-    const { data: callerProfile, error: callerErr } = await supabaseAdmin
-      .from('profiles')
-      .select('alias')
-      .eq('id', user.id)
-      .maybeSingle()
-    if (callerErr) return sendServerError(res, callerErr, 'player:caller')
-
-    const callerAlias = (callerProfile?.alias ?? '').trim()
-    if (callerAlias) {
-      const { data: phReg, error: phErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
-        .eq('year', year)
-        .eq('profiles.is_placeholder', true)
-      if (phErr) return sendServerError(res, phErr, 'player:ph')
-
-      const lowerCaller = callerAlias.toLowerCase()
-      const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
-      if (conflict) {
-        // 200 with ok:false so apiFetch resolves with the body; the caller
-        // inspects the structured payload to drive the claim modal directly.
-        // Other ok:false branches in this codebase (claim_placeholder_profile,
-        // RPC wrappers) follow the same pattern.
-        return res.json({
-          ok: false,
-          error: 'placeholder_exists',
-          placeholder_id: conflict.user_id,
-          message: 'There is already a placeholder registration with this alias for this event. Claim it instead.',
-        })
-      }
-    }
 
     const { data: ev, error: evErr } = await supabaseAdmin
       .from('zltac_events')
@@ -566,10 +769,12 @@ async function handleRegistration(req, res, user) {
   }
 
   if (action === 'register') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
+
     const eventYear = Number.parseInt(body.year, 10)
     if (!Number.isInteger(eventYear)) return res.status(400).json({ error: 'year is required' })
-    if (await denyIfLocked(res, eventYear)) return
-
+    const dob = validDob(body.dob)
+    if (!dob) return res.status(400).json({ error: 'A valid date of birth in YYYY-MM-DD format is required.' })
     const emergencyContactName = typeof body.emergency_contact_name === 'string'
       ? body.emergency_contact_name.trim() || null
       : null
@@ -577,240 +782,110 @@ async function handleRegistration(req, res, user) {
       ? body.emergency_contact_phone.trim() || null
       : null
 
-    const { data: existing, error: existingErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('year', eventYear)
-      .maybeSingle()
-    if (existingErr) return sendServerError(res, existingErr, 'player:existing')
-    if (existing) return res.json({ ok: true, id: existing.id, existing: true })
+    const { data, error } = await supabaseAdmin.rpc('register_zltac_player', {
+      p_user_id: user.id,
+      p_event_year: eventYear,
+      p_dob: dob,
+      p_emergency_contact_name: emergencyContactName,
+      p_emergency_contact_phone: emergencyContactPhone,
+    })
+    if (error) return sendRegistrationMutationError(res, error, 'player:register-rpc')
 
-    const { data: callerProfile, error: callerErr } = await supabaseAdmin
-      .from('profiles')
-      .select('alias')
-      .eq('id', user.id)
-      .maybeSingle()
-    if (callerErr) return sendServerError(res, callerErr, 'player:caller')
-
-    const callerAlias = (callerProfile?.alias ?? '').trim()
-    if (callerAlias) {
-      const { data: phReg, error: phErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .select('user_id, profiles!zltac_registrations_user_id_fkey!inner(id, alias, is_placeholder)')
-        .eq('year', eventYear)
-        .eq('profiles.is_placeholder', true)
-      if (phErr) return sendServerError(res, phErr, 'player:ph')
-
-      const lowerCaller = callerAlias.toLowerCase()
-      const conflict = (phReg ?? []).find(r => (r.profiles?.alias ?? '').toLowerCase() === lowerCaller)
-      if (conflict) {
-        return res.json({
-          ok: false,
-          error: 'placeholder_exists',
-          placeholder_id: conflict.user_id,
-          message: 'There is already a placeholder registration with this alias for this event. Claim it instead.',
-        })
-      }
+    const result = rpcRecord(data)
+    if (!result) {
+      return sendServerError(res, new Error('Registration RPC returned no result.'), 'player:register-rpc-result')
     }
-
-    const { data: ev, error: evErr } = await supabaseAdmin
-      .from('zltac_events')
-      .select('max_players')
-      .eq('year', eventYear)
-      .maybeSingle()
-    if (evErr) return sendServerError(res, evErr, 'player:ev')
-
-    const cap = ev?.max_players
-    if (cap) {
-      const { count, error: countErr } = await supabaseAdmin
-        .from('zltac_registrations')
-        .select('id', { count: 'exact', head: true })
-        .eq('year', eventYear)
-      if (countErr) return sendServerError(res, countErr, 'player:count')
-      if ((count ?? 0) >= cap) {
-        return res.status(400).json({ error: `Registration cap of ${cap} reached. Contact the committee.` })
-      }
-    }
-
-    const { data: regRow, error: regError } = await supabaseAdmin
-      .from('zltac_registrations')
-      .insert({
-        user_id: user.id,
-        year: eventYear,
-        team_id: null,
-        side_events: null,
-        dinner_guests: 0,
-        emergency_contact_name: emergencyContactName,
-        emergency_contact_phone: emergencyContactPhone,
-        status: 'pending',
+    if (result.ok === false) {
+      return res.status(409).json({
+        error: 'This registration conflicts with an existing record. Check your Player Hub or contact the committee.',
       })
-      .select('id')
-      .single()
-
-    if (regError) {
-      const msg = regError.message ?? ''
-      if (regError.code === '23505' || msg.includes('zltac_registrations_payment_reference_key')) {
-        return res.status(409).json({ error: 'A registration with this alias already exists for this event. If that is you, claim it via the banner above or check your Player Hub.' })
-      }
-      return sendServerError(res, regError, 'player:reg')
     }
-
-    const result = await computeAndWriteAmountOwing(regRow.id)
-    if (result.error) return sendServerError(res, result.error instanceof Error ? result.error : new Error(String(result.error)), 'player:amount-owing')
-
-    return res.status(201).json({ ok: true, id: regRow.id, amountOwing: result.amountOwing })
+    if (result.existing) {
+      return res.json({
+        ok: true,
+        id: result.id,
+        existing: true,
+        registration: safeRegistration(result.registration),
+      })
+    }
+    return res.status(201).json({
+      ok: true,
+      id: result.id,
+      registration: safeRegistration(result.registration),
+      amountOwing: result.amountOwing ?? 0,
+    })
   }
 
   if (action === 'cancel') {
     const { year } = body
     if (!year) return res.status(400).json({ error: 'year is required' })
-    if (await denyIfLocked(res, year)) return
 
-    const { data: reg, error: regErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('id, team_id')
-      .eq('user_id', user.id)
-      .eq('year', year)
-      .maybeSingle()
-    if (regErr) return sendServerError(res, regErr, 'player:reg')
-    if (!reg) return res.status(404).json({ error: 'No registration found for that year' })
-
-    if (reg.team_id) {
-      const { data: team, error: teamErr } = await supabaseAdmin
-        .from('teams')
-        .select('captain_id')
-        .eq('id', reg.team_id)
-        .maybeSingle()
-      if (teamErr) return sendServerError(res, teamErr, 'player:team')
-      if (team?.captain_id === user.id) {
+    const { data, error } = await supabaseAdmin.rpc('cancel_zltac_registration', {
+      p_user_id: user.id,
+      p_event_year: Number.parseInt(year, 10),
+    })
+    if (error) {
+      const paymentBlocked = error.hint === 'PAYMENT_RECORDS_EXIST'
+        || /recorded payments cannot be cancelled/i.test(error.message ?? '')
+      if (paymentBlocked) {
+        return res.status(409).json({
+          error: 'A payment has been recorded for this registration. Contact the committee before cancelling.',
+          code: 'PAYMENT_RECORDS_EXIST',
+        })
+      }
+      const captainBlocked = error.hint === 'CAPTAIN_BLOCKED'
+        || /captain must disband/i.test(error.message ?? '')
+      if (captainBlocked) {
         return res.status(409).json({
           error: 'You are the captain. Disband your team first.',
-          teamId: reg.team_id,
           code: 'CAPTAIN_BLOCKED',
         })
       }
-
-      try {
-        const { error: memberErr } = await supabaseAdmin
-          .from('team_members')
-          .delete()
-          .eq('team_id', reg.team_id)
-          .eq('user_id', user.id)
-        if (memberErr) console.error('[api/player registration cancel] dual-write team_members delete failed:', memberErr.message)
-      } catch (err) {
-        console.error('[api/player registration cancel] dual-write threw:', err)
+      if (error.code === 'P0002') return res.status(404).json({ error: error.message })
+      if (['22023', '23503', '23514', '55000'].includes(error.code)) {
+        return res.status(409).json({ error: error.message })
       }
+      return sendServerError(res, error, 'player:cancel-registration')
     }
 
-    const { error: delErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .delete()
-      .eq('id', reg.id)
-    if (delErr) return sendServerError(res, delErr, 'player:del')
-
-    // Cascade: dissolve any doubles/triples this user was in for the year and
-    // clean up the remaining partners (their slug + amount_owing). The user's
-    // own registration is already gone, so only the partners need fixing.
-    const { data: myPairs } = await supabaseAdmin
-      .from('doubles_pairs')
-      .select('id, player1_id, player2_id')
-      .eq('event_year', year)
-      .or(`player1_id.eq.${user.id},player2_id.eq.${user.id}`)
-    const { data: myTeams } = await supabaseAdmin
-      .from('triples_teams')
-      .select('id, player1_id, player2_id, player3_id')
-      .eq('event_year', year)
-      .or(`player1_id.eq.${user.id},player2_id.eq.${user.id},player3_id.eq.${user.id}`)
-
-    const doublesPartners = new Set((myPairs ?? []).flatMap(p => [p.player1_id, p.player2_id]).filter(pid => pid && pid !== user.id))
-    const triplesPartners = new Set((myTeams ?? []).flatMap(t => [t.player1_id, t.player2_id, t.player3_id]).filter(pid => pid && pid !== user.id))
-
-    if (myPairs?.length) await supabaseAdmin.from('doubles_pairs').delete().in('id', myPairs.map(p => p.id))
-    if (myTeams?.length) await supabaseAdmin.from('triples_teams').delete().in('id', myTeams.map(t => t.id))
-
-    await Promise.all([
-      cleanupFormerSideEventMembers({ table: 'doubles_pairs', slug: 'doubles', playerCols: ['player1_id', 'player2_id'], memberIds: [...doublesPartners], eventYear: year }),
-      cleanupFormerSideEventMembers({ table: 'triples_teams', slug: 'triples', playerCols: ['player1_id', 'player2_id', 'player3_id'], memberIds: [...triplesPartners], eventYear: year }),
-    ])
-
-    return res.json({ ok: true })
-  }
-
-  if (action === 'recompute-owing') {
-    const { registrationId } = body
-    if (!registrationId) return res.status(400).json({ error: 'registrationId is required' })
-
-    const { data: reg, error: regErr } = await supabaseAdmin
-      .from('zltac_registrations')
-      .select('user_id')
-      .eq('id', registrationId)
-      .maybeSingle()
-    if (regErr) return sendServerError(res, regErr, 'player:reg')
-    if (!reg) return res.status(404).json({ error: 'Registration not found' })
-
-    if (reg.user_id !== user.id) {
-      const { data: profile } = await supabaseAdmin.from('profiles').select('roles').eq('id', user.id).maybeSingle()
-      const roles = profile?.roles ?? []
-      if (!roles.some(r => COMMITTEE_ROLES.includes(r))) return res.status(403).json({ error: 'Forbidden' })
-    }
-
-    const result = await computeAndWriteAmountOwing(registrationId)
-    if (result.error) return sendServerError(res, result.error instanceof Error ? result.error : new Error(String(result.error)), 'player:amount-owing')
-
-    return res.json({ amountOwing: result.amountOwing })
+    return res.json({ ok: true, ...(data ?? {}) })
   }
 
   return res.status(400).json({ error: `Unknown action: ${action}` })
 }
 
 // ── claimable / claim ───────────────────────────────────────────────────────
-// Chunk 2 placeholder-claim flow. Two endpoints:
-//   GET  ?resource=claimable → list placeholders that match the caller by
-//                              alias or auth.users email (case-insensitive).
+// Placeholder-claim flow. Two endpoints:
+//   GET  ?resource=claimable → list placeholders whose recorded email
+//                              matches the caller's verified Auth email.
 //   POST ?resource=claim     → merge a chosen placeholder into the caller via
-//                              the claim_placeholder_profile RPC.
-// The RPC has its own auth.uid() == real_id guard, so even a direct
-// supabase.rpc() call from the browser is safe — but the API layer still
-// uses supabaseAdmin so that cross-user reads work under RLS.
+//                              the actor-explicit service-only merge RPC.
+// The RPC binds the already verified actor to the target, repeats the
+// ownership check, and performs the merge atomically.
 
 async function handleClaimable(req, res, user) {
-  // Resolve the caller's alias (from profiles) and email (from auth.users) so
-  // we can match against placeholders.alias and placeholders.placeholder_email.
-  const { data: prof, error: profErr } = await supabaseAdmin
-    .from('profiles')
-    .select('alias')
-    .eq('id', user.id)
-    .maybeSingle()
-  if (profErr) return sendServerError(res, profErr, 'player:prof')
+  const callerEmail = verifiedAuthEmail(user)
+  if (!callerEmail) return res.json({ matches: [] })
 
-  const callerAlias = (prof?.alias ?? '').trim()
-  const callerEmail = (user.email ?? '').trim()
-  if (!callerAlias && !callerEmail) return res.json({ matches: [] })
-
-  // Pull every placeholder (small table) and match in JS — keeps the case-
-  // insensitive comparison cheap and avoids two separate filtered queries.
+  // Pull the small placeholder set and compare normalized emails server-side.
+  // placeholder_email is used only for authorization and is never disclosed.
   const { data: placeholders, error: phErr } = await supabaseAdmin
     .from('profiles')
-    .select('id, alias, first_name, last_name, placeholder_email')
+    .select('id, alias, placeholder_email')
     .eq('is_placeholder', true)
   if (phErr) return sendServerError(res, phErr, 'player:ph')
 
-  const lowerAlias = callerAlias.toLowerCase()
-  const lowerEmail = callerEmail.toLowerCase()
-  const matched = (placeholders ?? []).filter(p => {
-    const a = (p.alias ?? '').toLowerCase()
-    const e = (p.placeholder_email ?? '').toLowerCase()
-    return (lowerAlias && a && a === lowerAlias) || (lowerEmail && e && e === lowerEmail)
-  })
+  const matched = (placeholders ?? []).filter(
+    placeholder => normalizedEmail(placeholder.placeholder_email) === callerEmail,
+  )
   if (!matched.length) return res.json({ matches: [] })
 
-  // Hydrate each match with its registrations so the modal can show year +
-  // payment ref + side events the caller is being asked to absorb.
+  // A year and selected side events provide enough context to identify the
+  // registration without disclosing legal names, email, or payment reference.
   const matchedIds = matched.map(p => p.id)
   const { data: regs, error: regsErr } = await supabaseAdmin
     .from('zltac_registrations')
-    .select('user_id, year, payment_reference, side_events')
+    .select('user_id, year, side_events')
     .in('user_id', matchedIds)
     .order('year', { ascending: false })
   if (regsErr) return sendServerError(res, regsErr, 'player:regs')
@@ -819,7 +894,6 @@ async function handleClaimable(req, res, user) {
   for (const r of (regs ?? [])) {
     ;(regsByUser[r.user_id] ??= []).push({
       year: r.year,
-      payment_reference: r.payment_reference,
       side_events: r.side_events ?? [],
     })
   }
@@ -828,9 +902,6 @@ async function handleClaimable(req, res, user) {
     placeholder: {
       id: p.id,
       alias: p.alias,
-      first_name: p.first_name,
-      last_name: p.last_name,
-      placeholder_email: p.placeholder_email,
     },
     registrations: regsByUser[p.id] ?? [],
   }))
@@ -840,49 +911,32 @@ async function handleClaimable(req, res, user) {
 
 async function handleClaim(req, res, user) {
   const { placeholder_id } = req.body ?? {}
-  if (!placeholder_id) return res.status(400).json({ error: 'placeholder_id is required' })
+  if (!validUuid(placeholder_id)) return res.status(400).json({ error: 'A valid claim reference is required' })
 
-  // Verify the placeholder actually belongs to this caller before invoking the
-  // RPC — mirrors the in-function ownership check so the rejection surfaces as
-  // a clean 403 here rather than relying solely on the DB-layer guard.
-  // Committee may bypass (matches the function's is_committee() bypass for the
-  // admin manual-link flow).
-  const { data: prof, error: profErr } = await supabaseAdmin
-    .from('profiles')
-    .select('alias, roles')
-    .eq('id', user.id)
-    .maybeSingle()
-  if (profErr) return sendServerError(res, profErr, 'player:prof')
-
-  const callerIsCommittee = (prof?.roles ?? []).some(r => COMMITTEE_ROLES.includes(r))
-
-  if (!callerIsCommittee) {
-    const { data: placeholder, error: phErr } = await supabaseAdmin
-      .from('profiles')
-      .select('alias, placeholder_email, is_placeholder')
-      .eq('id', placeholder_id)
-      .maybeSingle()
-    if (phErr) return sendServerError(res, phErr, 'player:ph')
-    if (!placeholder) return res.status(404).json({ error: 'placeholder not found' })
-    if (!placeholder.is_placeholder) {
-      return res.status(400).json({ error: 'profile is not a placeholder' })
-    }
-
-    const callerAlias = (prof?.alias ?? '').trim().toLowerCase()
-    const callerEmail = (user.email ?? '').trim().toLowerCase()
-    const phAlias = (placeholder.alias ?? '').trim().toLowerCase()
-    const phEmail = (placeholder.placeholder_email ?? '').trim().toLowerCase()
-
-    const aliasMatch = callerAlias && phAlias && callerAlias === phAlias
-    const emailMatch = callerEmail && phEmail && callerEmail === phEmail
-    if (!aliasMatch && !emailMatch) {
-      return res.status(403).json({ error: 'placeholder does not belong to you' })
-    }
+  const callerEmail = verifiedAuthEmail(user)
+  if (!callerEmail) {
+    return res.status(403).json({ error: 'A verified account email is required to claim a registration.' })
   }
 
-  const { data, error } = await supabaseAdmin.rpc('claim_placeholder_profile', {
-    placeholder_id,
-    real_id: user.id,
+  // Mirror the database ownership check for a clean rejection. Missing,
+  // non-placeholder, and nonmatching records intentionally share one response
+  // so this endpoint cannot be used as a placeholder-identity oracle.
+  const { data: placeholder, error: phErr } = await supabaseAdmin
+    .from('profiles')
+    .select('placeholder_email, is_placeholder')
+    .eq('id', placeholder_id)
+    .maybeSingle()
+  if (phErr) return sendServerError(res, phErr, 'player:ph')
+  if (!placeholder?.is_placeholder
+      || normalizedEmail(placeholder.placeholder_email) !== callerEmail) {
+    return res.status(403).json({ error: 'This registration cannot be claimed by this account.' })
+  }
+
+  const { data, error } = await supabaseAdmin.rpc('merge_placeholder_profile', {
+    p_actor_id: user.id,
+    p_placeholder_id: placeholder_id,
+    p_real_id: user.id,
+    p_mode: 'self',
   })
   if (error) return sendServerError(res, error, 'player:error')
 
@@ -892,11 +946,113 @@ async function handleClaim(req, res, user) {
   return res.json(data ?? { ok: true })
 }
 
+async function handlePaymentInstructions(req, res, user) {
+  const eventYear = validEventYear(req.query.year)
+  if (!eventYear) return res.status(400).json({ error: 'A valid year is required' })
+
+  const { data: registration, error: registrationError } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('year', eventYear)
+    .maybeSingle()
+  if (registrationError) {
+    return sendServerError(res, registrationError, 'player:payment-instructions-registration')
+  }
+  if (!registration || registration.status === 'cancelled') {
+    return res.status(404).json({ error: 'Registration not found' })
+  }
+
+  const { data: event, error: eventError } = await supabaseAdmin
+    .from('zltac_events')
+    .select('status, reg_close_date, payments_override, bank_bsb, bank_account_number, bank_account_name')
+    .eq('year', eventYear)
+    .maybeSingle()
+  if (eventError) return sendServerError(res, eventError, 'player:payment-instructions-event')
+  if (!event) return res.status(404).json({ error: 'Event not found' })
+
+  const paymentState = arePaymentsOpen(event)
+  const available = ['open', 'closed'].includes(event.status) && paymentState.open
+  return res.json({
+    payment_instructions: {
+      available,
+      reason: available
+        ? paymentState.reason
+        : event.status === 'archived'
+          ? 'event_archived'
+          : paymentState.reason,
+      opens_at: !available && paymentState.opensAt
+        ? paymentState.opensAt.toISOString()
+        : null,
+      bank: available
+        ? {
+            bsb: event.bank_bsb,
+            account_number: event.bank_account_number,
+            account_name: event.bank_account_name,
+          }
+        : null,
+    },
+  })
+}
+
+async function handleOwnZltacTeam(req, res, user) {
+  const eventYear = validEventYear(req.query.year)
+  if (!eventYear) return res.status(400).json({ error: 'A valid year is required' })
+
+  const { data: registration, error: registrationError } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('team_id, status')
+    .eq('user_id', user.id)
+    .eq('year', eventYear)
+    .maybeSingle()
+  if (registrationError) return sendServerError(res, registrationError, 'player:own-team-registration')
+  if (!registration?.team_id || registration.status === 'cancelled') return res.json({ team: null })
+
+  const { data: team, error: teamError } = await supabaseAdmin
+    .from('teams')
+    .select('id, event_id, captain_id, manager_id, name, state, home_venue, colour, status, rejection_reason, logo_url')
+    .eq('id', registration.team_id)
+    .maybeSingle()
+  if (teamError) return sendServerError(res, teamError, 'player:own-team')
+  if (!team) return res.json({ team: null })
+
+  let captainAlias = null
+  if (team.captain_id) {
+    const { data: captain, error: captainError } = await supabaseAdmin
+      .from('profiles')
+      .select('alias')
+      .eq('id', team.captain_id)
+      .maybeSingle()
+    if (captainError) return sendServerError(res, captainError, 'player:own-team-captain')
+    captainAlias = captain?.alias ?? null
+  }
+
+  return res.json({
+    team: {
+      id: team.id,
+      event_id: team.event_id,
+      name: team.name,
+      state: team.state,
+      home_venue: team.home_venue,
+      colour: team.colour,
+      status: team.status,
+      rejection_reason: team.rejection_reason,
+      logo_url: team.logo_url,
+      captain_alias: captainAlias,
+      viewer_role: team.captain_id === user.id
+        ? 'captain'
+        : team.manager_id === user.id
+          ? 'manager'
+          : 'player',
+    },
+  })
+}
+
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   const { user, error } = await verifyUser(req)
-  if (error) return res.status(401).json({ error })
+  if (error) return res.status(statusForAuthError(error)).json({ error })
 
   const resource = req.query.resource
 
@@ -905,9 +1061,13 @@ export default async function handler(req, res) {
     ? { limit: 5, window: '10 m', prefix: 'placeholder-claim' }
     : resource === 'claimable'
       ? { limit: 30, window: '1 m', prefix: 'placeholder-discovery' }
-      : (resource === 'doubles' || resource === 'triples') && action === 'search'
-        ? { limit: 30, window: '1 m', prefix: 'partner-search' }
-        : null
+      : ['readiness', 'payment-instructions', 'team'].includes(resource)
+        ? { limit: 60, window: '1 m', prefix: 'player-readiness' }
+        : (resource === 'doubles' || resource === 'triples') && action === 'search'
+          ? { limit: 30, window: '1 m', prefix: 'partner-search' }
+          : resource === 'registration' && ['register', 'confirm-side-events', 'confirm-extras', 'submit-under-18', 'sign-legal'].includes(action)
+            ? { limit: 30, window: '1 m', prefix: 'player-registration-mutations' }
+            : null
   if (rateConfig && !await enforceRateLimit(req, res, {
     identifier: user.id,
     requireDistributed: true,
@@ -917,7 +1077,20 @@ export default async function handler(req, res) {
   // GET endpoints
   if (req.method === 'GET') {
     if (resource === 'claimable') return handleClaimable(req, res, user)
-    return res.status(400).json({ error: 'resource query param must be "claimable" for GET' })
+    if (resource === 'payment-instructions') return handlePaymentInstructions(req, res, user)
+    if (resource === 'team') return handleOwnZltacTeam(req, res, user)
+    if (resource === 'readiness') {
+      try {
+        const result = await getPlayerCurrentZltacReadiness(user.id)
+        return res.json({
+          ...result,
+          readiness: safePlayerReadiness(result.readiness),
+        })
+      } catch (readinessError) {
+        return sendServerError(res, readinessError, 'player:readiness')
+      }
+    }
+    return res.status(400).json({ error: 'Unsupported player resource' })
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })

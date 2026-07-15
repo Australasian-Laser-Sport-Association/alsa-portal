@@ -43,13 +43,30 @@ export default function CaptainRegister() {
     if (!user) return
 
     async function load() {
-      const [{ data: ev }, { data: existing }] = await Promise.all([
-        supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
-        supabase.from('teams').select('id').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
-      ])
-      setEvent(ev)
-      if (existing) { navigate('/captain-hub'); return }
-      setInitialLoading(false)
+      try {
+        const { data: ev, error: eventError } = await supabase
+          .from('public_zltac_events')
+          .select('id, name, year, status, reg_open_date, reg_close_date, event_starts_at')
+          .eq('year', parseInt(year))
+          .maybeSingle()
+        if (eventError) throw eventError
+        setEvent(ev)
+
+        if (ev?.id) {
+          const { data: existing, error: teamError } = await supabase
+            .from('own_zltac_teams')
+            .select('id')
+            .eq('event_id', ev.id)
+            .eq('viewer_role', 'captain')
+            .maybeSingle()
+          if (teamError) throw teamError
+          if (existing) { navigate('/captain-hub'); return }
+        }
+      } catch (loadError) {
+        setError(loadError?.message || 'Could not load captain registration. Please try again.')
+      } finally {
+        setInitialLoading(false)
+      }
     }
     load()
   }, [authLoading, user, year, navigate])
@@ -87,7 +104,6 @@ export default function CaptainRegister() {
     }
 
     let logo_url = null
-    let uploadedLogoPath = null
     if (logoFile) {
       const ext = extensionForMime(logoFile.type)
       const path = `${user.id}/${Date.now()}.${ext}`
@@ -95,7 +111,6 @@ export default function CaptainRegister() {
       if (upErr) { setError(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
       const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
       logo_url = urlData.publicUrl
-      uploadedLogoPath = up.path
     }
 
     try {
@@ -115,9 +130,9 @@ export default function CaptainRegister() {
       setSubmittedTeam(result.team)
       setStep(2)
     } catch (err) {
-      if (uploadedLogoPath) {
-        await supabase.storage.from('team-logos').remove([uploadedLogoPath])
-      }
+      // The API transaction may have committed even if its HTTP response was
+      // lost. Retain the uploaded object so a reconciled team never points at
+      // a logo that this client deleted after an ambiguous failure.
       setError(err?.message || 'Could not create the team. Please try again.')
     } finally {
       setSaving(false)

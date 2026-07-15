@@ -6,6 +6,7 @@ import CompetitionEditForm from '../../components/competition/CompetitionEditFor
 import RecordPaymentModal from '../../components/RecordPaymentModal.jsx'
 import { dollars } from '../../lib/pricing.js'
 import { toLocalDate } from '../../lib/dateFormat'
+import { csvCell, downloadCsv } from '../../lib/csv.js'
 
 // Per-competition detail page for managers. Auth: the page fetches
 // /api/superadmin/my-competitions and looks for a row matching :slug. If not
@@ -133,13 +134,6 @@ function PayPill({ status }) {
   )
 }
 
-// RFC 4180-ish CSV escape: wrap any cell containing comma, quote, or newline
-// in double quotes and double up any internal quotes. Returns a string.
-function csvCell(value) {
-  const s = value == null ? '' : String(value)
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
 function buildRegistrationsCsv(rows) {
   const header = [
     'Alias', 'First Name', 'Last Name', 'Email',
@@ -164,18 +158,6 @@ function buildRegistrationsCsv(rows) {
     ].join(','))
   }
   return lines.join('\r\n')
-}
-
-function downloadCsv(content, filename) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
 }
 
 const STATUS_FILTERS = [

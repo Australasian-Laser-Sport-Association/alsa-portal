@@ -80,7 +80,7 @@ export default function ZLTACYearDetail() {
 
     Promise.all([
       supabase
-        .from('zltac_event_history')
+        .from('public_zltac_event_history')
         .select('*')
         .eq('year', y)
         .maybeSingle(),

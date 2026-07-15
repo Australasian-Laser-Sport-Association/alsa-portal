@@ -54,8 +54,8 @@ const TILE_SECTIONS = [
 ]
 
 // Testing-mode controls: toggle the site-wide banner and edit its message.
-// Saves via the anon client; the cms_global committee RLS policy gates the
-// write. The shared context is updated on save so the banner reflects the
+// Saves through the actor-checked committee API. The shared context is updated
+// on save so the banner reflects the
 // change immediately without a reload.
 function SiteModeCard() {
   const { banner, setBanner } = useContext(SiteBannerContext)

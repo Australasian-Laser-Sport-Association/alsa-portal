@@ -67,7 +67,7 @@ export default function Home() {
 
   useEffect(() => {
     supabase
-      .from('zltac_events')
+      .from('public_zltac_events')
       .select('id, name, year, location, status, logo_url, reg_open_date, reg_close_date, timezone')
       .eq('status', 'open')
       .limit(1)

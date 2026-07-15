@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch'
 import { ConfirmDialog, InlineAlert, LoadErrorState } from '../../components/Feedback'
 
 // Committee CRUD for the public Resources pages, shared between ALSA
 // (/admin/alsa-documents) and ZLTAC (/admin/zltac-documents) via the `scope`
-// prop. All reads and writes go through the anon client; the committee RLS
-// policies on document_categories / documents gate the writes (same pattern
-// as AdminRefereeTest). Routed with a per-scope key so switching pages
-// remounts with fresh state.
+// prop. Public-safe reads use the browser client; every committee mutation is
+// authenticated and validated by the server content route.
 
 const EMPTY_DOC = { name: '', url: '', description: '', category_id: '', sort_order: 0 }
 
@@ -45,8 +44,8 @@ export default function AdminDocuments({ scope }) {
           { data: cats, error: catsError },
           { data: docs, error: docsError },
         ] = await Promise.all([
-          supabase.from('document_categories').select('*').eq('scope', scope),
-          supabase.from('documents').select('*').eq('scope', scope),
+          supabase.from('document_categories').select('id, scope, name, sort_order').eq('scope', scope),
+          supabase.from('documents').select('id, scope, category_id, name, url, description, sort_order').eq('scope', scope),
         ])
         if (catsError) throw catsError
         if (docsError) throw docsError
@@ -74,34 +73,52 @@ export default function AdminDocuments({ scope }) {
   async function addCategory() {
     const name = newCatName.trim()
     if (!name) return
-    const { error } = await supabase.from('document_categories').insert({ scope, name })
-    if (error) setMsg({ type: 'error', text: error.message })
-    else { setNewCatName(''); setMsg(null); loadAll() }
+    try {
+      await apiFetch('/api/admin/event?resource=document-content', {
+        method: 'POST',
+        body: JSON.stringify({ entity: 'category', data: { scope, name } }),
+      })
+      setNewCatName(''); setMsg(null); loadAll()
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not add the category.' })
+    }
   }
 
   async function saveCategory(id) {
     const draft = catDrafts[id]
     const name = (draft?.name ?? '').trim()
     if (!name) return
-    const { error } = await supabase
-      .from('document_categories')
-      .update({ name, sort_order: parseInt(draft.sort_order) || 0 })
-      .eq('id', id)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else { setMsg({ type: 'ok', text: 'Category saved.' }); loadAll() }
+    try {
+      await apiFetch('/api/admin/event?resource=document-content', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          entity: 'category',
+          id,
+          data: { name, sort_order: parseInt(draft.sort_order) || 0 },
+        }),
+      })
+      setMsg({ type: 'ok', text: 'Category saved.' }); loadAll()
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not save the category.' })
+    }
   }
 
   async function deleteCategory(category) {
     if (!category?.id) return
     setDeleteBusy(true)
     setDeleteError('')
-    const { error } = await supabase.from('document_categories').delete().eq('id', category.id)
-    setDeleteBusy(false)
-    if (error) setDeleteError(error.message)
-    else {
+    try {
+      await apiFetch('/api/admin/event?resource=document-content', {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'category', id: category.id, data: {} }),
+      })
       setPendingDelete(null)
       setMsg(null)
       loadAll()
+    } catch (error) {
+      setDeleteError(error.message || 'Could not delete the category.')
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -136,15 +153,18 @@ export default function AdminDocuments({ scope }) {
       category_id: docForm.category_id || null,
       sort_order: parseInt(docForm.sort_order) || 0,
     }
-    let error
-    if (editingDocId) { ;({ error } = await supabase.from('documents').update(payload).eq('id', editingDocId)) }
-    else              { ;({ error } = await supabase.from('documents').insert(payload)) }
-    setSaving(false)
-    if (error) setMsg({ type: 'error', text: error.message })
-    else {
+    try {
+      await apiFetch('/api/admin/event?resource=document-content', {
+        method: editingDocId ? 'PATCH' : 'POST',
+        body: JSON.stringify({ entity: 'document', id: editingDocId || undefined, data: payload }),
+      })
       setMsg({ type: 'ok', text: editingDocId ? 'Document updated.' : 'Document added.' })
       setAddingDoc(false); setEditingDocId(null); setDocForm(EMPTY_DOC)
       loadAll()
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not save the document.' })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -152,13 +172,18 @@ export default function AdminDocuments({ scope }) {
     if (!doc?.id) return
     setDeleteBusy(true)
     setDeleteError('')
-    const { error } = await supabase.from('documents').delete().eq('id', doc.id)
-    setDeleteBusy(false)
-    if (error) setDeleteError(error.message)
-    else {
+    try {
+      await apiFetch('/api/admin/event?resource=document-content', {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'document', id: doc.id, data: {} }),
+      })
       setPendingDelete(null)
       setMsg(null)
       loadAll()
+    } catch (error) {
+      setDeleteError(error.message || 'Could not delete the document.')
+    } finally {
+      setDeleteBusy(false)
     }
   }
 

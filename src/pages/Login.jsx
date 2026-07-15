@@ -1,18 +1,7 @@
 import { useState, useId } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-
-// Honours ?redirect=<path> on post-login navigation when the path is a safe
-// same-origin path (starts with a single "/", does not start with "//" which
-// would be a protocol-relative URL). Anything else falls back to /dashboard.
-// Used by public CTAs that route users through sign-in but want to land them
-// back on a specific page (e.g. competition registration).
-function safeRedirect(raw) {
-  if (typeof raw !== 'string') return null
-  if (!raw.startsWith('/')) return null
-  if (raw.startsWith('//')) return null
-  return raw
-}
+import { safeInternalRedirect } from '../lib/safeRedirect'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -34,7 +23,7 @@ export default function Login() {
       setError(error.message)
       setLoading(false)
     } else {
-      const target = safeRedirect(searchParams.get('redirect')) ?? '/dashboard'
+      const target = safeInternalRedirect(searchParams.get('redirect')) ?? '/dashboard'
       navigate(target)
     }
   }
