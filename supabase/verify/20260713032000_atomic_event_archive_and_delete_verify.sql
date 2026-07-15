@@ -7,7 +7,6 @@ DECLARE
   v_function regprocedure;
   v_definition text;
   v_table_oid oid;
-  v_retention_installed boolean;
   v_contract_marker constant text :=
     'ADMIN_CONTENT_BROWSER_CONTRACT_660_APPLIED: actor-explicit, service-only committee content mutation; legacy browser grants are revoked.';
   v_contract_applied boolean := coalesce(
@@ -19,13 +18,6 @@ DECLARE
   );
 BEGIN
   v_table_oid := to_regclass('public.zltac_event_lifecycle_audit');
-  v_retention_installed := EXISTS (
-    SELECT 1
-      FROM information_schema.columns
-     WHERE table_schema = 'public'
-       AND table_name = 'legal_acceptances'
-       AND column_name = 'subject_token'
-  );
   IF v_table_oid IS NULL THEN
     RAISE EXCEPTION 'zltac_event_lifecycle_audit is missing';
   END IF;
@@ -98,7 +90,7 @@ BEGIN
        AND conname = 'legal_acceptances_event_year_fkey'
        AND contype = 'f'
        AND confrelid = 'public.zltac_events'::regclass
-       AND confdeltype = CASE WHEN v_retention_installed THEN 'r' ELSE 'c' END
+       AND confdeltype = 'c'
        AND convalidated
   ) OR NOT EXISTS (
     SELECT 1
@@ -107,11 +99,11 @@ BEGIN
        AND conname = 'under_18_approvals_event_year_fkey'
        AND contype = 'f'
        AND confrelid = 'public.zltac_events'::regclass
-       AND confdeltype = CASE WHEN v_retention_installed THEN 'r' ELSE 'c' END
+       AND confdeltype = 'c'
        AND convalidated
   ) THEN
     RAISE EXCEPTION
-      'legal event-year constraints do not match the installed retention phase';
+      'acknowledgement event-year constraints are not ON DELETE CASCADE';
   END IF;
 
   FOREACH v_function IN ARRAY ARRAY[

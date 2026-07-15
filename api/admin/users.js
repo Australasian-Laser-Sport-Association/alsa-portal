@@ -279,8 +279,9 @@ async function mutateProfileAccess(actorId, targetId, action, payload = {}) {
 
 // Build the same impact snapshot for both the confirmation preview and the
 // delete itself. Categories reflect database behaviour after migration 53000:
-// legal evidence survives pseudonymously, SET NULL links are detached, and
-// NO ACTION audit links block the delete unless their own row is cascading.
+// account-owned acknowledgements and under-18 workflow rows are deleted,
+// SET NULL links are detached, and NO ACTION audit links block the delete
+// unless their own row is cascading.
 export async function buildDeletionImpact(userId) {
   const countOf = (table, column, { excludeEqual, excludeIn } = {}) => {
     let query = supabaseAdmin
@@ -330,8 +331,6 @@ export async function buildDeletionImpact(userId) {
       ['alsa_memberships', countOf('alsa_memberships', 'profile_id')],
       ['alsa_lifetime_members', countOf('alsa_lifetime_members', 'profile_id')],
       ['side_event_roster_slots', countOf('zltac_side_event_roster_members', 'member_id')],
-    ],
-    retained_anonymized: [
       ['legal_acceptances', countOf('legal_acceptances', 'user_id')],
       ['under_18_approvals', countOf('under_18_approvals', 'user_id')],
     ],
@@ -396,7 +395,6 @@ export async function buildDeletionImpact(userId) {
 
   const impact = {
     deleted: { zltac_registrations: registrationIds.length },
-    retained_anonymized: {},
     detached: {},
     blockers: {},
   }
@@ -405,14 +403,13 @@ export async function buildDeletionImpact(userId) {
   })
   impact.totals = {
     deleted: totalImpactCounts(impact.deleted),
-    retained_anonymized: totalImpactCounts(impact.retained_anonymized),
     detached: totalImpactCounts(impact.detached),
     blockers: totalImpactCounts(impact.blockers),
   }
   // Hard deletion is only safe for a truly empty placeholder. The caller adds
   // the placeholder check because this inventory deliberately describes data
   // impact independently of account type. Any registration, payment,
-  // membership, certification, legal evidence, team link, or audit reference
+  // membership, certification, acknowledgement, team link, or audit reference
   // requires the non-destructive Remove access workflow instead.
   impact.can_delete = profileResult.data?.is_placeholder === true
     && Object.values(impact.totals).every(total => total === 0)

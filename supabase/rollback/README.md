@@ -14,7 +14,8 @@ later migration.
 Every `20260713` rollback is deliberately marked
 `ROLL_FORWARD_ONLY_SECURITY_BOUNDARY`. Executing one raises an exception before
 changing state. This is intentional: those migrations close confirmed security
-or integrity defects, or contain live evidence that a downgrade could discard.
+or integrity defects, minimise collected data, or establish lifecycle contracts
+that an older application cannot safely use.
 
 Never mark a roll-forward-only migration as reverted with
 `supabase migration repair`. Its rollback did not complete and the hosted
@@ -56,7 +57,7 @@ Forward application order is:
 15. `20260713050000_prevent_membership_period_overlap.sql`
 16. `20260713051000_harden_function_execute_privileges.sql`
 17. `20260713052000_fix_team_members_recursive_rls.sql`
-18. `20260713053000_preserve_anonymized_legal_evidence.sql`
+18. `20260713053000_minimise_acknowledgement_metadata.sql`
 19. `20260713054000_atomic_zltac_registration_lifecycle.sql`
 20. `20260713055000_legal_event_lifecycle_integrity.sql`
 21. `20260713056000_limit_authenticated_profile_columns.sql`
@@ -89,7 +90,7 @@ reverse:
 12. `20260713056000_limit_authenticated_profile_columns_rollback.sql`
 13. `20260713055000_legal_event_lifecycle_integrity_rollback.sql`
 14. `20260713054000_atomic_zltac_registration_lifecycle_rollback.sql`
-15. `20260713053000_preserve_anonymized_legal_evidence_rollback.sql`
+15. `20260713053000_minimise_acknowledgement_metadata_rollback.sql`
 16. `20260713052000_fix_team_members_recursive_rls_rollback.sql`
 17. `20260713051000_harden_function_execute_privileges_rollback.sql`
 18. `20260713050000_prevent_membership_period_overlap_rollback.sql`
@@ -111,7 +112,7 @@ reverse:
 Do not execute that list. Every item stops fail closed. In particular, never
 skip `44000`, `54000`, `55000`, `56000`, `57000`, `58000`, `59000`, `60000`, `61000`, `62000`, `63000`, `64000`, `65000`, `65500`, or `66000`
 and continue with an older downgrade: doing so would mix incompatible
-lifecycle, evidence, privilege, and roster contracts.
+lifecycle, data-minimisation, privilege, and roster contracts.
 
 ## Older guarded compatibility rollbacks
 
@@ -127,8 +128,9 @@ order remains:
 
 Roll application code back to the previous compatible deployment first. The
 `security_batch1` rollback refuses to restore its former unique constraint when
-duplicate attestations exist. Preserve legal evidence and fix forward rather
-than deleting attestations. The private-backup rollback removes `backup_runs`
+duplicate acknowledgements exist. Keep those records and fix forward rather
+than deleting them merely to make a downgrade pass. The private-backup rollback
+removes `backup_runs`
 only when it and the bucket are empty; it deliberately leaves an empty private
 `portal-backups` bucket for later Storage API or Dashboard cleanup.
 

@@ -45,10 +45,10 @@ describe('legal PDF publication inspection', () => {
   it.each([
     ['wrong MIME', { headers: { 'x-file-content-type': 'text/html' } }, /MIME type/],
     ['wrong transport', { headers: { 'content-type': 'application/json' } }, /binary request/],
-    ['wrong signature', { body: Buffer.from('<html>not pdf</html>') }, /PDF signature/],
+    ['wrong file header', { body: Buffer.from('<html>not pdf</html>') }, /valid PDF file/],
     ['missing end marker', { body: Buffer.from('%PDF-1.7 unfinished') }, /truncated/],
     ['non-binary body', { body: '%PDF-1.7 string' }, /not binary/],
-    ['invalid type', { headers: { 'x-legal-document-type': 'terms' } }, /valid legal document type/],
+    ['invalid type', { headers: { 'x-legal-document-type': 'terms' } }, /valid policy or form type/],
   ])('rejects %s', (_label, override, pattern) => {
     const req = request(override)
     expect(inspectLegalPdfRequest(req).error).toMatch(pattern)

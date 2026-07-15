@@ -65,9 +65,9 @@ export default function PlayerHubProgress({
   const baseSteps = [
     { key: 'identity', Icon: PersonIcon, label: 'Register as a player', description: 'Your current-event identity details are recorded.' },
     ...(include('team') ? [{ key: 'team', Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Join a team and wait for committee approval if required.' }] : []),
-    ...(include('code_of_conduct') ? [{ key: 'code_of_conduct', Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Accept the current required version.' }] : []),
+    ...(include('code_of_conduct') ? [{ key: 'code_of_conduct', Icon: CocDocumentIcon, label: 'Agree to the Code of Conduct', description: 'Review and accept the current version.' }] : []),
     ...(include('referee_test') ? [{ key: 'referee_test', Icon: RefTestIcon, label: 'Pass the Rules Test', description: 'Complete the rules knowledge test.' }] : []),
-    ...(include('media_release') ? [{ key: 'media_release', Icon: CameraIcon, label: 'Sign the Media Release', description: 'Accept the current required version.' }] : []),
+    ...(include('media_release') ? [{ key: 'media_release', Icon: CameraIcon, label: 'Confirm Media Consent', description: 'Review the current release and record your consent.' }] : []),
     ...(include('side_events') ? [{ key: 'side_events', Icon: SideEventsIcon, label: 'Confirm side events', description: 'Confirm selections and any required partner rosters.' }] : []),
     ...(include('extras') ? [{ key: 'extras', Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.' }] : []),
     ...(include('under_18') ? [{ key: 'under_18', Icon: CocDocumentIcon, label: 'Under-18 approval', description: 'Submit the current form and wait for committee approval.' }] : []),

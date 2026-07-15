@@ -24,7 +24,7 @@ const IMPACT_LABELS = {
   competition_registrations: 'competition registrations',
   payments: 'payments',
   payment_records: 'payment ledger entries',
-  legal_acceptances: 'signed legal acceptances',
+  legal_acceptances: 'policy and media acknowledgements',
   referee_test_results: 'rules test results',
   referee_test_attempts: 'rules test attempts',
   under_18_approvals: 'under-18 approvals',
@@ -41,7 +41,7 @@ const IMPACT_LABELS = {
   triples_player_2_slots: 'triples player 2 slots',
   triples_player_3_slots: 'triples player 3 slots',
   profiles_created: 'placeholder creator links',
-  legal_documents_uploaded: 'legal document uploader links',
+  legal_documents_uploaded: 'policy and form uploader links',
   under_18_decisions_reviewed: 'under-18 reviewer links',
   payment_records_recorded: 'payment recorder links',
   payment_history_changes: 'payment history actor links',
@@ -750,7 +750,7 @@ export default function AdminUsers() {
                         </span>?
                       </p>
                       <p className="text-[11px] text-[#e5e5e5]/60 leading-relaxed mb-3">
-                        This blanks their personal info, resets their role to player, and disables their login so they can no longer sign in. Their registrations, signed forms, and payment records are kept.
+                        This blanks their personal info, resets their role to player, and disables their login so they can no longer sign in. Their policy/media acknowledgements and under-18 workflow record are deleted; registrations and payment records are kept.
                       </p>
                       <div className="flex gap-2">
                         <button onClick={async () => {
@@ -800,7 +800,6 @@ export default function AdminUsers() {
                           </p>
 
                           {deleteImpact.totals.deleted === 0
-                            && deleteImpact.totals.retained_anonymized === 0
                             && deleteImpact.totals.detached === 0
                             && deleteImpact.totals.blockers === 0 && (
                             <p className="text-[11px] text-[#e5e5e5]/80">No linked records, only the account itself.</p>
@@ -814,20 +813,6 @@ export default function AdminUsers() {
                                   <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
                                 ))}
                               </ul>
-                            </div>
-                          )}
-
-                          {impactEntries(deleteImpact, 'retained_anonymized').length > 0 && (
-                            <div className="rounded-lg border border-brand/20 bg-brand/5 p-2">
-                              <p className="text-[11px] font-semibold text-brand mb-1">Retained and anonymised</p>
-                              <ul className="text-[11px] text-[#e5e5e5]/80 list-disc pl-4 space-y-0.5">
-                                {impactEntries(deleteImpact, 'retained_anonymized').map(([key, count]) => (
-                                  <li key={key}>{count} {IMPACT_LABELS[key] ?? key}</li>
-                                ))}
-                              </ul>
-                              <p className="text-[10px] text-[#e5e5e5]/55 leading-relaxed mt-1.5">
-                                Account links, IP addresses, user agents, and under-18 notes are removed. An opaque evidence token remains pending an approved retention schedule.
-                              </p>
                             </div>
                           )}
 

@@ -316,6 +316,105 @@ SELECT
   false
 FROM access_revocation_fixture;
 
+-- Seed subject-owned acknowledgements plus a separate approval reviewed by the
+-- target. Remove access must delete the former and only detach the latter.
+CREATE TEMP TABLE acknowledgement_cleanup_other_subject AS
+SELECT gen_random_uuid() AS id;
+
+INSERT INTO public.profiles (id, first_name, alias, roles, suspended)
+SELECT
+  id,
+  'Other approval subject',
+  'OtherApprovalSubject-' || left(id::text, 8),
+  ARRAY['player']::text[],
+  false
+FROM acknowledgement_cleanup_other_subject;
+
+INSERT INTO public.zltac_events (
+  id, name, year, status, start_date, end_date, timezone
+) VALUES (
+  '61020000-0000-4000-8000-000000000001',
+  'Governance acknowledgement cleanup',
+  2610,
+  'closed',
+  DATE '2610-07-01',
+  DATE '2610-07-03',
+  'Australia/Sydney'
+)
+ON CONFLICT (year) DO NOTHING;
+
+CREATE TEMP TABLE governance_previous_active_documents AS
+SELECT id
+  FROM public.legal_documents
+ WHERE document_type IN ('code_of_conduct', 'under_18_form')
+   AND is_active;
+
+CREATE TEMP TABLE governance_acknowledgement_documents AS
+SELECT
+  (public.publish_legal_document(
+    'code_of_conduct',
+    format('legal/code_of_conduct/%s.pdf', gen_random_uuid()),
+    'Governance Code of Conduct.pdf',
+    DATE '2026-07-15',
+    '61010000-0000-4000-8000-000000000001',
+    true,
+    NULL,
+    repeat('a', 64),
+    1024
+  )->>'id')::uuid AS code_of_conduct_id,
+  (public.publish_legal_document(
+    'under_18_form',
+    format('legal/under_18_form/%s.pdf', gen_random_uuid()),
+    'Governance Under 18 Form.pdf',
+    DATE '2026-07-15',
+    '61010000-0000-4000-8000-000000000001',
+    true,
+    NULL,
+    repeat('b', 64),
+    1024
+  )->>'id')::uuid AS under_18_form_id;
+
+INSERT INTO public.legal_acceptances (
+  user_id, document_id, event_year, ip_address, user_agent
+)
+SELECT
+  fixture.id,
+  document.code_of_conduct_id,
+  2610,
+  NULL,
+  NULL
+FROM access_revocation_fixture AS fixture
+CROSS JOIN governance_acknowledgement_documents AS document;
+
+INSERT INTO public.under_18_approvals (
+  user_id, event_year, document_id, status, submitted_at, notes
+)
+SELECT
+  fixture.id,
+  2610,
+  document.under_18_form_id,
+  'pending',
+  clock_timestamp(),
+  'subject-owned note must be deleted'
+FROM access_revocation_fixture AS fixture
+CROSS JOIN governance_acknowledgement_documents AS document;
+
+INSERT INTO public.under_18_approvals (
+  user_id, event_year, document_id, status,
+  approved_at, approved_by, notes
+)
+SELECT
+  subject.id,
+  2610,
+  document.under_18_form_id,
+  'approved',
+  clock_timestamp(),
+  fixture.id,
+  'other subject decision remains'
+FROM acknowledgement_cleanup_other_subject AS subject
+CROSS JOIN access_revocation_fixture AS fixture
+CROSS JOIN governance_acknowledgement_documents AS document;
+
 SELECT lives_ok(
   $$
     SELECT public.admin_mutate_profile_access(
@@ -341,6 +440,42 @@ SELECT ok(
       JOIN access_revocation_fixture AS fixture ON fixture.id = profile.id
   ),
   'remove-access retains a disabled anonymized profile with actor and time'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+      FROM public.legal_acceptances AS acceptance
+      JOIN access_revocation_fixture AS fixture
+        ON fixture.id = acceptance.user_id
+  ),
+  0::bigint,
+  'remove-access deletes the subject owned acknowledgements'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+      FROM public.under_18_approvals AS approval
+      JOIN access_revocation_fixture AS fixture
+        ON fixture.id = approval.user_id
+  ),
+  0::bigint,
+  'remove-access deletes the subject owned under-18 workflow row'
+);
+
+SELECT ok(
+  (
+    SELECT approval.approved_by IS NULL
+       AND approval.status = 'approved'
+       AND approval.approved_at IS NOT NULL
+       AND approval.notes = 'other subject decision remains'
+      FROM public.under_18_approvals AS approval
+      JOIN acknowledgement_cleanup_other_subject AS subject
+        ON subject.id = approval.user_id
+     WHERE approval.event_year = 2610
+  ),
+  'remove-access detaches reviewer attribution without deleting another subject decision'
 );
 
 SELECT is(
@@ -491,8 +626,8 @@ SELECT lives_ok(
   'truly empty placeholders can still be cleaned up'
 );
 
--- Exercise the real auth trigger: deleting authentication access preserves a
--- disabled, anonymized profile key and therefore all profile-linked evidence.
+-- Exercise the real auth trigger: deleting authentication access preserves the
+-- governance tombstone while removing operational acknowledgement data.
 CREATE TEMP TABLE auth_delete_fixture AS
 SELECT gen_random_uuid() AS id;
 
@@ -502,6 +637,38 @@ SELECT
   id::text || '@governance.example.test',
   '{"first_name":"Delete","last_name":"Preserve","alias":"PreserveMe"}'::jsonb
 FROM auth_delete_fixture;
+
+INSERT INTO public.legal_acceptances (
+  user_id, document_id, event_year, ip_address, user_agent
+)
+SELECT
+  fixture.id,
+  document.code_of_conduct_id,
+  2610,
+  NULL,
+  NULL
+FROM auth_delete_fixture AS fixture
+CROSS JOIN governance_acknowledgement_documents AS document;
+
+INSERT INTO public.under_18_approvals (
+  user_id, event_year, document_id, status, submitted_at, notes
+)
+SELECT
+  fixture.id,
+  2610,
+  document.under_18_form_id,
+  'pending',
+  clock_timestamp(),
+  'auth-delete subject note must be deleted'
+FROM auth_delete_fixture AS fixture
+CROSS JOIN governance_acknowledgement_documents AS document;
+
+UPDATE public.under_18_approvals AS approval
+   SET approved_by = fixture.id
+  FROM auth_delete_fixture AS fixture,
+       acknowledgement_cleanup_other_subject AS subject
+ WHERE approval.user_id = subject.id
+   AND approval.event_year = 2610;
 
 DELETE FROM auth.users AS auth_user
 USING auth_delete_fixture AS fixture
@@ -527,6 +694,39 @@ SELECT is(
 SELECT is(
   (
     SELECT count(*)
+      FROM public.legal_acceptances AS acceptance
+      JOIN auth_delete_fixture AS fixture ON fixture.id = acceptance.user_id
+  ),
+  0::bigint,
+  'Auth deletion removes the subject owned acknowledgements'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+      FROM public.under_18_approvals AS approval
+      JOIN auth_delete_fixture AS fixture ON fixture.id = approval.user_id
+  ),
+  0::bigint,
+  'Auth deletion removes the subject owned under-18 workflow row'
+);
+
+SELECT ok(
+  (
+    SELECT approval.approved_by IS NULL
+       AND approval.status = 'approved'
+       AND approval.approved_at IS NOT NULL
+      FROM public.under_18_approvals AS approval
+      JOIN acknowledgement_cleanup_other_subject AS subject
+        ON subject.id = approval.user_id
+     WHERE approval.event_year = 2610
+  ),
+  'Auth deletion detaches reviewer attribution from another subject decision'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
       FROM public.profile_access_audit AS audit
       JOIN auth_delete_fixture AS fixture ON fixture.id = audit.profile_id
      WHERE audit.action = 'auth-user-delete'
@@ -537,6 +737,21 @@ SELECT is(
   1::bigint,
   'Auth deletion leaves attributed permanent-revocation audit evidence'
 );
+
+-- Do not leak active publication state into later pgTAP files. Published test
+-- rows remain immutable catalogue history, but only the previously active
+-- versions (if any) are reactivated.
+UPDATE public.legal_documents
+   SET is_active = false
+ WHERE id IN (
+   SELECT code_of_conduct_id FROM governance_acknowledgement_documents
+   UNION ALL
+   SELECT under_18_form_id FROM governance_acknowledgement_documents
+ );
+
+UPDATE public.legal_documents
+   SET is_active = true
+ WHERE id IN (SELECT id FROM governance_previous_active_documents);
 
 UPDATE public.profiles AS profile
    SET roles = saved.roles

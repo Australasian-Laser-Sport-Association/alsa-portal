@@ -66,7 +66,7 @@ BEGIN
   IF has_table_privilege('authenticated', 'public.legal_documents', 'INSERT')
     OR has_table_privilege('authenticated', 'public.legal_documents', 'UPDATE')
     OR has_table_privilege('authenticated', 'public.legal_documents', 'DELETE') THEN
-    RAISE EXCEPTION 'authenticated still has direct legal document writes';
+    RAISE EXCEPTION 'authenticated still has direct required-document writes';
   END IF;
 
   IF has_function_privilege('anon', v_publish, 'EXECUTE')
@@ -136,7 +136,7 @@ BEGIN
      GROUP BY document_type
     HAVING count(*) > 1
   ) THEN
-    RAISE EXCEPTION 'multiple active published legal documents exist for one type';
+    RAISE EXCEPTION 'multiple active published required documents exist for one type';
   END IF;
 
   IF EXISTS (
@@ -148,7 +148,7 @@ BEGIN
          OR object_size NOT BETWEEN 8 AND 4194304
        )
   ) THEN
-    RAISE EXCEPTION 'published legal document evidence is malformed';
+    RAISE EXCEPTION 'published required-document metadata is malformed';
   END IF;
 
   IF NOT EXISTS (
@@ -161,7 +161,7 @@ BEGIN
        AND qual ILIKE '%published_at%'
        AND qual ILIKE '%content_sha256%'
   ) THEN
-    RAISE EXCEPTION 'public legal document read policy is not publication-scoped';
+    RAISE EXCEPTION 'public required-document read policy is not publication-scoped';
   END IF;
 
   IF NOT EXISTS (

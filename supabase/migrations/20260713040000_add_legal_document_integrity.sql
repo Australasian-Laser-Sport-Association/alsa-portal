@@ -66,7 +66,7 @@ BEGIN
   IF TG_OP = 'DELETE' THEN
     IF OLD.published_at IS NOT NULL THEN
       RAISE EXCEPTION
-        'published legal documents are immutable (id=%)', OLD.id
+        'published required documents are immutable (id=%)', OLD.id
         USING ERRCODE = 'check_violation';
     END IF;
     RETURN OLD;
@@ -85,7 +85,7 @@ BEGIN
     OR NEW.published_at IS DISTINCT FROM OLD.published_at
   THEN
     RAISE EXCEPTION
-      'legal document evidence is immutable (id=%); publish a new version instead',
+      'published required document is immutable (id=%); publish a new version instead',
       OLD.id
       USING ERRCODE = 'check_violation';
   END IF;
@@ -125,7 +125,7 @@ BEGIN
 
   IF v_digest IS NULL THEN
     RAISE EXCEPTION
-      'legal document is not an active published version'
+      'required document is not an active published version'
       USING ERRCODE = 'check_violation';
   END IF;
 
@@ -150,7 +150,7 @@ SET search_path = pg_catalog, public
 AS $$
 BEGIN
   RAISE EXCEPTION
-    'legal acceptance evidence is append-only (id=%)', OLD.id
+    'acknowledgement records are append-only (id=%)', OLD.id
     USING ERRCODE = 'check_violation';
 END;
 $$;
@@ -190,7 +190,7 @@ BEGIN
   IF p_document_type NOT IN (
     'code_of_conduct', 'media_release', 'under_18_form'
   ) THEN
-    RAISE EXCEPTION 'invalid legal document type'
+    RAISE EXCEPTION 'invalid required document type'
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
 
@@ -211,7 +211,7 @@ BEGIN
     '/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$';
 
   IF p_file_path IS NULL OR p_file_path !~ v_path_pattern THEN
-    RAISE EXCEPTION 'legal document path must be a generated UUID PDF path'
+    RAISE EXCEPTION 'required document path must be a generated UUID PDF path'
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
   IF p_original_filename IS NULL
@@ -231,7 +231,7 @@ BEGIN
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
   IF p_object_size IS NULL OR p_object_size NOT BETWEEN 8 AND 4194304 THEN
-    RAISE EXCEPTION 'legal PDF size is outside the supported range'
+    RAISE EXCEPTION 'required PDF size is outside the supported range'
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
   IF p_notes IS NOT NULL AND length(p_notes) > 2000 THEN
@@ -295,7 +295,7 @@ GRANT EXECUTE ON FUNCTION public.publish_legal_document(
   text, text, text, date, uuid, boolean, text, text, bigint
 ) TO service_role;
 
--- The final server route is deployed at the legal-expand checkpoint and
+-- The final server route is deployed at the acknowledgement-expand checkpoint and
 -- reconciles every publication before returning success. Keep this companion
 -- function in the same expansion migration as publish_legal_document(); if it
 -- were deferred until the later lifecycle phase, a committed phase-1 publish
@@ -319,7 +319,7 @@ BEGIN
   ) OR p_file_path IS NULL
     OR p_content_sha256 IS NULL
     OR p_object_size IS NULL THEN
-    RAISE EXCEPTION 'Complete legal document identity is required.'
+    RAISE EXCEPTION 'Complete required document identity is required.'
       USING ERRCODE = '22023';
   END IF;
 

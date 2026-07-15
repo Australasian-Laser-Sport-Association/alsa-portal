@@ -59,7 +59,9 @@ Data that is genuinely **data** — events, registrations, profiles, policy vers
 - **Data:** something with a lifecycle, ownership, or relationships. Belongs in Postgres.
 - **Content:** static prose that describes the application to users. Belongs in code.
 
-Policy PDFs, media releases, and guardian forms remain in Supabase Storage (they are documents, not content in the CMS sense).
+Code-of-conduct and media-release source documents, plus separate guardian
+forms, remain in Supabase Storage (they are documents, not content in the CMS
+sense).
 
 ## Consequences
 

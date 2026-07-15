@@ -306,7 +306,6 @@ async function handleEventDeleteImpact(req, res) {
     teams: teamsResult.count ?? 0,
     legalAcceptances,
     under18Approvals,
-    blockedByEvidence: legalAcceptances > 0 || under18Approvals > 0,
   })
 }
 
@@ -1459,7 +1458,7 @@ async function handleZltacDashboard(req, res) {
   }
   const cocAcceptances = (recentCoc ?? []).filter(a => a.document?.document_type === 'code_of_conduct').slice(0, 5)
   for (const c of cocAcceptances) {
-    feed.push({ icon: '✍️', text: `${displayName(c.profiles)} signed the Code of Conduct`, ts: c.accepted_at })
+    feed.push({ icon: '✅', text: `${displayName(c.profiles)} accepted the Code of Conduct`, ts: c.accepted_at })
   }
   feed.sort((a, b) => new Date(b.ts) - new Date(a.ts))
 
@@ -2026,7 +2025,7 @@ async function handleRequiredDocuments(req, res, user) {
   // remove. Leave it in place for operational reconciliation and fail closed.
   return sendServerError(
     res,
-    new Error('Published legal document could not be reloaded'),
+    new Error('Published required document could not be reloaded'),
     'admin:required-documents:publish-result',
   )
 }

@@ -1151,7 +1151,7 @@ SELECT ok(
       AND (t.tgtype & 16) = 16
       AND t.tgenabled <> 'D'
   )
-  AND EXISTS (
+  AND NOT EXISTS (
     SELECT 1
     FROM pg_trigger AS t
     WHERE t.tgrelid = 'public.legal_acceptances'::regclass
@@ -1159,7 +1159,7 @@ SELECT ok(
       AND (t.tgtype & 8) = 8
       AND t.tgenabled <> 'D'
   ),
-  'legal acceptance evidence has enabled UPDATE and DELETE retention triggers'
+  'acknowledgements block rewrites without blocking lifecycle deletion'
 );
 
 SELECT ok(

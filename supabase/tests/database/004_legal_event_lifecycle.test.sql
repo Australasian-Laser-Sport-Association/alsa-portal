@@ -146,7 +146,7 @@ SELECT throws_matching(
   'service-role callers cannot bypass the under-18 RPCs'
 );
 
-SELECT lives_ok(
+SELECT throws_ok(
   format(
     $sql$
       SELECT public.accept_legal_document(
@@ -155,6 +155,24 @@ SELECT lives_ok(
         %L::uuid,
         '203.0.113.10'::inet,
         'pgtap legal lifecycle'
+      )
+    $sql$,
+    (SELECT code_of_conduct_id FROM legal_lifecycle_documents)
+  ),
+  '22023',
+  'Network metadata is not accepted for acknowledgements.',
+  'the compatibility RPC rejects legacy request network metadata'
+);
+
+SELECT lives_ok(
+  format(
+    $sql$
+      SELECT public.accept_legal_document(
+        'b1000000-0000-4000-8000-000000000002',
+        2030,
+        %L::uuid,
+        NULL::inet,
+        NULL
       )
     $sql$,
     (SELECT code_of_conduct_id FROM legal_lifecycle_documents)
@@ -171,6 +189,17 @@ SELECT is(
   ),
   repeat('a', 64),
   'the acceptance stores the locked published document digest'
+);
+
+SELECT ok(
+  (
+    SELECT acceptance.ip_address IS NULL
+       AND acceptance.user_agent IS NULL
+      FROM public.legal_acceptances AS acceptance
+     WHERE acceptance.user_id = 'b1000000-0000-4000-8000-000000000002'
+       AND acceptance.event_year = 2030
+  ),
+  'acknowledgements store no request network metadata'
 );
 
 SELECT lives_ok(
@@ -203,8 +232,8 @@ SELECT throws_ok(
     (SELECT code_of_conduct_id FROM legal_lifecycle_documents)
   ),
   '55000',
-  'Only open or closed events can accept legal documents.',
-  'draft events reject legal acceptances'
+  'Only open or closed events can record acknowledgements.',
+  'draft events reject player acknowledgements'
 );
 
 SELECT throws_ok(
@@ -221,8 +250,8 @@ SELECT throws_ok(
     (SELECT code_of_conduct_id FROM legal_lifecycle_documents)
   ),
   '55000',
-  'Only open or closed events can accept legal documents.',
-  'archived events reject legal acceptances'
+  'Only open or closed events can record acknowledgements.',
+  'archived events reject player acknowledgements'
 );
 
 SELECT lives_ok(
@@ -335,6 +364,36 @@ SELECT throws_ok(
   '55000',
   'Only open or closed events can accept under-18 submissions.',
   'player submission rejects an archived event'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.delete_zltac_event(
+      'b2000000-0000-4000-8000-000000000001',
+      'b1000000-0000-4000-8000-000000000001'
+    )
+  $$,
+  'an event with acknowledgements and under-18 status can be hard-deleted'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+      FROM public.legal_acceptances
+     WHERE event_year = 2030
+  ),
+  0::bigint,
+  'event deletion removes its acknowledgements'
+);
+
+SELECT is(
+  (
+    SELECT count(*)
+      FROM public.under_18_approvals
+     WHERE event_year = 2030
+  ),
+  0::bigint,
+  'event deletion removes its under-18 workflow rows'
 );
 
 SELECT * FROM finish();

@@ -21,6 +21,19 @@ describe('required-document trust boundaries', () => {
     expect(page).not.toContain('legal-documents')
   })
 
+  it('uses an acknowledgement URL while preserving the legacy admin bookmark', async () => {
+    const [app, layout, hub] = await Promise.all([
+      source('../App.jsx'),
+      source('../components/AdminLayout.jsx'),
+      source('../pages/admin/AdminHub.jsx'),
+    ])
+
+    expect(app).toContain('path="player-acknowledgements"')
+    expect(app).toContain('path="signed-documents" element={<Navigate to="/admin/player-acknowledgements" replace />}')
+    expect(layout).toContain("to: '/admin/player-acknowledgements'")
+    expect(hub).toContain("to: '/admin/player-acknowledgements'")
+  })
+
   it('authorizes private asset delivery against active publication metadata', async () => {
     const publicApi = await source('../../api/public.js')
     expect(publicApi).toContain(".eq('file_path', path)")
@@ -30,7 +43,7 @@ describe('required-document trust boundaries', () => {
     expect(publicApi).toContain('.createSignedUrl(path, 60)')
   })
 
-  it('publishes evidence through one service-only RPC', async () => {
+  it('publishes required documents through one service-only RPC', async () => {
     const [api, migration] = await Promise.all([
       source('../../api/admin/event.js'),
       source('../../supabase/migrations/20260713040000_add_legal_document_integrity.sql'),
@@ -41,12 +54,12 @@ describe('required-document trust boundaries', () => {
     expect(migration).toMatch(/GRANT EXECUTE ON FUNCTION public\.publish_legal_document[\s\S]*TO service_role/i)
   })
 
-  it('renders anonymized under-18 evidence as locked instead of editable', async () => {
+  it('does not retain a separate under-18 evidence UI after account deletion', async () => {
     const page = await source('../pages/admin/AdminUnder18Approvals.jsx')
 
-    expect(page).toContain("selected.user_id == null")
-    expect(page).toContain('<RetainedApprovalEvidence')
-    expect(page).toContain('Retained anonymised evidence')
-    expect(page).toContain('This evidence is locked')
+    expect(page).not.toContain('selected.user_id == null')
+    expect(page).not.toContain('<RetainedApprovalEvidence')
+    expect(page).not.toContain('Retained anonymised evidence')
+    expect(page).toContain('<ApprovalEditor')
   })
 })

@@ -120,12 +120,12 @@ export default function AdminZltacDashboard() {
               color="text-white"
             />
             <StatCard
-              label="CoC's Signed"
+              label="CoC Accepted"
               value={stats.cocRatio}
               sub={stats.cocRequired === false ? `Not required for ${stats.eventScope}` : stats.eventScope}
               color="text-white"
             />
-            <StatCard label="Media Forms Signed" value={stats.mediaRatio} sub={stats.eventScope} color="text-white" />
+            <StatCard label="Media Consents" value={stats.mediaRatio} sub={stats.eventScope} color="text-white" />
             <StatCard
               label="Active Event"
               value={stats.eventLabel}

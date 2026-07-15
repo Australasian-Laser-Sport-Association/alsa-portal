@@ -137,16 +137,16 @@ VALUES
     '12000000-0000-4000-8000-000000000001',
     '12000000-0000-4000-8000-000000000031',
     2212,
-    '192.0.2.1',
-    'contract-own-agent'
+    NULL,
+    NULL
   ),
   (
     '12000000-0000-4000-8000-000000000042',
     '12000000-0000-4000-8000-000000000002',
     '12000000-0000-4000-8000-000000000031',
     2212,
-    '192.0.2.2',
-    'contract-other-agent'
+    NULL,
+    NULL
   );
 
 INSERT INTO public.under_18_approvals (
@@ -213,7 +213,7 @@ SELECT extensions.is(
 SELECT extensions.is(
   (SELECT count(*) FROM public.legal_acceptances),
   1::bigint,
-  'a committee JWT sees only its own legal acceptance evidence'
+  'a committee JWT sees only its own acknowledgement records'
 );
 
 SELECT extensions.is(
@@ -351,7 +351,7 @@ SELECT extensions.throws_ok(
   $$,
   '42501',
   'permission denied for table legal_acceptances',
-  'legal acceptance evidence cannot be deleted by a browser role'
+  'acknowledgement records cannot be deleted by a browser role'
 );
 
 SELECT extensions.throws_ok(

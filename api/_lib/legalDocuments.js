@@ -64,7 +64,7 @@ export function inspectLegalPdfRequest(req) {
     .toLowerCase()
 
   if (!LEGAL_DOCUMENT_TYPES.has(documentType)) {
-    return { error: 'A valid legal document type is required.' }
+    return { error: 'A valid policy or form type is required.' }
   }
   if (
     !originalFilename
@@ -94,7 +94,7 @@ export function inspectLegalPdfRequest(req) {
     return { error: `The PDF exceeds the ${MAX_LEGAL_PDF_BYTES / 1024 / 1024} MB limit.` }
   }
   if (!bytes.subarray(0, 5).equals(Buffer.from('%PDF-', 'ascii'))) {
-    return { error: 'The uploaded file does not have a valid PDF signature.' }
+    return { error: 'The uploaded file does not appear to be a valid PDF file.' }
   }
   if (!bytes.subarray(Math.max(0, bytes.length - 1024)).includes(Buffer.from('%%EOF', 'ascii'))) {
     return { error: 'The uploaded PDF appears to be truncated.' }

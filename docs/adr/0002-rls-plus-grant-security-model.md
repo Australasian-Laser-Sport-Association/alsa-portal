@@ -11,7 +11,8 @@
 The ALSA Portal handles data that requires careful access control:
 
 - **Personal information** of members and guardians, including minors
-- **Legal audit trail** (signed policy acknowledgements, media releases, under-18 submissions)
+- **Required acknowledgement and consent records** (code of conduct and media
+  release responses), with under-18 submissions handled separately
 - **Financial records** (registration payments)
 - **Committee-administered configuration** (event settings, pricing, referee test questions)
 
@@ -31,26 +32,37 @@ The portal uses a **three-layer access control model**:
 
 ### Layer 1 — Role GRANTs (coarse-grained, table level)
 
-Every table in the `public` schema has explicit GRANT statements for the `anon` and `authenticated` Postgres roles. If a role has no GRANT on a table, it cannot access that table at all — queries fail immediately with `42501 insufficient_privilege`, before RLS policies are even evaluated.
+Every application table or view in the `public` schema has explicit GRANT
+statements for the `anon` and `authenticated` Postgres roles. If a role has no
+GRANT on a relation, it cannot access it at all - queries fail immediately with
+`42501 insufficient_privilege`, before RLS policies are even evaluated.
 
 This is the **outer perimeter**. It answers: *"Is this role allowed to touch this table, in principle?"*
 
 ### Layer 2 — Row-Level Security (RLS) policies (fine-grained, row level)
 
-Every table has RLS enabled and has explicit policies for SELECT, INSERT, UPDATE, and DELETE. Policies typically use the authenticated user's ID (`auth.uid()`) or role (`is_committee()`) to constrain which rows the query can see or modify.
+Every exposed application table has RLS enabled and only the policies needed
+for its reviewed browser operations. The final browser contract is primarily
+read-only; the narrow own-profile update uses `auth.uid()` to enforce ownership.
+Missing operations stay denied rather than receiving placeholder policies.
 
 This is the **inner perimeter**. It answers: *"Given this role is allowed to touch the table, which specific rows are they allowed to touch?"*
 
-### Layer 3 — Service role for privileged operations
+### Layer 3 — Service role for application mutations
 
-Administrative operations (deleting teams, updating payment status, editing event settings, managing policy versions) are **not** performed by authenticated users directly. They are performed by server-side Vercel API routes that use the `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS entirely.
+Domain mutations (registrations, teams, payments, acknowledgements, and
+under-18 submissions) and administrative operations are **not** performed
+directly against application tables by browser roles. Authenticated Vercel API
+routes perform them using `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS.
 
-This is the **privileged channel**. It answers: *"For actions that no ordinary user should be able to perform, who performs them and where?"*
+This is the **trusted mutation channel**. It answers: *"For application writes
+that a browser must not perform directly, which server route authorises them?"*
 
 The service role key:
 - Is stored only as a Vercel environment variable, never in the frontend bundle
 - Is used only from `/api/*` routes that run on Vercel's server-side runtime
-- Has its usage gated by application-level authorisation checks (e.g., "is this user a committee member?") before any privileged query runs
+- Has its usage gated by application-level account, ownership, lifecycle, and
+  role checks before any privileged query runs
 
 ### Default deny
 
@@ -58,13 +70,16 @@ The model is **default-deny**. A new table has no GRANTs and no RLS policies, an
 
 ### Destructive operations never go to the user
 
-DELETE is never granted to the `authenticated` role on any table where deletion has cascading consequences (teams, registrations, payments, users). Users can *appear* to delete things through the UI, but the underlying operation routes through an API endpoint that uses the service role and writes an audit record.
+DELETE is not granted to the `authenticated` role on application tables. A user
+may initiate a supported removal through the UI, but the operation runs through
+an authenticated API route that validates ownership, lifecycle, and any
+required audit behaviour.
 
 ## Consequences
 
 ### Positive
 
-- **Defence in depth.** A bug in the application code that accidentally queries the wrong table still cannot leak data that the role has no GRANT on. A bug in an RLS policy still cannot give a user permissions their role hasn't been granted. Compromising the anon key still cannot write to any table.
+- **Defence in depth.** A bug in the application code that accidentally queries the wrong table still cannot leak data that the role has no GRANT on. A bug in an RLS policy still cannot give a user permissions their role hasn't been granted. Possessing the public key does not permit unreviewed application-table writes.
 
 - **Clear audit story.** For any piece of data, the question *"who can access this and how?"* has a three-part answer that can be shown to a committee member or auditor: the GRANT, the RLS policy, the API route.
 
@@ -94,9 +109,13 @@ DELETE is never granted to the `authenticated` role on any table where deletion 
 
 **Rejected.** Relying on the application code to enforce access control means any bug, forgotten check, or direct database query compromises security. The database should refuse the query regardless of what the application does.
 
-### All writes through API routes (no `authenticated` write GRANTs at all)
+### Application writes through API routes
 
-**Considered, partially adopted.** Destructive and privileged writes route through API routes, but authenticated users perform their own registration-flow writes directly against the database (with RLS enforcing ownership). Routing every write through a custom API would have doubled the surface area for limited additional security benefit, given that RLS already enforces ownership at the row level.
+**Adopted for domain workflows.** Registration, team, payment,
+acknowledgement, under-18, and committee mutations route through authenticated
+APIs. The narrow exception is the own-profile column allow-list, where both
+column grants and RLS enforce ownership. Supabase Auth operations remain direct
+through the supported Auth client and are not application-table writes.
 
 ## References
 

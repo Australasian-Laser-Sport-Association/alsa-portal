@@ -47,7 +47,7 @@ export default function Resources({ scope }) {
         ])
         if (categoryResult.error) throw categoryResult.error
         if (documentResult.error) throw documentResult.error
-        if (requiredResult && !requiredResult.ok) throw new Error('Required documents could not be loaded')
+        if (requiredResult && !requiredResult.ok) throw new Error('Policies and forms could not be loaded')
         const requiredPayload = requiredResult ? await requiredResult.json() : { documents: [] }
         if (cancelled) return
         setCategories((categoryResult.data ?? []).slice().sort(byOrder))
@@ -78,7 +78,7 @@ export default function Resources({ scope }) {
   if (scope === 'zltac' && requiredDocuments.length > 0) {
     groups.unshift({
       key: 'required-documents',
-      name: 'Required documents',
+      name: 'Policies and forms',
       docs: requiredDocuments.map(document => ({
         id: document.id,
         name: document.original_filename,

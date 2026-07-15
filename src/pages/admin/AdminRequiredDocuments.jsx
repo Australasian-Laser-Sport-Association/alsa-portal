@@ -67,7 +67,7 @@ export default function AdminRequiredDocuments() {
       } catch (err) {
         if (!cancelled) {
           setDocuments([])
-          setError(err?.message || 'Required documents could not be loaded.')
+          setError(err?.message || 'Policies and forms could not be loaded.')
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -102,9 +102,9 @@ export default function AdminRequiredDocuments() {
       )}
 
       <div className="mb-6">
-        <h1 className="text-lg font-black text-white">Required Documents</h1>
+        <h1 className="text-lg font-black text-white">Policies and Forms</h1>
         <p className="text-xs text-[#e5e5e5]/60 mt-1">
-          Publish immutable PDF versions used for player acceptance evidence.
+          Publish versioned PDFs for players to review and accept.
         </p>
       </div>
 
@@ -124,7 +124,7 @@ export default function AdminRequiredDocuments() {
       <div className="flex flex-col md:flex-row gap-6 md:items-start">
         <div className="md:w-[300px] md:flex-shrink-0">
           <p className="text-xs text-[#e5e5e5]/60 mb-3 leading-relaxed">
-            Publishing a new version replaces the active version. Published file content and evidence cannot be edited.
+            Publishing a new version replaces the active version. Published files remain in the version history and cannot be edited.
           </p>
           <div className="space-y-3">
             {DOC_TYPES.map(type => {
@@ -168,7 +168,7 @@ export default function AdminRequiredDocuments() {
           </section>
 
           <section>
-            <h2 className="text-xs font-bold text-brand uppercase tracking-widest mb-3">Publish new immutable version</h2>
+            <h2 className="text-xs font-bold text-brand uppercase tracking-widest mb-3">Publish new version</h2>
             <UploadForm
               documentType={selected}
               onPublished={() => {

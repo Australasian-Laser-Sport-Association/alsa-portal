@@ -632,6 +632,19 @@ BEGIN
       IF NOT ('superadmin' = ANY (v_actor.roles)) THEN
         RAISE EXCEPTION 'Only a superadmin can remove account access.';
       END IF;
+
+      -- The disabled profile tombstone is retained for governance history,
+      -- but operational acknowledgements and under-18 workflow data are not.
+      -- The target row lock above serializes this cleanup with player and
+      -- committee workflows that take a share lock on the same profile.
+      DELETE FROM public.legal_acceptances
+       WHERE user_id = p_target_id;
+      DELETE FROM public.under_18_approvals
+       WHERE user_id = p_target_id;
+      UPDATE public.under_18_approvals
+         SET approved_by = NULL
+       WHERE approved_by = p_target_id;
+
       UPDATE public.profiles
          SET first_name = NULL,
              last_name = NULL,
@@ -737,10 +750,11 @@ CREATE TRIGGER profile_evidence_delete_guard
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_profile_evidence_deletion();
 
--- An Auth deletion no longer cascades the profile and its evidence away. It
--- removes access, strips personal fields, and leaves the stable profile key in
--- place. The governance trigger still refuses deletion of the final active
--- superadmin.
+-- An Auth deletion retains the governance profile tombstone while deleting
+-- the subject's operational acknowledgements and under-18 workflow row. It
+-- also detaches the deleted account from decisions it reviewed. Other profile-
+-- linked audit and history records remain intact. The governance trigger still
+-- refuses removal of the final active superadmin.
 CREATE OR REPLACE FUNCTION public.cleanup_profile_on_auth_delete()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -750,6 +764,21 @@ AS $$
 BEGIN
   PERFORM set_config('alsa.governance_actor_id', OLD.id::text, true);
   PERFORM set_config('alsa.governance_action', 'auth-user-delete', true);
+
+  -- Serialize cleanup with acceptance/submission/decision workflows before
+  -- removing subject-owned rows and reviewer attribution.
+  PERFORM 1
+    FROM public.profiles
+   WHERE id = OLD.id
+   FOR UPDATE;
+
+  DELETE FROM public.legal_acceptances
+   WHERE user_id = OLD.id;
+  DELETE FROM public.under_18_approvals
+   WHERE user_id = OLD.id;
+  UPDATE public.under_18_approvals
+     SET approved_by = NULL
+   WHERE approved_by = OLD.id;
 
   UPDATE public.profiles
      SET first_name = NULL,

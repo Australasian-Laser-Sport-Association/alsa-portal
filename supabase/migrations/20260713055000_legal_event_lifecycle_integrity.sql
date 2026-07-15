@@ -36,7 +36,7 @@ BEGIN
   ) OR p_file_path IS NULL
     OR p_content_sha256 IS NULL
     OR p_object_size IS NULL THEN
-    RAISE EXCEPTION 'Complete legal document identity is required.'
+    RAISE EXCEPTION 'Complete required document identity is required.'
       USING ERRCODE = '22023';
   END IF;
 
@@ -75,6 +75,8 @@ CREATE OR REPLACE FUNCTION public.accept_legal_document(
   p_user_id uuid,
   p_event_year integer,
   p_document_id uuid,
+  -- Retained in the signature for phased API compatibility. The portal no
+  -- longer stores either request-network value.
   p_ip_address inet,
   p_user_agent text
 )
@@ -94,11 +96,10 @@ BEGIN
     RAISE EXCEPTION 'User, event year, and document are required.'
       USING ERRCODE = '22023';
   END IF;
-  IF p_user_agent IS NOT NULL AND length(p_user_agent) > 1024 THEN
-    RAISE EXCEPTION 'User agent exceeds the supported length.'
+  IF p_ip_address IS NOT NULL OR p_user_agent IS NOT NULL THEN
+    RAISE EXCEPTION 'Network metadata is not accepted for acknowledgements.'
       USING ERRCODE = '22023';
   END IF;
-
   SELECT event.status
     INTO v_event_status
     FROM public.zltac_events AS event
@@ -108,7 +109,7 @@ BEGIN
     RAISE EXCEPTION 'Event not found for year.' USING ERRCODE = 'P0002';
   END IF;
   IF v_event_status NOT IN ('open', 'closed') THEN
-    RAISE EXCEPTION 'Only open or closed events can accept legal documents.'
+    RAISE EXCEPTION 'Only open or closed events can record acknowledgements.'
       USING ERRCODE = '55000';
   END IF;
 
@@ -122,11 +123,11 @@ BEGIN
    FOR UPDATE OF registration
    FOR SHARE OF profile;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'An active registration is required before signing.'
+    RAISE EXCEPTION 'An active registration is required before recording an acknowledgement.'
       USING ERRCODE = '23503';
   END IF;
   IF v_suspended THEN
-    RAISE EXCEPTION 'Suspended accounts cannot accept legal documents.'
+    RAISE EXCEPTION 'Suspended accounts cannot record acknowledgements.'
       USING ERRCODE = '42501';
   END IF;
 
@@ -140,7 +141,7 @@ BEGIN
      AND document.object_size IS NOT NULL
    FOR SHARE;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'The legal document is not an active published version.'
+    RAISE EXCEPTION 'The required document is not an active published version.'
       USING ERRCODE = '23503';
   END IF;
 
@@ -148,16 +149,12 @@ BEGIN
     user_id,
     document_id,
     event_year,
-    accepted_at,
-    ip_address,
-    user_agent
+    accepted_at
   ) VALUES (
     p_user_id,
     p_document_id,
     p_event_year,
-    clock_timestamp(),
-    p_ip_address,
-    p_user_agent
+    clock_timestamp()
   )
   RETURNING * INTO v_result;
 
@@ -498,7 +495,6 @@ DECLARE
   v_subject_id uuid;
   v_event_year integer;
   v_initial_document_id uuid;
-  v_initial_anonymized_at timestamptz;
   v_event_status text;
   v_subject_suspended boolean;
   v_active_document_id uuid;
@@ -543,23 +539,16 @@ BEGIN
   SELECT
     approval.user_id,
     approval.event_year,
-    approval.document_id,
-    approval.anonymized_at
+    approval.document_id
     INTO
       v_subject_id,
       v_event_year,
-      v_initial_document_id,
-      v_initial_anonymized_at
+      v_initial_document_id
     FROM public.under_18_approvals AS approval
    WHERE approval.id = p_approval_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Approval record not found.' USING ERRCODE = 'P0002';
   END IF;
-  IF v_subject_id IS NULL OR v_initial_anonymized_at IS NOT NULL THEN
-    RAISE EXCEPTION 'Anonymized under-18 evidence cannot be changed.'
-      USING ERRCODE = '55000';
-  END IF;
-
   SELECT event.status
     INTO v_event_status
     FROM public.zltac_events AS event
@@ -615,8 +604,7 @@ BEGIN
   END IF;
   IF v_approval.user_id IS DISTINCT FROM v_subject_id
     OR v_approval.event_year IS DISTINCT FROM v_event_year
-    OR v_approval.document_id IS DISTINCT FROM v_initial_document_id
-    OR v_approval.anonymized_at IS NOT NULL THEN
+    OR v_approval.document_id IS DISTINCT FROM v_initial_document_id THEN
     RAISE EXCEPTION 'The approval identity changed concurrently. Please try again.'
       USING ERRCODE = '40001';
   END IF;

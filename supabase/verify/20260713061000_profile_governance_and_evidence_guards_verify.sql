@@ -1,5 +1,5 @@
 -- Read-only verification for database-enforced profile governance and
--- evidence retention.
+-- acknowledgement lifecycle cleanup.
 
 DO $$
 DECLARE
@@ -218,8 +218,11 @@ BEGIN
   );
   IF v_definition NOT ILIKE '%v_target.access_revoked_at IS NOT NULL%'
      OR v_definition NOT ILIKE '%access_revoked_at = clock_timestamp()%'
-     OR v_definition NOT ILIKE '%access_revoked_by = p_actor_id%' THEN
-    RAISE EXCEPTION 'profile access RPC can reopen or fails to mark revoked access';
+     OR v_definition NOT ILIKE '%access_revoked_by = p_actor_id%'
+     OR v_definition NOT ILIKE '%DELETE FROM public.legal_acceptances%user_id = p_target_id%'
+     OR v_definition NOT ILIKE '%DELETE FROM public.under_18_approvals%user_id = p_target_id%'
+     OR v_definition NOT ILIKE '%UPDATE public.under_18_approvals%approved_by = NULL%approved_by = p_target_id%' THEN
+    RAISE EXCEPTION 'profile access RPC lacks revocation or acknowledgement cleanup';
   END IF;
 
   v_definition := pg_get_functiondef(
@@ -247,8 +250,12 @@ BEGIN
      OR v_definition NOT ILIKE '%roles = ARRAY[''player'']%'
      OR v_definition NOT ILIKE '%access_revoked_at = clock_timestamp()%'
      OR v_definition NOT ILIKE '%access_revoked_by = OLD.id%'
-     OR v_definition NOT ILIKE '%access_revoked_at IS NULL%' THEN
-    RAISE EXCEPTION 'Auth deletion still destroys or fails to disable the profile';
+     OR v_definition NOT ILIKE '%access_revoked_at IS NULL%'
+     OR v_definition NOT ILIKE '%FROM public.profiles%FOR UPDATE%'
+     OR v_definition NOT ILIKE '%DELETE FROM public.legal_acceptances%user_id = OLD.id%'
+     OR v_definition NOT ILIKE '%DELETE FROM public.under_18_approvals%user_id = OLD.id%'
+     OR v_definition NOT ILIKE '%UPDATE public.under_18_approvals%approved_by = NULL%approved_by = OLD.id%' THEN
+    RAISE EXCEPTION 'Auth deletion lacks tombstoning or acknowledgement cleanup';
   END IF;
 END;
 $$;

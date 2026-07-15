@@ -92,6 +92,11 @@ BEGIN
     OR v_definition NOT ILIKE '%v_event_status NOT IN (''open'', ''closed'')%'
     OR v_definition NOT ILIKE '%document.document_type IN (''code_of_conduct'', ''media_release'')%'
     OR v_definition NOT ILIKE '%INSERT INTO public.legal_acceptances%'
+    OR v_definition NOT ILIKE '%p_ip_address IS NOT NULL%'
+    OR v_definition NOT ILIKE '%p_user_agent IS NOT NULL%'
+    OR v_definition NOT ILIKE '%Network metadata is not accepted for acknowledgements%'
+    OR v_definition ILIKE '%accepted_at%ip_address%'
+    OR v_definition ILIKE '%accepted_at%user_agent%'
   THEN
     RAISE EXCEPTION 'accept_legal_document() lacks required lifecycle locks.';
   END IF;
@@ -149,8 +154,7 @@ BEGIN
     SELECT 1
       FROM public.under_18_approvals AS approval
       JOIN public.legal_documents AS document ON document.id = approval.document_id
-     WHERE approval.anonymized_at IS NULL
-       AND document.document_type <> 'under_18_form'
+     WHERE document.document_type <> 'under_18_form'
   ) THEN
     RAISE EXCEPTION 'An under-18 approval references the wrong document type.';
   END IF;

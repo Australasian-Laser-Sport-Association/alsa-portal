@@ -65,14 +65,17 @@ The compatibility view `public_competition_roster` may remain during rollout, bu
 | `payments` | None | Own-row SELECT | Legacy payment ledger is browser read-only. |
 | `payment_records` | None | Own-linked-registration SELECT | A player can read payment entries linked to their own ZLTAC or competition registration. All writes use server routes. |
 
-## Legal evidence and under-18 records
+## Acknowledgements, consents, and under-18 records
 
-Legal evidence is append-only from the user's perspective. Browser roles cannot insert, update, or delete these records after the final cutover.
+Acknowledgements and consent responses are account- and event-bound operational
+records, not electronic signatures. Under-18 approval is a separate workflow.
+Browser roles cannot insert, update, or delete these records after the final
+cutover.
 
 | Table | `anon` | `authenticated` | Contract and canonical path |
 |---|---|---|---|
-| `legal_documents` | None | Column-limited active or own-accepted version metadata | Publication writes are service-only. The canonical public catalogue is `/api/public?resource=required-documents`; PDFs are delivered only through branded `/documents/...` routes backed by a private bucket. |
-| `legal_acceptances` | None | Own-row SELECT | Signing uses `/api/player?resource=registration`; the server records the document hash and request evidence. Cross-user reporting uses admin APIs. |
+| `legal_documents` | None | Column-limited active or own-accepted version metadata | The legacy table name stores code-of-conduct, media-release, and under-18 source-document versions. Publication writes are service-only. The canonical public catalogue is `/api/public?resource=required-documents`; PDFs are delivered only through branded `/documents/...` routes backed by a private bucket. |
+| `legal_acceptances` | None | Own-row SELECT | Agreeing uses `/api/player?resource=registration`; the server records the exact document hash, account, event, and timestamp. IP address and user-agent fields remain `NULL`. Cross-user reporting uses admin APIs. |
 | `under_18_approvals` | None | Own-row SELECT | Submission uses `/api/player?resource=registration`; committee decisions use `/api/admin/event?resource=under-18-approvals`. |
 | `payment_records_history` | None | None | Immutable payment audit history is service-only. |
 
@@ -88,11 +91,14 @@ The following relations have no browser SELECT path. `service_role` retains acce
 - Sensitive content bases: `zltac_events`, `competitions`, `teams`, `referee_questions`, `referee_test_settings`, and the ZLTAC history/legend/dynasty/hall-of-fame base tables
 - Retired internal projection: `public_competition_roster`; browser consumers use `public_competition_roster_safe`
 
-Cross-user reads of actor-owned tables, including profiles, registrations, payments, legal acceptances, and minor approvals, are also server-only even though each user may retain a narrow own-row SELECT policy.
+Cross-user reads of actor-owned tables, including profiles, registrations,
+payments, acknowledgements, and under-18 approvals, are also server-only even
+though each user may retain a narrow own-row SELECT policy.
 
 The principal trusted routes are:
 
-- `/api/public` for filtered public event, committee, membership, competition, roster, legal-document, and branded asset delivery
+- `/api/public` for filtered public event, committee, membership, competition,
+  roster, acknowledgement/consent document, and branded asset delivery
 - `/api/player` and `/api/captain` for actor-bound workflows
 - `/api/admin/event`, `/api/admin/users`, and `/api/admin/volunteers` for committee workflows
 - `/api/superadmin/[resource]` for competition and superadmin workflows

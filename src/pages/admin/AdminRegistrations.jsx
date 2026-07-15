@@ -468,7 +468,7 @@ const PlayerRow = memo(function PlayerRow({ p, onEdit, onLink, onPayment, onRemo
       </td>
       {/* CoC */}
       <td className="px-4 py-3" title={p.cocTitle}>
-        {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
+        {p.coc ? <Pill color="green">Accepted</Pill> : <Pill color="red">Pending</Pill>}
         {p.cocOverride && <OvrBadge />}
       </td>
       {/* Rules Test */}
@@ -734,10 +734,10 @@ export default function AdminRegistrations() {
     }
     const cocTitle = cocOverride
       ? overrideAudit(reg.admin_override_coc_set_at, reg.admin_override_coc_reason, reg.admin_override_coc_set_by)
-      : (coc ? 'Code of Conduct signed' : 'Not signed')
+      : (coc ? 'Code of Conduct accepted' : 'Not accepted')
     const mediaTitle = mediaOverride
       ? overrideAudit(reg.admin_override_media_set_at, reg.admin_override_media_reason, reg.admin_override_media_set_by)
-      : (media ? 'Media release submitted' : 'Not submitted')
+      : (media ? 'Media Release consent provided' : 'Consent not provided')
     return { ...reg, profile, team, readiness: authoritativeReadiness, coc, cocReal, cocOverride, cocTitle, ref, refPassed, refReal, refOverride, refTitle, media, mediaReal, mediaOverride, mediaTitle, u18Real, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks }
   })
   }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, u18Set, recordsByReg, readinessByUser, refRequired, cocRequired, paymentRequired])

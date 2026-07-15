@@ -35,8 +35,9 @@ Before production launch, the maintainer must configure and record all three:
    the primary database recovery layer.
 2. Encrypted database dumps stored in a different provider account, with the
    encryption key held separately from both Supabase and the backup account.
-3. A private off-project mirror of Storage object bytes, including legal
-   documents, event media, team logos, and other required uploads.
+3. A private off-project mirror of Storage object bytes, including
+   acknowledgement and consent source documents, guardian forms, event media,
+   team logos, and other required uploads.
 
 The provider-neutral workflow at
 `.github/workflows/disaster-recovery-backup.yml` creates a PostgreSQL 17 custom
@@ -90,9 +91,10 @@ committee password vault and the private operations register. Configure
 versioning/object lock and retention at the destination account so compromise
 of the source GitHub or Supabase account cannot silently rewrite all copies.
 
-Recommended minimum retention is 30 daily database copies, 12 monthly copies,
-and immutable legal-document versions for the applicable evidence-retention
-period. Confirm the legal retention period before deleting any evidence.
+Recommended minimum disaster-recovery retention is 30 daily database copies
+and 12 monthly copies. Retain source-document versions and operational records
+only for the separate schedule approved by ALSA. Configure backup expiry so
+account or event deletion does not create indefinite retention in old archives.
 
 ## Verify one backup set
 
@@ -165,15 +167,17 @@ API services accept the restored state.
    object may be missing a byte object, and no restored byte object may be
    unaccounted for. Investigate changes made inside the manifest consistency
    window explicitly.
-6. Reconcile Auth user, profile, event, registration, payment, legal evidence,
-   membership, referee-attempt, bucket, and object counts. Run every migration
-   verifier and database test that is safe for restored data.
+6. Reconcile Auth user, profile, event, registration, payment,
+   acknowledgement, under-18, membership, referee-attempt, bucket, and object
+   counts. Run every migration verifier and database test that is safe for
+   restored data.
 7. Configure replacement Auth URLs, SMTP, secrets, cron, and a protected Vercel
    deployment. Exercise sampled login, public-asset, registration, payment, and
    committee workflows without redirecting production traffic.
 8. Record elapsed time, commands, filtered restore list, row/object totals,
    discrepancies, and sign-off. Destroy the disposable project and working
-   copies after the retention-approved evidence is saved.
+   copies after the approved restore-drill result is recorded without member
+   row data.
 9. Before an approved real recovery, take another production backup if the
    source remains accessible and repeat only the already-rehearsed procedure.
 

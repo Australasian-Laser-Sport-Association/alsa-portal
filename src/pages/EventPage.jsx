@@ -959,7 +959,7 @@ export default function EventPage() {
             to="/player-hub"
             color="#FF6B00"
             label="Player Hub"
-            description="View your checklist, pay your fees and sign the Code of Conduct."
+            description="View your checklist, pay your fees and agree to the Code of Conduct."
             Icon={DashboardGridIcon}
           />
         )

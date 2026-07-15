@@ -161,7 +161,7 @@ UNION ALL
 SELECT 'under18_incoherent_decision', count(*)
 FROM public.under_18_approvals
 WHERE NOT (
-  (status = 'approved' AND approved_at IS NOT NULL AND approved_by IS NOT NULL)
+  (status = 'approved' AND approved_at IS NOT NULL)
   OR
   (status IN ('pending', 'rejected') AND approved_at IS NULL AND approved_by IS NULL)
 )

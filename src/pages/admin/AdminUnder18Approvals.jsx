@@ -173,9 +173,7 @@ export default function AdminUnder18Approvals() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-white font-bold text-sm truncate">
-                      {r.user_id == null ? 'Retained anonymised evidence' : profileName(r.player)}
-                    </p>
+                    <p className="text-white font-bold text-sm truncate">{profileName(r.player)}</p>
                     <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border flex-shrink-0 ${STATUS_META[r.status]?.cls}`}>
                       {STATUS_META[r.status]?.label ?? r.status}
                     </span>
@@ -183,7 +181,6 @@ export default function AdminUnder18Approvals() {
                   <p className="text-xs text-[#e5e5e5]/60 mt-0.5">
                     ZLTAC {r.event_year}
                     {r.submitted_at && ` · submitted ${formatDate(r.submitted_at)}`}
-                    {r.user_id == null && ' · account removed'}
                   </p>
                 </div>
               </div>
@@ -192,21 +189,13 @@ export default function AdminUnder18Approvals() {
         </div>
 
         {selected ? (
-          selected.user_id == null ? (
-            <RetainedApprovalEvidence
-              key={selected.id}
-              row={selected}
-              onClose={() => setSelectedId(null)}
-            />
-          ) : (
-            <ApprovalEditor
-              key={selected.id}
-              row={selected}
-              onSaved={() => { load(); showToast('Saved.') }}
-              onClose={() => setSelectedId(null)}
-              showToast={showToast}
-            />
-          )
+          <ApprovalEditor
+            key={selected.id}
+            row={selected}
+            onSaved={() => { load(); showToast('Saved.') }}
+            onClose={() => setSelectedId(null)}
+            showToast={showToast}
+          />
         ) : (
           <div className="flex-1 bg-surface border border-line rounded-2xl flex items-center justify-center min-h-[300px]">
             <div className="text-center px-6">
@@ -240,43 +229,6 @@ export default function AdminUnder18Approvals() {
 // ---------------------------------------------------------------------------
 // Editor for a selected approval row
 // ---------------------------------------------------------------------------
-
-function RetainedApprovalEvidence({ row, onClose }) {
-  return (
-    <div className="flex-1 bg-surface border border-line rounded-2xl flex flex-col overflow-hidden">
-      <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-brand uppercase tracking-wider">Retained anonymised evidence</p>
-          <p className="text-white font-bold truncate">
-            Account removed <span className="text-[#e5e5e5]/60 font-normal">· ZLTAC {row.event_year}</span>
-          </p>
-        </div>
-        <button onClick={onClose} className="text-xs text-[#e5e5e5]/60 hover:text-white">✕ Close</button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        <div className="rounded-xl border border-brand/20 bg-brand/5 p-4">
-          <p className="text-sm font-semibold text-brand">This evidence is locked</p>
-          <p className="text-xs text-[#e5e5e5]/65 leading-relaxed mt-1.5">
-            The account link and free-text notes were removed during permanent account deletion. The decision, event, document, and timestamps are retained and cannot be edited.
-          </p>
-        </div>
-
-        <div>
-          <p className={labelClass}>Status</p>
-          <span className={`inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${STATUS_META[row.status]?.cls}`}>
-            {STATUS_META[row.status]?.label ?? row.status}
-          </span>
-        </div>
-
-        <div className="text-xs text-[#e5e5e5]/60 leading-relaxed">
-          {row.submitted_at && <span className="block">Player submitted: {formatDate(row.submitted_at)}</span>}
-          {row.approved_at && <span className="block mt-0.5">Decision recorded: {formatDate(row.approved_at)}</span>}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function ApprovalEditor({ row, onSaved, onClose, showToast }) {
   const [status, setStatus] = useState(row.status)

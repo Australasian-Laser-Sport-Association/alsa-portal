@@ -237,7 +237,7 @@ describe('admin event resource actions', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('loads delete impact through the service role and blocks events with evidence', async () => {
+  it('loads all event rows that controlled deletion will remove', async () => {
     from.mockImplementation(table => {
       if (table === 'zltac_events') return query({ data: { id: EVENT_ID, year: 2027 }, error: null })
       if (table === 'zltac_registrations') return query({ count: 3, error: null })
@@ -257,7 +257,6 @@ describe('admin event resource actions', () => {
       teams: 1,
       legalAcceptances: 2,
       under18Approvals: 1,
-      blockedByEvidence: true,
     })
   })
 

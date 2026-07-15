@@ -15,7 +15,7 @@ ALSA is an incorporated association registered in Victoria, governed by the **As
 - Distinguish members from non-members for the purposes of voting, standing for committee, and receiving notice of general meetings
 - Keep the register reasonably current and make it available for inspection under the conditions specified in the Act
 
-The ALSA Portal is the natural home for this register. It is where people create accounts, sign policy acknowledgements, register for events, and interact with the association. The question is: **what is the relationship between "has an account on the portal" and "is a member of ALSA"?**
+The ALSA Portal is the natural home for this register. It is where people create accounts, complete required policy acknowledgements, register for events, and interact with the association. The question is: **what is the relationship between "has an account on the portal" and "is a member of ALSA"?**
 
 Three practical realities shape the answer:
 

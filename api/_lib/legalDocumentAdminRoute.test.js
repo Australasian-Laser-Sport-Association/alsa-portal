@@ -144,7 +144,7 @@ describe('required-document admin API', () => {
     await handler(request(Buffer.from('<script>alert(1)</script>')), res)
 
     expect(res.statusCode).toBe(400)
-    expect(res.body.error).toMatch(/PDF signature/)
+    expect(res.body.error).toMatch(/valid PDF file/)
     expect(storageFrom).not.toHaveBeenCalled()
     expect(rpc).not.toHaveBeenCalled()
   })

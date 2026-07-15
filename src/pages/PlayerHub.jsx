@@ -198,7 +198,7 @@ function CoCPanel({ eventYear, activeDoc, stale, onAccepted }) {
         disabled={!agreed || saving}
         className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
       >
-        {saving ? 'Signing…' : 'Sign Code of Conduct'}
+        {saving ? 'Saving…' : 'Agree to Code of Conduct'}
       </button>
     </div>
   )
@@ -347,7 +347,7 @@ function MediaReleasePanel({ eventYear, activeDoc, stale, onAccepted }) {
       <label className="flex items-start gap-3 cursor-pointer">
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
         <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">
-          I have read and agree to the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)}.
+          I have read the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)} and consent to the event photos and footage it describes.
         </span>
       </label>
       {error && <p role="alert" className="text-red-400 text-xs">{error}</p>}
@@ -356,7 +356,7 @@ function MediaReleasePanel({ eventYear, activeDoc, stale, onAccepted }) {
         disabled={!agreed || saving}
         className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
       >
-        {saving ? 'Submitting…' : 'Submit Media Release'}
+        {saving ? 'Saving…' : 'Confirm Media Consent'}
       </button>
     </div>
   )
@@ -1688,12 +1688,12 @@ export default function PlayerHub() {
                 status={!isRegistered ? 'pending' : cocSatisfied ? 'done' : 'error'}
                 label={
                   cocSatisfied && cocStatus === 'current'
-                    ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
+                    ? `Code of Conduct - accepted ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
                     : ovCoc
                       ? 'Code of Conduct - recorded by committee'
                       : cocStatus === 'stale'
                         ? 'Code of Conduct — updated, please re-accept'
-                        : 'Code of Conduct — not yet signed'
+                        : 'Code of Conduct - not yet accepted'
                 }
               >
                 {isRegistered && !cocSatisfied && (
@@ -1764,12 +1764,12 @@ export default function PlayerHub() {
               status={!isRegistered ? 'pending' : mediaSatisfied ? 'done' : 'error'}
               label={
                 mediaSatisfied && mediaStatus === 'current'
-                  ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
+                  ? `Media Release - consent recorded ${formatDate(acceptances.media_release?.accepted_at)}`
                   : ovMedia
-                    ? 'Media Release - recorded by committee'
+                    ? 'Media Release - consent recorded by committee'
                     : mediaStatus === 'stale'
                       ? 'Media Release — updated, please re-accept'
-                      : 'Media Release — not yet submitted'
+                      : 'Media Release - consent not yet provided'
               }
             >
               {isRegistered && !mediaSatisfied && (

@@ -400,14 +400,14 @@ describe('player registration security boundary', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('accepts legal documents only through the authenticated transactional RPC', async () => {
+  it('records acknowledgements through the authenticated RPC without request metadata', async () => {
     rpc.mockResolvedValueOnce({ data: { id: 'acceptance-1' }, error: null })
     const request = req({
       action: 'sign-legal',
       documentId: DOCUMENT_ID,
       eventYear: 2027,
     })
-    request.headers['user-agent'] = 'route-test-agent'
+    request.headers['user-agent'] = 'must-not-be-stored'
     request.headers['x-forwarded-for'] = '203.0.113.9, 10.0.0.2'
 
     const response = res()
@@ -419,13 +419,13 @@ describe('player registration security boundary', () => {
       p_user_id: USER_ID,
       p_event_year: 2027,
       p_document_id: DOCUMENT_ID,
-      p_ip_address: '203.0.113.9',
-      p_user_agent: 'route-test-agent',
+      p_ip_address: null,
+      p_user_agent: null,
     })
     expect(from).not.toHaveBeenCalled()
   })
 
-  it('maps an archived-event legal acceptance race to a retryable conflict', async () => {
+  it('maps an archived-event acknowledgement race to a retryable conflict', async () => {
     rpc.mockResolvedValueOnce({
       data: null,
       error: { code: '55000', message: 'Archived event' },
@@ -443,7 +443,7 @@ describe('player registration security boundary', () => {
     expect(from).not.toHaveBeenCalled()
   })
 
-  it('rejects malformed legal document ids before calling the service RPC', async () => {
+  it('rejects malformed required-document ids before calling the service RPC', async () => {
     const response = res()
     await handler(req({
       action: 'sign-legal',

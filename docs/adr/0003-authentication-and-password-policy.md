@@ -18,10 +18,11 @@
 
 ## Context
 
-The ALSA Portal requires user authentication for members to register for events, sign policy acknowledgements, and access role-specific features (captain hub, referee test, committee admin). The authentication system must:
+The ALSA Portal requires user authentication for members to register for events, agree to required acknowledgements or consents, and access role-specific features (captain hub, referee test, committee admin). The authentication system must:
 
 1. Protect access to personal data, including data about minors
-2. Protect the integrity of the legal audit trail (signed policies, media releases, guardian forms)
+2. Protect the integrity of acknowledgement and consent records, with guardian
+   forms handled through the separate under-18 workflow
 3. Be operable by a volunteer committee without specialist security expertise
 4. Align with contemporary authentication best practice, not historical defaults
 
@@ -44,7 +45,7 @@ Social login can be added later as an additional option without disrupting exist
 Email confirmation is required because:
 - It prevents account creation with typo'd email addresses (which would otherwise create orphan accounts that cannot recover their password)
 - It is a baseline anti-spam measure
-- It verifies that the person signing up actually controls the email address they entered — important when that email address will be used for legal document delivery
+- It verifies that the person signing up actually controls the email address they entered — important when that address is used for account recovery and required event communications
 
 ### Password policy
 

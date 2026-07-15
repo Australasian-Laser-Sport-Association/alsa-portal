@@ -1,4 +1,3 @@
-import { isIP } from 'node:net'
 import { sendServerError } from './_lib/apiErrors.js'
 import { enforceRateLimit } from './_lib/rateLimit.js'
 import supabaseAdmin from './_lib/supabase.js'
@@ -219,16 +218,16 @@ function sendSideEventRpcError(res, error, context) {
 
 function sendLegalLifecycleRpcError(res, error, context) {
   const expected = {
-    '22023': [400, 'Invalid legal-document request.'],
-    '22P02': [400, 'Invalid legal-document request.'],
+    '22023': [400, 'Invalid acknowledgement or form request.'],
+    '22P02': [400, 'Invalid acknowledgement or form request.'],
     '23503': [400, 'An eligible registration and active published document are required.'],
-    '23514': [409, 'The legal-document state changed. Please review it and try again.'],
-    '23505': [409, 'This legal-document action has already been recorded.'],
-    '40001': [409, 'The legal-document state changed at the same time. Please try again.'],
-    '40P01': [409, 'The legal-document state changed at the same time. Please try again.'],
-    '42501': [403, 'This account is not allowed to complete that legal-document action.'],
-    '55000': [409, 'This event cannot accept legal-document changes.'],
-    'P0002': [404, 'The event or legal-document record was not found.'],
+    '23514': [409, 'The acknowledgement or form state changed. Please review it and try again.'],
+    '23505': [409, 'This acknowledgement or form action has already been recorded.'],
+    '40001': [409, 'The acknowledgement or form state changed at the same time. Please try again.'],
+    '40P01': [409, 'The acknowledgement or form state changed at the same time. Please try again.'],
+    '42501': [403, 'This account is not allowed to complete that acknowledgement or form action.'],
+    '55000': [409, 'This event cannot accept acknowledgement or form changes.'],
+    'P0002': [404, 'The event or required-document record was not found.'],
   }
   const mapped = expected[error?.code]
   if (mapped) return res.status(mapped[0]).json({ error: mapped[1] })
@@ -685,7 +684,8 @@ async function handleRegistration(req, res, user) {
 
   if (action === 'sign-legal') {
     if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
-    // Player (re)signs CoC / Media Release. Routed through the service role so
+    // Player (re)acknowledges the Code of Conduct / Media Release. Routed
+    // through the service role so
     // the clear_force_incomplete_on_resign AFTER-trigger updates
     // zltac_registrations with auth.uid() IS NULL — the system path the
     // protect_registration_admin_fields guard allows — instead of failing
@@ -698,22 +698,16 @@ async function handleRegistration(req, res, user) {
     if (!eventYear) return res.status(400).json({ error: 'eventYear is required' })
 
     // user_id is taken from the authenticated session, never the request body.
-    const userAgent = typeof req.headers['user-agent'] === 'string'
-      ? req.headers['user-agent'].slice(0, 1024)
-      : null
-    const forwardedFor = typeof req.headers['x-forwarded-for'] === 'string'
-      ? req.headers['x-forwarded-for'].split(',')[0].trim()
-      : null
-    const rawIpAddress = forwardedFor || (typeof req.headers['x-real-ip'] === 'string' ? req.headers['x-real-ip'].trim() : null)
-    const ipAddress = rawIpAddress && isIP(rawIpAddress) ? rawIpAddress : null
     const { error: acceptanceError } = await supabaseAdmin.rpc(
       'accept_legal_document',
       {
         p_user_id: user.id,
         p_event_year: eventYear,
         p_document_id: documentId,
-        p_ip_address: ipAddress,
-        p_user_agent: userAgent,
+        // Keep the existing RPC signature during the phased migration cutover,
+        // but deliberately collect no network or browser fingerprint metadata.
+        p_ip_address: null,
+        p_user_agent: null,
       },
     )
     if (acceptanceError) {

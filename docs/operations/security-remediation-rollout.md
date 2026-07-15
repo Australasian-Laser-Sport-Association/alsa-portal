@@ -102,9 +102,9 @@ npm run rollout:db -- --list
 $env:EXPECTED_SUPABASE_PROJECT_REF = '<private-verified-project-ref>'
 $env:FORBIDDEN_SUPABASE_PROJECT_REF = '<private-other-environment-project-ref>'
 
-npm run rollout:db -- --phase legal-expand --environment staging --dry-run
+npm run rollout:db -- --phase acknowledgement-expand --environment staging --dry-run
 $env:EXPECTED_RELEASE_COMMIT = '<full-40-character-approved-release-commit>'
-npm run rollout:db -- --phase legal-expand --environment staging --apply --confirm APPLY-STAGING-LEGAL-EXPAND
+npm run rollout:db -- --phase acknowledgement-expand --environment staging --apply --confirm APPLY-STAGING-ACKNOWLEDGEMENT-EXPAND
 
 npm run rollout:db -- --phase application-cutover --environment staging --dry-run
 npm run rollout:db -- --phase application-cutover --environment staging --apply --confirm APPLY-STAGING-APPLICATION-CUTOVER
@@ -176,9 +176,9 @@ from the first `010000` apply until `066000` and final smoke tests pass.
    frequency only after the final deployment, direct-write denial tests, one
    successful `065500`-guarded backup, logs, and health checks pass.
 
-### Phase 1: legal expansion (`010000` through `041000`)
+### Phase 1: acknowledgement and consent expansion (`010000` through `041000`)
 
-1. Apply `legal-expand` with the phase runner.
+1. Apply `acknowledgement-expand` with the phase runner.
 2. Run the matching verification SQL for every newly applied migration, ending
    with `20260713041000_add_masked_public_views_verify.sql`.
 3. Use the environment-specific immutable deployment method defined above. For
@@ -187,7 +187,8 @@ from the first `010000` apply until `066000` and final smoke tests pass.
    release commit, confirm protection on the generated URL, and do not run
    `vercel promote` while the public domain remains on the maintenance
    response. Verify the backup schedule remains off. At this intermediate
-   schema, exercise only the controlled legal publication path. Migration
+   schema, exercise only the controlled acknowledgement/consent document
+   publication path. Migration
    `012000` supplies the
    access-revocation column read by server authorisation and guards it against
    browser writes. Migration `040000` supplies both publication and
@@ -210,7 +211,8 @@ push, but it is not a substitute for saved smoke evidence.
 2. Run every matching verification through
    `20260713065500_backup_run_concurrency_guard_verify.sql`.
 3. Exercise registration, under-18, team, competition, side-event, payment,
-   legal, volunteer, profile-governance, public-read, and referee-test paths
+   acknowledgement/consent, volunteer, profile-governance, public-read, and
+   referee-test paths
    from the recorded environment-specific immutable deployment. Production
    maintenance remains active throughout this phase.
 4. Exercise all admin-content paths, including one harmless site-banner upsert
@@ -280,11 +282,12 @@ For every migration:
 6. Obtain explicit approval before applying the same checkpoint to production.
 
 All 32 `20260713` migrations have a strict roll-forward-only security boundary.
-Migration `20260713053000_preserve_anonymized_legal_evidence.sql` additionally
-crosses an irreversible data-retention boundary. Read
-`docs/operations/legal-evidence-retention.md` before applying it. Once evidence
-has been anonymized, no schema or application rollback can reconstruct the
-discarded identity, so any correction must roll forward.
+Migration `20260713053000_minimise_acknowledgement_metadata.sql` crosses a
+data-minimisation boundary by clearing acceptance IP addresses and user agents
+and requiring them to remain `NULL`. Read
+`docs/operations/acknowledgement-retention.md` before applying it. A rollback
+cannot reconstruct cleared request metadata; acknowledgements and under-18
+records otherwise follow normal account and controlled event deletion.
 
 If SQL is applied through the Supabase SQL Editor, immediately run
 `supabase migration repair <version> --status applied --linked`, followed by
@@ -301,10 +304,12 @@ The release evidence must show:
 - direct privileged table writes are rejected;
 - direct privileged Storage writes are rejected while server-issued exact-path
   uploads are finalized, immutably audited, and served through branded reads;
-- server registration, team, payment, legal, and volunteer paths still work;
+- server registration, team, payment, acknowledgement/consent, and volunteer
+  paths still work;
 - closed and archived event/competition mutations fail;
 - player, captain, and committee readiness results agree;
-- inactive legal documents, bank details, UUIDs, and legal names are not public;
+- inactive acknowledgement/consent document versions, bank details, UUIDs, and
+  legal names are not public;
 - recovery links, manager route boundaries, failure/retry states, and safe
   return paths work;
 - cron authentication, stale-backup alerting, CSV neutralisation, asset range
@@ -322,8 +327,10 @@ The release evidence must show:
   and alias-only claims fail, inactive merge targets are excluded, and each
   successful self/admin merge creates one immutable attributed audit row;
 - the database plus Storage restore succeeds in a disposable project;
-- account deletion preserves pseudonymous legal and under-18 evidence, and
-  hard event deletion is refused when that evidence exists.
+- acceptance IP addresses and user agents remain `NULL`, remove-access and
+  Auth-account deletion remove that subject's acknowledgements and under-18
+  approval while retaining the de-identified governance profile, and the
+  controlled hard event-deletion path removes the same event-bound records.
 
 ## Failure and rollback handling
 

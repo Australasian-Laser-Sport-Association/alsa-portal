@@ -300,8 +300,8 @@ INSERT INTO public.legal_acceptances (
   '10000000-0000-4000-8000-000000000001',
   '80000000-0000-4000-8000-000000000001',
   2097,
-  '192.0.2.1',
-  'ALSA release gate'
+  NULL,
+  NULL
 );
 
 SELECT throws_matching(
@@ -310,7 +310,7 @@ SELECT throws_matching(
     SET original_filename = 'rewritten.pdf'
     WHERE id = '80000000-0000-4000-8000-000000000001'
   $$,
-  'legal document evidence is immutable',
+  'published required document is immutable',
   'published legal object metadata cannot be overwritten'
 );
 
@@ -319,17 +319,16 @@ SELECT throws_matching(
     DELETE FROM public.legal_documents
     WHERE id = '80000000-0000-4000-8000-000000000001'
   $$,
-  'published legal documents are immutable',
-  'published legal document records cannot be deleted'
+  'published required documents are immutable',
+  'published required document records cannot be deleted'
 );
 
-SELECT throws_matching(
+SELECT lives_ok(
   $$
     DELETE FROM public.legal_acceptances
     WHERE id = '90000000-0000-4000-8000-000000000001'
   $$,
-  'Retained legal acceptance evidence cannot be deleted',
-  'accepted legal evidence remains append-only even for privileged writers'
+  'privileged maintenance can delete an acknowledgement without a retention blocker'
 );
 
 -- From this point on, run trigger checks with the real authenticated subject.

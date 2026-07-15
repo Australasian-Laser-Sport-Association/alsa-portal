@@ -24,29 +24,29 @@ function historyThrough(version) {
 }
 
 describe('remediation rollout phases', () => {
-  it('defines explicit legal, application, and final contract boundaries', () => {
+  it('defines explicit foundation, application, and final contract boundaries', () => {
     expect(REMEDIATION_ROLLOUT_PHASES.map(phase => [
       phase.id,
       phase.predecessor,
       phase.endpoint,
     ])).toEqual([
-      ['legal-expand', '20260703010000', '20260713041000'],
+      ['acknowledgement-expand', '20260703010000', '20260713041000'],
       ['application-cutover', '20260713041000', '20260713065500'],
       ['admin-content-contract', '20260713065500', '20260713066000'],
     ])
   })
 
   it('builds isolated manifests that cannot cross the selected checkpoint', () => {
-    const legal = migrationNamesThroughPhase('legal-expand')
+    const foundation = migrationNamesThroughPhase('acknowledgement-expand')
     const application = migrationNamesThroughPhase('application-cutover')
     const contract = migrationNamesThroughPhase('admin-content-contract')
 
-    expect(basename(legal.at(-1))).toBe('20260713041000_add_masked_public_views.sql')
-    expect(legal).not.toContain('20260713042000_make_legal_storage_private.sql')
+    expect(basename(foundation.at(-1))).toBe('20260713041000_add_masked_public_views.sql')
+    expect(foundation).not.toContain('20260713042000_make_legal_storage_private.sql')
     expect(basename(application.at(-1))).toBe('20260713065500_backup_run_concurrency_guard.sql')
     expect(application).not.toContain('20260713066000_admin_content_browser_contract.sql')
     expect(basename(contract.at(-1))).toBe('20260713066000_admin_content_browser_contract.sql')
-    expect(legal.length).toBeLessThan(application.length)
+    expect(foundation.length).toBeLessThan(application.length)
     expect(application.length).toBeLessThan(contract.length)
   })
 
@@ -87,7 +87,7 @@ describe('remediation rollout phases', () => {
 
   it('rejects a linked history stopped partway through the selected phase', () => {
     expect(() => validateLinkedMigrationHistory({
-      phaseId: 'legal-expand',
+      phaseId: 'acknowledgement-expand',
       remoteVersions: historyThrough('20260713010000'),
     })).toThrow('requires linked remote history to end exactly at predecessor')
   })
@@ -128,15 +128,15 @@ describe('remediation rollout phases', () => {
 
   it('requires an independently supplied project ref before a remote dry-run', () => {
     expect(() => runRemediationRolloutPhase({
-      argv: ['--phase', 'legal-expand', '--environment', 'staging', '--dry-run'],
+      argv: ['--phase', 'acknowledgement-expand', '--environment', 'staging', '--dry-run'],
       environment: {},
       log: () => {},
     })).toThrow(`Set ${EXPECTED_PROJECT_REF_ENV}`)
   })
 
   it('uses unmistakable environment- and phase-specific apply confirmations', () => {
-    expect(rolloutConfirmation('staging', 'legal-expand'))
-      .toBe('APPLY-STAGING-LEGAL-EXPAND')
+    expect(rolloutConfirmation('staging', 'acknowledgement-expand'))
+      .toBe('APPLY-STAGING-ACKNOWLEDGEMENT-EXPAND')
     expect(rolloutConfirmation('production', 'admin-content-contract'))
       .toBe('APPLY-PRODUCTION-ADMIN-CONTENT-CONTRACT')
   })
@@ -183,7 +183,7 @@ describe('remediation rollout phases', () => {
     })).toThrow('working tree must be clean')
   })
 
-  it('makes populated-database legal and admin contracts fail closed', () => {
+  it('makes populated-database document and admin contracts fail closed', () => {
     const root = process.cwd()
     const legalContract = readFileSync(resolve(
       root,
@@ -200,7 +200,7 @@ describe('remediation rollout phases', () => {
     expect(adminContract).toContain('public.admin_content_mutation_audit')
   })
 
-  it('keeps the deployed phase-one legal route dependencies inside legal expansion', () => {
+  it('keeps the deployed phase-one document route dependencies inside acknowledgement expansion', () => {
     const root = process.cwd()
     const profileGuardExpansion = readFileSync(resolve(
       root,

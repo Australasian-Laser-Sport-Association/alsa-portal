@@ -65,7 +65,7 @@ test('archive failure stays in the confirmation workflow and sends only the lock
   expect(archiveCall?.body).toEqual({ action: 'archive', eventId: EVENT_ID })
 })
 
-test('hard deletion is disabled when retained legal or under-18 evidence exists', async ({ page }) => {
+test('hard deletion reports and removes acknowledgement and under-18 records', async ({ page }) => {
   const backend = await installMockBackend(page, adminOptions({
     apiResponses: {
       [impactUrl]: {
@@ -73,7 +73,6 @@ test('hard deletion is disabled when retained legal or under-18 evidence exists'
         teams: 3,
         legalAcceptances: 7,
         under18Approvals: 2,
-        blockedByEvidence: true,
       },
     },
   }))
@@ -81,10 +80,14 @@ test('hard deletion is disabled when retained legal or under-18 evidence exists'
 
   await page.getByRole('button', { name: 'Delete Event', exact: true }).click()
 
-  await expect(page.getByText(/Hard deletion is disabled because this event has 7 legal acceptances and 2 under-18 decisions/i)).toBeVisible()
-  await expect(page.getByPlaceholder(`Type ${event.year}`)).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Delete event permanently' })).toBeDisabled()
-  expect(backend.requests.api.some(request => request.body?.action === 'delete')).toBe(false)
+  await expect(page.getByText(/7 player acknowledgements/i)).toBeVisible()
+  await expect(page.getByText(/2 under-18 approval records/i)).toBeVisible()
+  await page.getByPlaceholder(`Type ${event.year}`).fill(String(event.year))
+  await page.getByRole('button', { name: 'Delete event permanently' }).click()
+
+  await expect(page.getByText('Event deleted.')).toBeVisible()
+  const deleteCall = backend.requests.api.find(request => request.body?.action === 'delete')
+  expect(deleteCall?.body).toEqual({ action: 'delete', eventId: EVENT_ID })
 })
 
 test('confirmed deletion uses the dedicated event-id operation without a client-supplied year', async ({ page }) => {
@@ -95,7 +98,6 @@ test('confirmed deletion uses the dedicated event-id operation without a client-
         teams: 0,
         legalAcceptances: 0,
         under18Approvals: 0,
-        blockedByEvidence: false,
       },
       '/api/admin/event?resource=event': {},
     },

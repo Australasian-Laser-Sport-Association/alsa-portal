@@ -535,7 +535,7 @@ async function handleAsset(req, res) {
     if (signedError || !signed?.signedUrl) {
       return sendServerError(
         res,
-        signedError ?? new Error('Legal document signing returned no URL'),
+        signedError ?? new Error('Required document URL generation returned no URL'),
         'public:legal-document-sign',
       )
     }

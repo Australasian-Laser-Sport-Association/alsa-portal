@@ -28,16 +28,16 @@ export const EXPECTED_RELEASE_COMMIT_ENV = 'EXPECTED_RELEASE_COMMIT'
 
 export const REMEDIATION_ROLLOUT_PHASES = Object.freeze([
   Object.freeze({
-    id: 'legal-expand',
+    id: 'acknowledgement-expand',
     predecessor: '20260703010000',
     endpoint: '20260713041000',
-    description: 'Security/API foundations plus legal publication and masked-view expansion.',
+    description: 'Security/API foundations, required-document publication, and masked-view expansion.',
   }),
   Object.freeze({
     id: 'application-cutover',
     predecessor: '20260713041000',
     endpoint: '20260713065500',
-    description: 'Legal storage, application, admin-content expansion, and backup lease cutover, stopping before browser contraction.',
+    description: 'Private required-document storage, application, admin-content expansion, and backup lease cutover, stopping before browser contraction.',
   }),
   Object.freeze({
     id: 'admin-content-contract',

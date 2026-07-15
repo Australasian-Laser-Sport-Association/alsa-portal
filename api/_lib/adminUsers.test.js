@@ -734,13 +734,8 @@ describe('admin users list', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.body.deleted.zltac_registrations).toBe(1)
-    expect(response.body.retained_anonymized).toEqual({
-      legal_acceptances: 0,
-      under_18_approvals: 0,
-    })
     expect(response.body.totals).toEqual({
       deleted: 1,
-      retained_anonymized: 0,
       detached: 0,
       blockers: 0,
     })
@@ -748,7 +743,7 @@ describe('admin users list', () => {
     expect(from).not.toHaveBeenCalledWith('event_registrations')
   })
 
-  it('separates deleted rows, retained evidence, detached links, and blockers', async () => {
+  it('separates deleted rows, detached links, and blockers', async () => {
     from.mockImplementation(table => {
       if (table === 'zltac_registrations') {
         return queryResult({ data: [{ id: 'registration-1' }], count: 0, error: null })
@@ -774,8 +769,6 @@ describe('admin users list', () => {
     expect(response.body.deleted).toMatchObject({
       zltac_registrations: 1,
       referee_test_attempts: 3,
-    })
-    expect(response.body.retained_anonymized).toEqual({
       legal_acceptances: 2,
       under_18_approvals: 1,
     })

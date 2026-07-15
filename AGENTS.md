@@ -4,17 +4,17 @@
 
 This is the ALSA Portal: a governance and event management platform for the
 Australasian Laser Sport Association. It handles ZLTAC event registration,
-team management, referee testing, required legal documents, under-18 approvals,
-ALSA membership records, public document/media delivery, and admin tooling for
-the committee.
+team management, referee testing, required acknowledgements and consents,
+separate under-18 approvals, ALSA membership records, public document/media
+delivery, and admin tooling for the committee.
 
 ## Domain Concepts
 
 **Members:** The portal separates an account from formal ALSA membership.
 
 - *Portal account holder* - a person who can sign in, manage their profile,
-  register for events, complete required documents, and pay event fees. Regular
-  users usually have `profiles.roles=['player']`.
+  register for events, complete required acknowledgements, and pay event fees.
+  Regular users usually have `profiles.roles=['player']`.
 - *ALSA annual member* - a person granted membership for an active membership
   period in `alsa_memberships`.
 - *ALSA lifetime member* - an honorary public status stored separately in

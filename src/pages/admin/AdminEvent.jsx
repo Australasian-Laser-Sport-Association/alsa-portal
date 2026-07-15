@@ -152,7 +152,6 @@ export default function AdminEvent() {
     teams: null,
     legalAcceptances: null,
     under18Approvals: null,
-    blockedByEvidence: false,
   })
 
   // Form state
@@ -506,7 +505,6 @@ export default function AdminEvent() {
       teams: null,
       legalAcceptances: null,
       under18Approvals: null,
-      blockedByEvidence: false,
     })
     setDeleteOpen(true)
     try {
@@ -516,7 +514,6 @@ export default function AdminEvent() {
         teams: impact.teams ?? 0,
         legalAcceptances: impact.legalAcceptances ?? 0,
         under18Approvals: impact.under18Approvals ?? 0,
-        blockedByEvidence: impact.blockedByEvidence === true,
       })
     } catch (err) {
       console.error('[AdminEvent] openDeleteModal count fetch failed:', err)
@@ -525,7 +522,7 @@ export default function AdminEvent() {
   }
 
   async function handleDelete() {
-    if (!event || deleteCounts.blockedByEvidence || deleteConfirmInput !== String(event.year)) return
+    if (!event || deleteConfirmInput !== String(event.year)) return
     setDeleting(true)
     setDeleteError('')
     try {
@@ -648,27 +645,24 @@ export default function AdminEvent() {
               </span>,{' '}
               <span className="text-white font-semibold">
                 {deleteCounts.teams ?? '…'} team{deleteCounts.teams === 1 ? '' : 's'}
-              </span>, plus payments and non-evidence checklist data for this year.
+              </span>,{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.legalAcceptances ?? '…'} player acknowledgement{deleteCounts.legalAcceptances === 1 ? '' : 's'}
+              </span>, and{' '}
+              <span className="text-white font-semibold">
+                {deleteCounts.under18Approvals ?? '…'} under-18 approval record{deleteCounts.under18Approvals === 1 ? '' : 's'}
+              </span>, plus payments and other checklist data for this year.
               This cannot be undone.
             </p>
-            {deleteCounts.blockedByEvidence ? (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2 mb-4">
-                <p className="text-amber-300 text-xs">
-                  Hard deletion is disabled because this event has {deleteCounts.legalAcceptances ?? 0} legal acceptance{deleteCounts.legalAcceptances === 1 ? '' : 's'} and {deleteCounts.under18Approvals ?? 0} under-18 decision{deleteCounts.under18Approvals === 1 ? '' : 's'}. Archive the event so its evidence remains defensible.
-                </p>
-              </div>
-            ) : (
-              <p className="text-[#e5e5e5]/60 text-xs mb-3">
-                Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
-              </p>
-            )}
+            <p className="text-[#e5e5e5]/60 text-xs mb-3">
+              Type <span className="text-white font-mono font-bold">{event?.year}</span> to confirm.
+            </p>
             <input
               type="text"
               value={deleteConfirmInput}
               onChange={e => setDeleteConfirmInput(e.target.value)}
               placeholder={`Type ${event?.year ?? ''}`}
-              autoFocus={!deleteCounts.blockedByEvidence}
-              disabled={deleteCounts.blockedByEvidence}
+              autoFocus
               className="w-full bg-base border border-line rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-red-400 transition-colors mb-4"
             />
             {deleteError && (
@@ -679,7 +673,7 @@ export default function AdminEvent() {
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
-                disabled={deleting || deleteCounts.blockedByEvidence || deleteCounts.regs === null || deleteConfirmInput !== String(event?.year)}
+                disabled={deleting || deleteCounts.regs === null || deleteConfirmInput !== String(event?.year)}
                 className="bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-5 py-2 rounded-xl text-sm transition-colors"
               >
                 {deleting ? 'Deleting…' : 'Delete event permanently'}
@@ -1179,7 +1173,7 @@ export default function AdminEvent() {
               this form so any existing values are preserved on the DB. */}
           <div className="space-y-3 pt-1">
             {[
-              { label: 'Require Code of Conduct', sub: 'Players must sign CoC before registration is complete', key: 'require_coc' },
+              { label: 'Require Code of Conduct', sub: 'Players must accept the CoC before registration is complete', key: 'require_coc' },
               { label: 'Require Rules Test', sub: 'All team members must pass the rules test', key: 'require_ref_test' },
               { label: 'Require Payment', sub: 'Registration is only confirmed once the event fee is paid — turn off for free or on-the-day-paid events', key: 'require_payment' },
             ].map(({ label, sub, key }) => (
