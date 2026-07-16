@@ -1,9 +1,9 @@
 # Security Remediation Rollout
 
-**Status:** Final local verification complete; controlled rollout not started
+**Status:** Phases 1-3 complete; final release-hardening phase pending
 **Baseline commit:** `ff15a7cc589eef55b8be5f39421019262c447ba0`
 **Baseline branch:** `main`
-**Last updated:** 2026-07-15
+**Last updated:** 2026-07-16
 
 This runbook controls the release of the July 2026 security and reliability
 remediation. It does not authorise a production change by itself. A maintainer
@@ -86,7 +86,7 @@ bootstrap path and the flag enables only the unattended schedule.
 
 ## Dependency-ordered checkpoints
 
-Do not run an unrestricted `supabase db push` while all 32 remediation files
+Do not run an unrestricted `supabase db push` while all 33 remediation files
 are pending. It has no "stop at version" option and would collapse mandatory
 application and publication checkpoints.
 
@@ -111,6 +111,9 @@ npm run rollout:db -- --phase application-cutover --environment staging --apply 
 
 npm run rollout:db -- --phase admin-content-contract --environment staging --dry-run
 npm run rollout:db -- --phase admin-content-contract --environment staging --apply --confirm APPLY-STAGING-ADMIN-CONTENT-CONTRACT
+
+npm run rollout:db -- --phase final-release-hardening --environment staging --dry-run
+npm run rollout:db -- --phase final-release-hardening --environment staging --apply --confirm APPLY-STAGING-FINAL-RELEASE-HARDENING
 ```
 
 For production, replace `staging` with `production` and use the confirmation
@@ -149,7 +152,7 @@ The initial migrations revoke browser writes that the old bundle still uses,
 while the new bundle calls functions and views that do not exist at the start
 of the rollout. There is no zero-downtime ordering for this one-time security
 cutover. Production must therefore use an announced write-maintenance window
-from the first `010000` apply until `066000` and final smoke tests pass.
+from the first `010000` apply until `067000` and final smoke tests pass.
 
 1. Close active event and competition registration windows through the normal
    committee controls, pause committee/captain changes, set the portal backup
@@ -169,7 +172,7 @@ from the first `010000` apply until `066000` and final smoke tests pass.
    Existing tabs cannot be recalled; once contracts apply their obsolete
    direct writes must fail closed with 401/403. Never restore unsafe grants to
    accommodate a stale tab.
-5. Keep maintenance in place while running all three phases below. If a person
+5. Keep maintenance in place while running all four phases below. If a person
    reaches an old tab, instruct them to close it and load the production domain
    again only after the all-clear.
 6. Reopen the recorded registration windows and restore the reviewed backup
@@ -233,7 +236,7 @@ push, but it is not a substitute for saved smoke evidence.
    and finish its lease, and prove a concurrent start is rejected without
    creating a second running row. Verify the completed prefix contains
    `admin-asset-upload-audit.csv` and that its manifest count and hash match the
-   file. Restore the recorded schedule only after phase 3 and final smoke tests.
+   file. Restore the recorded schedule only after phase 4 and final smoke tests.
 
 ### Phase 3: admin browser contract (`066000`)
 
@@ -256,19 +259,33 @@ push, but it is not a substitute for saved smoke evidence.
    object cleanup. Confirm replacement is visible immediately through the
    branded renderer. Avatar mutation remains unavailable until an equivalent
    server route is reviewed and shipped.
-6. Check Vercel and Supabase logs. For staging, retain the Preview evidence and
-   do not promote the deployment. For Production, run
-   `vercel promote <verified-deployment-url>` for the exact protected staged
-   Production deployment. Coordinate the later merge to `main` so its
-   automatic Vercel deployment cannot replace the maintenance or verified
-   final alias before approval. Tell users to reload and reopen the recorded
-   registration windows.
+6. Check Vercel and Supabase logs. Retain the staging Preview evidence. Keep the
+   Production deployment protected and maintenance active; do not promote or
+   reopen registration windows until phase 4 passes.
 
-The three phases above are mandatory in disposable, staging, and production
+### Phase 4: final release hardening (`067000`)
+
+1. Apply `final-release-hardening` only after the phase 3 verifier and smoke
+   evidence pass.
+2. Run `20260713067000_final_release_hardening_verify.sql`, then run the full
+   remediation verifier set in filename order.
+3. Prove a suspended account with a still-valid JWT cannot read
+   `own_zltac_teams`, `referee_questions_public` is absent, and an authenticated
+   referee can still start and submit a server-created attempt. Repeat one
+   payment mutation and one attributed alias change to prove the narrowed
+   service-role grants preserve the intended SECURITY DEFINER workflows.
+4. Check Vercel and Supabase logs and rerun the database advisors. For staging,
+   retain the Preview evidence and do not promote. For Production, promote the
+   exact protected staged deployment only after all final checks pass, then
+   restore the recorded backup schedule and registration windows and tell
+   users to reload.
+
+The four phases above are mandatory in disposable, staging, and production
 rehearsals. The maintenance window addresses the earlier mutually incompatible
 browser/database contracts; the `065000` expansion, additive `065500` backup
-lease/audit-export guard, signed-upload evidence checkpoint, and `066000`
-contraction still provide explicit application and contract checkpoints.
+lease/audit-export guard, signed-upload evidence checkpoint, `066000`
+contraction, and `067000` final hardening still provide explicit application
+and contract checkpoints.
 
 For every migration:
 
@@ -281,7 +298,7 @@ For every migration:
    is an executable production reversal.
 6. Obtain explicit approval before applying the same checkpoint to production.
 
-All 32 `20260713` migrations have a strict roll-forward-only security boundary.
+All 33 `20260713` migrations have a strict roll-forward-only security boundary.
 Migration `20260713053000_minimise_acknowledgement_metadata.sql` crosses a
 data-minimisation boundary by clearing acceptance IP addresses and user agents
 and requiring them to remain `NULL`. Read
@@ -356,7 +373,7 @@ The release evidence must show:
 ## Final release record
 
 Production release approval requires passing unit/API tests, lint, build,
-dependency audit, database integration tests, browser journeys, all 32
+dependency audit, database integration tests, browser journeys, all 33
 remediation verification scripts, the staging role matrix, and a documented
 independent restore drill. The approval record must also include guarded environment-check
 reports, deployment-protection evidence, all-eight upload finalization

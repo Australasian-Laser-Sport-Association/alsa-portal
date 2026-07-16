@@ -38,6 +38,7 @@ const expectedVersions = [
   '20260713065000',
   '20260713065500',
   '20260713066000',
+  '20260713067000',
 ]
 
 function remediationRollbacks() {
@@ -54,7 +55,7 @@ function executableSql(source) {
 }
 
 describe('20260713 production rollback safety', () => {
-  it('covers every remediation migration through the admin-content browser contract', () => {
+  it('covers every remediation migration through final release hardening', () => {
     const versions = remediationRollbacks().map(name => name.slice(0, 14))
     expect(versions).toEqual(expectedVersions)
   })

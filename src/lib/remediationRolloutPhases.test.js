@@ -16,7 +16,7 @@ import {
   validateReviewedReleaseState,
 } from '../../scripts/run-remediation-rollout-phase.mjs'
 
-const repositoryVersions = migrationNamesThroughPhase('admin-content-contract')
+const repositoryVersions = migrationNamesThroughPhase('final-release-hardening')
   .map(name => name.slice(0, 14))
 
 function historyThrough(version) {
@@ -24,7 +24,7 @@ function historyThrough(version) {
 }
 
 describe('remediation rollout phases', () => {
-  it('defines explicit foundation, application, and final contract boundaries', () => {
+  it('defines four explicit dependency-ordered release boundaries', () => {
     expect(REMEDIATION_ROLLOUT_PHASES.map(phase => [
       phase.id,
       phase.predecessor,
@@ -33,6 +33,7 @@ describe('remediation rollout phases', () => {
       ['acknowledgement-expand', '20260703010000', '20260713041000'],
       ['application-cutover', '20260713041000', '20260713065500'],
       ['admin-content-contract', '20260713065500', '20260713066000'],
+      ['final-release-hardening', '20260713066000', '20260713067000'],
     ])
   })
 
@@ -40,14 +41,18 @@ describe('remediation rollout phases', () => {
     const foundation = migrationNamesThroughPhase('acknowledgement-expand')
     const application = migrationNamesThroughPhase('application-cutover')
     const contract = migrationNamesThroughPhase('admin-content-contract')
+    const hardening = migrationNamesThroughPhase('final-release-hardening')
 
     expect(basename(foundation.at(-1))).toBe('20260713041000_add_masked_public_views.sql')
     expect(foundation).not.toContain('20260713042000_make_legal_storage_private.sql')
     expect(basename(application.at(-1))).toBe('20260713065500_backup_run_concurrency_guard.sql')
     expect(application).not.toContain('20260713066000_admin_content_browser_contract.sql')
     expect(basename(contract.at(-1))).toBe('20260713066000_admin_content_browser_contract.sql')
+    expect(contract).not.toContain('20260713067000_final_release_hardening.sql')
+    expect(basename(hardening.at(-1))).toBe('20260713067000_final_release_hardening.sql')
     expect(foundation.length).toBeLessThan(application.length)
     expect(application.length).toBeLessThan(contract.length)
+    expect(contract.length).toBeLessThan(hardening.length)
   })
 
   it('parses only the remote column from the linked migration list', () => {
@@ -139,6 +144,8 @@ describe('remediation rollout phases', () => {
       .toBe('APPLY-STAGING-ACKNOWLEDGEMENT-EXPAND')
     expect(rolloutConfirmation('production', 'admin-content-contract'))
       .toBe('APPLY-PRODUCTION-ADMIN-CONTENT-CONTRACT')
+    expect(rolloutConfirmation('production', 'final-release-hardening'))
+      .toBe('APPLY-PRODUCTION-FINAL-RELEASE-HARDENING')
   })
 
   it('requires independently supplied target and other-environment project refs', () => {

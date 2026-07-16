@@ -12,12 +12,12 @@ const LOCAL_DATABASE_URL =
   'postgresql://verification-user:test-only-password@127.0.0.1:54322/postgres?sslmode=disable'
 
 describe('remediation verification runner', () => {
-  it('covers every remediation migration through the admin-content browser contract', () => {
+  it('covers every remediation migration through final release hardening', () => {
     const names = discoverRemediationVerificationFiles().map(file => basename(file))
 
-    expect(names).toHaveLength(32)
+    expect(names).toHaveLength(33)
     expect(names[0]).toBe('20260713010000_registration_insert_lockdown_verify.sql')
-    expect(names.at(-1)).toBe('20260713066000_admin_content_browser_contract_verify.sql')
+    expect(names.at(-1)).toBe('20260713067000_final_release_hardening_verify.sql')
     expect(names).toEqual([...names].sort())
   })
 
@@ -51,8 +51,8 @@ describe('remediation verification runner', () => {
       log: message => messages.push(message),
     })
 
-    expect(files).toHaveLength(32)
-    expect(spawn).toHaveBeenCalledTimes(32)
+    expect(files).toHaveLength(33)
+    expect(spawn).toHaveBeenCalledTimes(33)
     expect(calls.map(call => basename(call.args.at(-1)))).toEqual(
       files.map(file => basename(file)),
     )
@@ -95,6 +95,6 @@ describe('remediation verification runner', () => {
     })).toThrow(
       '20260713011000_registration_under18_identity_primitives_verify.sql (exit code 3)',
     )
-    expect(spawn).toHaveBeenCalledTimes(32)
+    expect(spawn).toHaveBeenCalledTimes(33)
   })
 })

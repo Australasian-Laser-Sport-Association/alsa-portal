@@ -124,5 +124,29 @@ SELECT extensions.lives_ok(
   'safe published legal metadata remains readable'
 );
 
+RESET ROLE;
+
+UPDATE public.profiles
+   SET suspended = true
+ WHERE id = '60000000-0000-4000-8000-000000000001';
+
+SET LOCAL ROLE authenticated;
+
+SELECT extensions.is(
+  public.is_active_user(),
+  false,
+  'the canonical helper rejects the suspended account'
+);
+
+SELECT extensions.is(
+  (
+    SELECT count(*)
+      FROM public.own_zltac_teams
+     WHERE id = '60000000-0000-4000-8000-000000000005'
+  ),
+  0::bigint,
+  'the actor-scoped team view rejects a still-authenticated suspended account'
+);
+
 SELECT * FROM extensions.finish();
 ROLLBACK;

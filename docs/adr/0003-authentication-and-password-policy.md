@@ -5,10 +5,11 @@
 **Supersedes:** None
 **Related:** [ADR-0002: RLS + GRANT Security Model](./0002-rls-plus-grant-security-model.md)
 
-> **Production-readiness addendum (2026-07-14):** Production now requires a
-> confirmed Supabase Pro plan. The leaked-password setting below must therefore
-> be enabled before launch rather than deferred. Re-verify every Auth setting in
-> this ADR against staging and production, and require MFA on the GitHub,
+> **Production-readiness addendum (2026-07-16):** The current pre-launch portal
+> uses the Supabase Free plan. Supabase leaked-password protection is a paid-plan
+> feature and is therefore an explicitly accepted limitation, not a control the
+> portal currently claims. Re-verify every other Auth setting in this ADR
+> against staging and production, and require MFA on the GitHub,
 > Vercel, Supabase, email, backup-provider, and DNS accounts that can alter or
 > recover the portal. Application-level MFA for portal members is not claimed by
 > this ADR and would require a separate enrollment, recovery, API, and RLS
@@ -52,11 +53,15 @@ Email confirmation is required because:
 | Setting | Value | Rationale |
 |---|---|---|
 | Minimum password length | 10 characters | Above the OWASP floor of 8; resistant to modern offline brute-force on common hash algorithms. |
-| Password requirements | Lowercase, uppercase letters, and digits | Blocks trivial passwords without forcing symbol substitutions, which research shows do not meaningfully improve entropy. |
+| Password requirements | Lowercase, uppercase letters, and digits | Matches the hosted Supabase Auth policy; the browser and local Auth checks mirror it so users receive the rule before submission. |
 | Symbols required | No | NIST SP 800-63B guidance: length adds more entropy than symbol complexity. Symbol requirements produce predictable substitutions (`a → @`, `o → 0`) and user frustration. |
-| Prevent use of leaked passwords | On for production | Supabase's Have I Been Pwned integration rejects known compromised passwords and is available on the required Pro plan. |
+| Prevent use of leaked passwords | Unavailable on the current Free plan | This remains a useful future upgrade, but release documentation must not claim it is enabled. Rate limiting, email confirmation, and secure account recovery remain required. |
 
-The policy favours **length over complexity**, consistent with modern guidance (NIST SP 800-63B, 2020+). A 10-character mixed-case-with-digits password provides approximately 60 bits of entropy, which is adequate for an application of this sensitivity given the other controls in place (rate limiting, email confirmation, secure password change).
+The hosted Auth service enforces the 10-character minimum and requires at least
+one lowercase letter, uppercase letter, and digit. The application and local
+Supabase configuration mirror that rule for predictable testing and clear
+feedback, but hosted Auth remains the enforcement boundary because browser
+validation can be bypassed.
 
 ### Password change protections
 
@@ -105,11 +110,11 @@ All OAuth providers (Google, Apple, Discord, GitHub, Facebook, etc.), SAML 2.0, 
 
 ### Negative
 
-- **Stricter password requirements create minor friction.** A 10-character password with mixed case and digits is harder to type on mobile than a 6-character lowercase password. The security tradeoff is worth the friction for an application handling this kind of data.
+- **The 10-character and character-class requirements create minor friction.** Longer mixed-case passwords are harder to type on mobile than the old 6-character default. Mirroring the hosted rule in the UI at least prevents a late, unclear rejection.
 - **Email confirmation adds a step to signup.** Members must check their email before they can log in. Mitigated by clear UI messaging and the 1-hour confirmation window.
-- **Leaked-password protection may identify existing member passwords as weak
-  during sign-in or password change.** Communicate a safe reset path before
-  enabling it and monitor support requests without weakening the setting.
+- **The Free plan cannot reject known leaked passwords.** This is an accepted
+  limitation for the small pre-launch volunteer portal. Reconsider the paid
+  control if the service grows or the organisation funds an upgrade.
 - **Default Supabase email sender is rate-limited and unbranded.** Emails come from `noreply@mail.supabase.io` at 4/hour. This is tolerable for initial rollout but should be replaced with a dedicated SMTP provider (Resend, Postmark, or AWS SES) before broad launch. Tracked as an operational task.
 
 ### Neutral

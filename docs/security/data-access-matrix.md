@@ -44,7 +44,7 @@ The roles in this matrix are:
 | `public_zltac_events`, `public_competitions` | SELECT | SELECT | Masked discovery views. Sensitive base-table fields such as banking details and internal notes are absent. Public API: `/api/public?resource=event` and `resource=competitions`. |
 | `public_zltac_teams`, `public_event_roster`, `public_competition_roster_safe` | SELECT | SELECT | Approved, alias-only roster presentation. Profile IDs, legal names, suspended accounts, and unapproved teams are excluded. Public API: `/api/public?resource=roster`. |
 | `public_zltac_event_history`, `public_zltac_legends`, `public_zltac_dynasties`, `public_zltac_hall_of_fame` | SELECT | SELECT | Published history views. Hidden entries and `internal_notes` remain in server-only base tables. |
-| `referee_questions_public`, `public_referee_test_settings` | SELECT | SELECT | Player-facing questions and settings without answer keys or internal configuration. |
+| `public_referee_test_settings` | SELECT | SELECT | Public test settings without internal configuration. The question bank has no browser-readable view; authenticated players receive only a server-created attempt through the rate-limited `/api/referee-test` route. |
 | `zltac_event_placings` | SELECT | SELECT | Public results data. Browser writes are revoked. |
 | `document_categories`, `documents`, `cms_global` | SELECT | SELECT | Published resources and the site banner. Committee changes use audited admin APIs. |
 | `alsa_membership_periods` | SELECT | SELECT | Public membership-period definitions only. Member records are server-only. |
@@ -57,7 +57,7 @@ The compatibility view `public_competition_roster` may remain during rollout, bu
 | Table or view | `anon` | `authenticated` | RLS and grant intent |
 |---|---|---|---|
 | `profiles` | None | Own-row, column-limited SELECT and UPDATE | SELECT exposes only the reviewed account fields and never `email`. UPDATE is limited to `first_name`, `last_name`, `alias`, `dob`, `phone`, `state`, `home_arena`, `emergency_contact_name`, and `emergency_contact_phone`, with `profiles_update_own` enforcing `id = auth.uid()`. Profile creation is performed by the auth trigger. |
-| `own_zltac_teams` | None | SELECT | Actor-scoped captain/manager presentation without ownership profile identifiers. Team reads and mutations outside this view use `/api/player`, `/api/captain`, or admin APIs. |
+| `own_zltac_teams` | None | SELECT | Active-account, actor-scoped captain/manager presentation without ownership profile identifiers. Team reads and mutations outside this view use `/api/player`, `/api/captain`, or admin APIs. |
 | `zltac_registrations` | None | Own-row, column-limited SELECT | Reviewed registration fields only. All registration mutations use `/api/player?resource=registration`. |
 | `competition_registrations` | None | Own-row SELECT | All registration and payment-sensitive mutations use `/api/superadmin/[resource]` server workflows. |
 | `doubles_pairs`, `triples_teams` | None | Own-membership SELECT | A player sees formations containing their user ID. Pair/triple writes use `/api/player`. |

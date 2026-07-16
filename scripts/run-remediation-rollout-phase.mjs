@@ -46,6 +46,12 @@ export const REMEDIATION_ROLLOUT_PHASES = Object.freeze([
     endpoint: '20260713066000',
     description: 'Final admin-content browser privilege contraction after audited smoke proof.',
   }),
+  Object.freeze({
+    id: 'final-release-hardening',
+    predecessor: '20260713066000',
+    endpoint: '20260713067000',
+    description: 'Final account-state, referee-test question-bank, function search-path, and audit-ledger privilege hardening.',
+  }),
 ])
 
 function migrationVersion(name) {

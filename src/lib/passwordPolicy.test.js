@@ -6,7 +6,15 @@ describe('validatePassword', () => {
     expect(validatePassword('short')).toBe(PASSWORD_REQUIREMENT_TEXT)
   })
 
-  it('accepts passwords that meet the shared minimum', () => {
-    expect(validatePassword('1234567890')).toBe('')
+  it.each([
+    'alllowercase1',
+    'ALLUPPERCASE1',
+    'MixedLettersOnly',
+  ])('rejects a password missing a hosted Auth character class: %s', password => {
+    expect(validatePassword(password)).toBe(PASSWORD_REQUIREMENT_TEXT)
+  })
+
+  it('accepts passwords that meet the shared hosted Auth policy', () => {
+    expect(validatePassword('PortalTest1')).toBe('')
   })
 })

@@ -121,18 +121,19 @@ The anon key is designed to be public — its security posture assumes it is vis
 
 ## Hosting plan and region gate
 
-Do not approve production while the portal is assumed to run on personal free
-tiers. Record the owning organisation, plan, billing contact, region, limits,
-and renewal owner in the private operations register.
+The current free-tier deployment is approved for pre-launch testing with fake
+data. Before inviting real members, record the owning organisation, each
+provider's current plan terms and limits, region, and operational owner in the
+private operations register.
 
-- Confirm Vercel Pro or another plan explicitly eligible for an
-  association-operated service. The repository currently deploys 12 direct
-  functions, which is the entire Hobby allowance, and Vercel restricts Hobby
-  to personal use. There must be function headroom and an active billing alert.
-- Confirm Supabase Pro for production. Free projects can pause during quiet
-  off-season periods and have no managed daily-backup entitlement. Managed
-  backups remain only one layer; the off-project restore drill below is still
-  mandatory.
+- Before real member launch, confirm that the then-current Vercel plan terms
+  permit the association's use and that its 12 deployed functions still fit
+  the limit. If either condition fails, reduce the function count, move
+  hosting, or fund an eligible plan before inviting members.
+- The Supabase Free plan is an accepted operating constraint for this small
+  volunteer portal. Free projects can pause during quiet periods and do not
+  include managed daily backups, so the off-project logical export and restore
+  drill below are mandatory.
 - Confirm the Supabase database region is in Australia and record it beside the
   Vercel `syd1` function region. Investigate any cross-region configuration
   before measuring or approving the deployed journeys.
@@ -145,9 +146,10 @@ References: [Vercel Function limits](https://vercel.com/docs/functions/runtimes)
 
 Before staging sign-off and again before production launch, compare the live
 Supabase Auth settings with ADR-0003. Capture a private, timestamped checklist
-showing email confirmation, the documented password requirements,
-leaked-password protection, secure password/email changes, OTP expiry/length,
-disabled anonymous access, and the intended provider list. Do not infer these
+showing email confirmation, the hosted 10-character password minimum, secure
+password/email changes, OTP expiry/length, disabled anonymous access, and the
+intended provider list. Record leaked-password protection as unavailable while
+the project remains on the Free plan; do not claim it is enabled. Do not infer
 dashboard settings from application code.
 
 Require MFA and recovery ownership for every GitHub, Vercel, Supabase, Resend,
