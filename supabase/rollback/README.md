@@ -72,45 +72,47 @@ Forward application order is:
 30. `20260713065000_admin_content_write_cutover.sql`
 31. `20260713065500_backup_run_concurrency_guard.sql`
 32. `20260713066000_admin_content_browser_contract.sql`
+33. `20260713067000_final_release_hardening.sql`
 
 The dependency order for evaluating a theoretical downgrade is the exact
 reverse:
 
-1. `20260713066000_admin_content_browser_contract_rollback.sql`
-2. `20260713065500_backup_run_concurrency_guard_rollback.sql`
-3. `20260713065000_admin_content_write_cutover_rollback.sql`
-4. `20260713064000_actor_explicit_placeholder_claim_rollback.sql`
-5. `20260713063000_atomic_volunteer_workflows_rollback.sql`
-6. `20260713062000_zltac_captain_and_team_approval_guards_rollback.sql`
-7. `20260713061000_profile_governance_and_evidence_guards_rollback.sql`
-8. `20260713060000_authenticated_data_minimization_rollback.sql`
-9. `20260713059000_atomic_payment_ledgers_rollback.sql`
-10. `20260713058000_config_and_roster_integrity_rollback.sql`
-11. `20260713057000_atomic_zltac_registration_mutations_rollback.sql`
-12. `20260713056000_limit_authenticated_profile_columns_rollback.sql`
-13. `20260713055000_legal_event_lifecycle_integrity_rollback.sql`
-14. `20260713054000_atomic_zltac_registration_lifecycle_rollback.sql`
-15. `20260713053000_minimise_acknowledgement_metadata_rollback.sql`
-16. `20260713052000_fix_team_members_recursive_rls_rollback.sql`
-17. `20260713051000_harden_function_execute_privileges_rollback.sql`
-18. `20260713050000_prevent_membership_period_overlap_rollback.sql`
-19. `20260713044000_harden_active_storage_and_legacy_payments_rollback.sql`
-20. `20260713043000_revoke_public_base_table_access_rollback.sql`
-21. `20260713042000_make_legal_storage_private_rollback.sql`
-22. `20260713041000_add_masked_public_views_rollback.sql`
-23. `20260713040000_add_legal_document_integrity_rollback.sql`
-24. `20260713033000_referee_test_attempts_rollback.sql`
-25. `20260713032000_atomic_event_archive_and_delete_rollback.sql`
-26. `20260713031000_atomic_side_event_rosters_rollback.sql`
-27. `20260713030000_atomic_competition_team_workflows_rollback.sql`
-28. `20260713020000_player_team_api_write_cutover_rollback.sql`
-29. `20260713013000_volunteer_write_lockdown_rollback.sql`
-30. `20260713012000_team_profile_write_guards_rollback.sql`
-31. `20260713011000_registration_under18_identity_primitives_rollback.sql`
-32. `20260713010000_registration_insert_lockdown_rollback.sql`
+1. `20260713067000_final_release_hardening_rollback.sql`
+2. `20260713066000_admin_content_browser_contract_rollback.sql`
+3. `20260713065500_backup_run_concurrency_guard_rollback.sql`
+4. `20260713065000_admin_content_write_cutover_rollback.sql`
+5. `20260713064000_actor_explicit_placeholder_claim_rollback.sql`
+6. `20260713063000_atomic_volunteer_workflows_rollback.sql`
+7. `20260713062000_zltac_captain_and_team_approval_guards_rollback.sql`
+8. `20260713061000_profile_governance_and_evidence_guards_rollback.sql`
+9. `20260713060000_authenticated_data_minimization_rollback.sql`
+10. `20260713059000_atomic_payment_ledgers_rollback.sql`
+11. `20260713058000_config_and_roster_integrity_rollback.sql`
+12. `20260713057000_atomic_zltac_registration_mutations_rollback.sql`
+13. `20260713056000_limit_authenticated_profile_columns_rollback.sql`
+14. `20260713055000_legal_event_lifecycle_integrity_rollback.sql`
+15. `20260713054000_atomic_zltac_registration_lifecycle_rollback.sql`
+16. `20260713053000_minimise_acknowledgement_metadata_rollback.sql`
+17. `20260713052000_fix_team_members_recursive_rls_rollback.sql`
+18. `20260713051000_harden_function_execute_privileges_rollback.sql`
+19. `20260713050000_prevent_membership_period_overlap_rollback.sql`
+20. `20260713044000_harden_active_storage_and_legacy_payments_rollback.sql`
+21. `20260713043000_revoke_public_base_table_access_rollback.sql`
+22. `20260713042000_make_legal_storage_private_rollback.sql`
+23. `20260713041000_add_masked_public_views_rollback.sql`
+24. `20260713040000_add_legal_document_integrity_rollback.sql`
+25. `20260713033000_referee_test_attempts_rollback.sql`
+26. `20260713032000_atomic_event_archive_and_delete_rollback.sql`
+27. `20260713031000_atomic_side_event_rosters_rollback.sql`
+28. `20260713030000_atomic_competition_team_workflows_rollback.sql`
+29. `20260713020000_player_team_api_write_cutover_rollback.sql`
+30. `20260713013000_volunteer_write_lockdown_rollback.sql`
+31. `20260713012000_team_profile_write_guards_rollback.sql`
+32. `20260713011000_registration_under18_identity_primitives_rollback.sql`
+33. `20260713010000_registration_insert_lockdown_rollback.sql`
 
 Do not execute that list. Every item stops fail closed. In particular, never
-skip `44000`, `54000`, `55000`, `56000`, `57000`, `58000`, `59000`, `60000`, `61000`, `62000`, `63000`, `64000`, `65000`, `65500`, or `66000`
+skip `44000`, `54000`, `55000`, `56000`, `57000`, `58000`, `59000`, `60000`, `61000`, `62000`, `63000`, `64000`, `65000`, `65500`, `66000`, or `67000`
 and continue with an older downgrade: doing so would mix incompatible
 lifecycle, data-minimisation, privilege, and roster contracts.
 

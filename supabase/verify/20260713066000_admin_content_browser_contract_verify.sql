@@ -13,15 +13,14 @@ DECLARE
   v_role text;
   v_has_maintain constant boolean :=
     current_setting('server_version_num')::integer >= 170000;
-  v_anon_reads constant text[] := ARRAY[
+  v_anon_reads text[] := ARRAY[
     'alsa_membership_periods', 'cms_global', 'document_categories',
     'documents', 'zltac_event_placings',
     'public_competition_roster_safe', 'public_competitions',
     'public_event_roster', 'public_referee_test_settings',
     'public_zltac_dynasties', 'public_zltac_event_history',
     'public_zltac_events', 'public_zltac_hall_of_fame',
-    'public_zltac_legends', 'public_zltac_teams',
-    'referee_questions_public'
+    'public_zltac_legends', 'public_zltac_teams'
   ]::text[];
   v_server_only constant text[] := ARRAY[
     'admin_asset_upload_audit', 'admin_content_mutation_audit',
@@ -38,11 +37,29 @@ DECLARE
   ]::text[];
   v_service_function text;
   v_policy_drift text;
+  v_final_hardening boolean;
   v_profile_updates constant text[] := ARRAY[
     'first_name', 'last_name', 'alias', 'dob', 'phone', 'state',
     'home_arena', 'emergency_contact_name', 'emergency_contact_phone'
   ]::text[];
 BEGIN
+  v_final_hardening := pg_get_functiondef(
+    'public.is_active_user()'::regprocedure
+  ) ILIKE '%access_revoked_at IS NULL%';
+
+  IF v_final_hardening THEN
+    IF to_regclass('public.referee_questions_public') IS NOT NULL THEN
+      RAISE EXCEPTION
+        'The retired referee question view remains after final hardening.';
+    END IF;
+  ELSE
+    IF to_regclass('public.referee_questions_public') IS NULL THEN
+      RAISE EXCEPTION
+        'The phase-3 referee question view is missing before final hardening.';
+    END IF;
+    v_anon_reads := array_append(v_anon_reads, 'referee_questions_public');
+  END IF;
+
   IF v_mutate IS NULL
      OR obj_description(v_mutate, 'pg_proc') IS DISTINCT FROM v_contract_marker THEN
     RAISE EXCEPTION 'Admin content browser contract marker is missing.';
@@ -194,13 +211,15 @@ BEGIN
       ('public_zltac_hall_of_fame'),
       ('public_zltac_legends'),
       ('public_zltac_teams'),
-      ('referee_questions_public'),
       ('referee_test_results'),
       ('triples_teams'),
       ('under_18_approvals'),
       ('volunteer_roles'),
       ('zltac_event_placings'),
       ('zltac_registrations')
+    UNION ALL
+    SELECT 'referee_questions_public'
+     WHERE NOT v_final_hardening
   ), actual(relation_name) AS (
     SELECT relation.relname
       FROM pg_class AS relation
@@ -682,7 +701,6 @@ BEGIN
   END LOOP;
 
   FOREACH v_view IN ARRAY ARRAY[
-    'referee_questions_public',
     'public_referee_test_settings',
     'public_zltac_event_history',
     'public_zltac_legends',
@@ -696,13 +714,25 @@ BEGIN
     END IF;
   END LOOP;
 
+  IF NOT v_final_hardening THEN
+    IF NOT has_table_privilege(
+         'anon', 'public.referee_questions_public', 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         'authenticated', 'public.referee_questions_public', 'SELECT'
+       )
+       OR EXISTS (
+         SELECT 1
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'referee_questions_public'
+            AND column_name = 'correct_answer'
+       ) THEN
+      RAISE EXCEPTION 'The phase-3 referee question view is not safely masked.';
+    END IF;
+  END IF;
+
   IF EXISTS (
-    SELECT 1
-      FROM information_schema.columns
-     WHERE table_schema = 'public'
-       AND table_name = 'referee_questions_public'
-       AND column_name = 'correct_answer'
-  ) OR EXISTS (
     SELECT 1
       FROM information_schema.columns
      WHERE table_schema = 'public'

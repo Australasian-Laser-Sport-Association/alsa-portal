@@ -196,6 +196,185 @@ SELECT is(
   'operational, audit, roster, and cross-user tables are server-readable only'
 );
 
+SELECT ok(
+  to_regclass('public.referee_questions_public') IS NULL,
+  'the obsolete full referee-question pool view is absent'
+);
+
+SELECT ok(
+  pg_get_functiondef('public.is_active_user()'::regprocedure)
+    ILIKE '%access_revoked_at IS NULL%'
+  AND pg_get_functiondef('public.is_committee()'::regprocedure)
+    ILIKE '%access_revoked_at IS NULL%',
+  'active-account and committee helpers explicitly reject revoked access'
+);
+
+SELECT ok(
+  pg_get_viewdef('public.own_zltac_teams'::regclass, true)
+    ILIKE '%is_active_user()%'
+  AND EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+     WHERE relation.oid = 'public.own_zltac_teams'::regclass
+       AND relation.reloptions @> ARRAY[
+         'security_barrier=true', 'security_invoker=false'
+       ]::text[]
+  ),
+  'the actor-scoped team view is active-account gated and remains a security barrier'
+);
+
+WITH expected(function_oid) AS (
+  VALUES
+    (to_regprocedure('public.touch_updated_at()')),
+    (to_regprocedure('public.set_competition_payment_reference()')),
+    (to_regprocedure('public.set_competition_amount_owing()')),
+    (to_regprocedure('public.protect_competition_registration_fields()')),
+    (to_regprocedure('public.generate_competition_payment_reference(uuid,text,uuid)'))
+)
+SELECT is(
+  (
+    SELECT count(*)
+      FROM expected
+      LEFT JOIN pg_proc AS function_row
+        ON function_row.oid = expected.function_oid
+     WHERE function_row.oid IS NULL
+        OR NOT EXISTS (
+          SELECT 1
+            FROM unnest(function_row.proconfig) AS setting(value)
+           WHERE setting.value IN ('search_path=', 'search_path=""')
+        )
+  ),
+  0::bigint,
+  'all five reviewed invoker helpers have an empty fixed search path'
+);
+
+SELECT ok(
+  has_table_privilege(
+    'service_role', 'public.payment_mutation_requests', 'SELECT'
+  )
+  AND has_table_privilege(
+    'service_role', 'public.payment_mutation_requests', 'INSERT'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_mutation_requests', 'UPDATE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_mutation_requests', 'DELETE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_mutation_requests', 'TRUNCATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.payment_mutation_requests', 'UPDATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.payment_mutation_requests', 'REFERENCES'
+  )
+  AND has_table_privilege(
+    'service_role', 'public.payment_records_history', 'SELECT'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_records_history', 'INSERT'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_records_history', 'UPDATE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_records_history', 'DELETE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.payment_records_history', 'TRUNCATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.payment_records_history', 'INSERT'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.payment_records_history', 'UPDATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.payment_records_history', 'REFERENCES'
+  )
+  AND has_table_privilege(
+    'service_role', 'public.profile_change_audit', 'SELECT'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.profile_change_audit', 'INSERT'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.profile_change_audit', 'UPDATE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.profile_change_audit', 'DELETE'
+  )
+  AND NOT has_table_privilege(
+    'service_role', 'public.profile_change_audit', 'TRUNCATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.profile_change_audit', 'INSERT'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.profile_change_audit', 'UPDATE'
+  )
+  AND NOT has_any_column_privilege(
+    'service_role', 'public.profile_change_audit', 'REFERENCES'
+  ),
+  'service-role receipt and audit grants exactly match the reviewed least-privilege contract'
+);
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1
+      FROM (VALUES
+        ('payment_mutation_requests'),
+        ('payment_records_history'),
+        ('profile_change_audit')
+      ) AS protected_table(name)
+     WHERE has_table_privilege(
+             'service_role', format('public.%I', protected_table.name), 'REFERENCES'
+           )
+        OR has_table_privilege(
+             'service_role', format('public.%I', protected_table.name), 'TRIGGER'
+           )
+  )
+  AND NOT EXISTS (
+    SELECT 1
+      FROM pg_attribute AS attribute
+      CROSS JOIN LATERAL aclexplode(attribute.attacl) AS acl
+      JOIN pg_roles AS grantee_role ON grantee_role.oid = acl.grantee
+     WHERE attribute.attrelid IN (
+       'public.payment_mutation_requests'::regclass,
+       'public.payment_records_history'::regclass,
+       'public.profile_change_audit'::regclass
+     )
+       AND attribute.attnum > 0
+       AND NOT attribute.attisdropped
+       AND grantee_role.rolname = 'service_role'
+       AND acl.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+  ),
+  'service-role receipt and audit tables have no hidden column or extended privileges'
+);
+
+SELECT is(
+  CASE
+    WHEN current_setting('server_version_num')::integer >= 170000 THEN (
+      SELECT count(*)
+        FROM (VALUES
+          ('payment_mutation_requests'),
+          ('payment_records_history'),
+          ('profile_change_audit')
+        ) AS protected_table(name)
+       WHERE has_table_privilege(
+         'service_role',
+         format('public.%I', protected_table.name),
+         'MAINTAIN'
+       )
+    )
+    ELSE 0::bigint
+  END,
+  0::bigint,
+  'service-role receipt and audit tables have no PostgreSQL 17 MAINTAIN privilege'
+);
+
 WITH allowed(name) AS (
   VALUES
     ('alsa_membership_periods'), ('cms_global'), ('document_categories'),
@@ -204,8 +383,7 @@ WITH allowed(name) AS (
     ('public_event_roster'), ('public_referee_test_settings'),
     ('public_zltac_dynasties'), ('public_zltac_event_history'),
     ('public_zltac_events'), ('public_zltac_hall_of_fame'),
-    ('public_zltac_legends'), ('public_zltac_teams'),
-    ('referee_questions_public')
+    ('public_zltac_legends'), ('public_zltac_teams')
 )
 SELECT is(
   (
@@ -235,7 +413,7 @@ WITH expected(name) AS (
     ('public_referee_test_settings'), ('public_zltac_dynasties'),
     ('public_zltac_event_history'), ('public_zltac_events'),
     ('public_zltac_hall_of_fame'), ('public_zltac_legends'),
-    ('public_zltac_teams'), ('referee_questions_public'),
+    ('public_zltac_teams'),
     ('referee_test_results'), ('triples_teams'), ('under_18_approvals'),
     ('volunteer_roles'), ('zltac_event_placings'), ('zltac_registrations')
 ), actual(name) AS (
