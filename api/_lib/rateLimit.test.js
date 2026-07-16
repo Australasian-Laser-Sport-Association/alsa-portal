@@ -98,7 +98,7 @@ describe('in-memory rate-limit fallback', () => {
     }
   })
 
-  it('keeps Vercel previews available even when NODE_ENV is production', async () => {
+  it('fails closed in Vercel Preview when a required distributed limiter is missing', async () => {
     const previousUrl = process.env.UPSTASH_REDIS_REST_URL
     const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN
     const previousVercelEnv = process.env.VERCEL_ENV
@@ -108,11 +108,19 @@ describe('in-memory rate-limit fallback', () => {
     process.env.VERCEL_ENV = 'preview'
     process.env.NODE_ENV = 'production'
 
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const headers = {}
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const res = {
-      setHeader(name, value) { headers[name] = value },
-      status() { throw new Error('preview request should not be rejected') },
+      statusCode: null,
+      body: null,
+      setHeader() { throw new Error('rate-limit headers should not be set') },
+      status(code) {
+        this.statusCode = code
+        return this
+      },
+      json(payload) {
+        this.body = payload
+        return this
+      },
     }
 
     try {
@@ -122,10 +130,11 @@ describe('in-memory rate-limit fallback', () => {
         window: '1 m',
         prefix: 'test-preview',
         requireDistributed: true,
-      })).resolves.toBe(true)
-      expect(headers['X-RateLimit-Limit']).toBe(2)
+      })).resolves.toBe(false)
+      expect(res.statusCode).toBe(503)
+      expect(res.body).toEqual({ error: 'Service temporarily unavailable. Please try again later.' })
     } finally {
-      warn.mockRestore()
+      error.mockRestore()
       if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL
       else process.env.UPSTASH_REDIS_REST_URL = previousUrl
       if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN

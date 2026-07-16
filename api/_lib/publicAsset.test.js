@@ -3,6 +3,8 @@ import {
   brandedAssetUrlFromSupabase,
   isAllowedContentType,
   isAllowedPublicAsset,
+  isMutableActorAssetBucket,
+  validatedMutableAssetRevision,
   validatedRenderParams,
 } from './publicAsset.js'
 
@@ -34,6 +36,16 @@ describe('public asset proxy policy', () => {
       .toBe('width=1280&quality=70&resize=contain&format=webp')
     expect(validatedRenderParams({ width: '99999' })).toBeNull()
     expect(validatedRenderParams({ width: '1280', format: 'svg' })).toBeNull()
+  })
+
+  it('accepts only bounded cache revisions for mutable actor assets', () => {
+    expect(isMutableActorAssetBucket('avatars')).toBe(true)
+    expect(isMutableActorAssetBucket('team-logos')).toBe(true)
+    expect(isMutableActorAssetBucket('event-covers')).toBe(false)
+    expect(validatedMutableAssetRevision('1721048400000')).toBe('1721048400000')
+    expect(validatedMutableAssetRevision('upload-2')).toBe('upload-2')
+    expect(validatedMutableAssetRevision('upload 2')).toBeNull()
+    expect(validatedMutableAssetRevision('x'.repeat(65))).toBeNull()
   })
 })
 

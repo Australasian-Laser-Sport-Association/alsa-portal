@@ -1,13 +1,17 @@
 import supabaseAdmin from './_lib/supabase.js'
+import { Readable } from 'node:stream'
 import { sendServerError } from './_lib/apiErrors.js'
 import { clientIp, enforceRateLimit } from './_lib/rateLimit.js'
 import {
   PUBLIC_ASSET_BUCKETS,
+  brandedAssetPath,
   isAllowedContentType,
   isAllowedPublicAsset,
+  isMutableActorAssetBucket,
   normalizeQueryValue,
   sanitizeFilename,
   shouldUseImageRenderer,
+  validatedMutableAssetRevision,
   validatedRenderParams,
 } from './_lib/publicAsset.js'
 
@@ -50,8 +54,23 @@ const PUBLIC_ZLTAC_COLUMNS =
 // ── event ───────────────────────────────────────────────────────────────────
 
 async function handleEvent(req, res) {
-  const year = parseInt(req.query.year)
-  if (!year) return res.status(400).json({ error: 'year is required' })
+  const rawYear = String(normalizeQueryValue(req.query.year) ?? '').trim()
+  if (!/^\d{4}$/.test(rawYear)) {
+    return res.status(400).json({ error: 'a valid four-digit year is required' })
+  }
+  const year = Number(rawYear)
+
+  // The service-role client can read base tables, so explicitly gate roster
+  // discovery through the public event surface before touching side-event
+  // records. Draft events must not become discoverable through this route.
+  const { data: publicEvent, error: eventError } = await supabaseAdmin
+    .from('public_zltac_events')
+    .select('id')
+    .eq('year', year)
+    .in('status', ['open', 'closed', 'archived'])
+    .maybeSingle()
+  if (eventError) return sendServerError(res, eventError, 'public:event-visibility')
+  if (!publicEvent) return res.json({ doubles: [], triples: [] })
 
   const [{ data: doubles, error: e1 }, { data: triples, error: e2 }] = await Promise.all([
     supabaseAdmin.from('doubles_pairs').select('id, event_year, player1_id, player2_id, confirmed').eq('event_year', year).eq('confirmed', true),
@@ -59,21 +78,80 @@ async function handleEvent(req, res) {
   ])
 
   if (e1 || e2) return sendServerError(res, e1 ?? e2, 'public:event')
-  return res.json({ doubles: doubles ?? [], triples: triples ?? [] })
+
+  // Profile UUIDs are internal join keys, never public response fields.
+  const profileIds = [...new Set([
+    ...(doubles ?? []).flatMap(pair => [pair.player1_id, pair.player2_id]),
+    ...(triples ?? []).flatMap(team => [team.player1_id, team.player2_id, team.player3_id]),
+  ].filter(Boolean))]
+
+  let aliasById = new Map()
+  if (profileIds.length > 0) {
+    const { data: profiles, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, alias')
+      .in('id', profileIds)
+      .eq('suspended', false)
+    if (profileError) return sendServerError(res, profileError, 'public:event-aliases')
+    aliasById = new Map((profiles ?? []).map(profile => [profile.id, profile.alias]))
+  }
+
+  const hasPublicAlias = profileId => {
+    const alias = aliasById.get(profileId)
+    return typeof alias === 'string' && alias.trim().length > 0
+  }
+
+  return res.json({
+    doubles: (doubles ?? [])
+      .filter(pair => hasPublicAlias(pair.player1_id) && hasPublicAlias(pair.player2_id))
+      .map(pair => ({
+      id: pair.id,
+      event_year: pair.event_year,
+      player1_alias: aliasById.get(pair.player1_id),
+      player2_alias: aliasById.get(pair.player2_id),
+      confirmed: pair.confirmed,
+    })),
+    triples: (triples ?? [])
+      .filter(team => (
+        hasPublicAlias(team.player1_id)
+        && hasPublicAlias(team.player2_id)
+        && hasPublicAlias(team.player3_id)
+      ))
+      .map(team => ({
+      id: team.id,
+      event_year: team.event_year,
+      player1_alias: aliasById.get(team.player1_id),
+      player2_alias: aliasById.get(team.player2_id),
+      player3_alias: aliasById.get(team.player3_id),
+      confirmed: team.confirmed,
+    })),
+  })
 }
 
 // ── committee ───────────────────────────────────────────────────────────────
+
+function publicDirectoryPerson(profile, { includePosition = false } = {}) {
+  return {
+    first_name: profile?.first_name ?? null,
+    last_name: profile?.last_name ?? null,
+    alias: profile?.alias ?? null,
+    avatar_url: profile?.avatar_url ?? null,
+    ...(includePosition ? { alsa_position: profile?.alsa_position ?? null } : {}),
+  }
+}
 
 async function handleCommittee(_req, res) {
   const [{ data: alsaData, error: alsaErr }, { data: zltacData, error: zltacErr }] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, avatar_url, alsa_position')
-      .contains('roles', ['alsa_committee']),
+      .select('first_name, last_name, alias, avatar_url, alsa_position')
+      .contains('roles', ['alsa_committee'])
+      .eq('suspended', false),
     supabaseAdmin
       .from('profiles')
-      .select('id, first_name, last_name, alias, avatar_url')
-      .contains('roles', ['zltac_committee']),
+      .select('first_name, last_name, alias, avatar_url')
+      .contains('roles', ['zltac_committee'])
+      .eq('suspended', false),
   ])
 
   if (alsaErr || zltacErr) {
@@ -84,8 +162,10 @@ async function handleCommittee(_req, res) {
     (a.alias ?? a.first_name ?? '').localeCompare(b.alias ?? b.first_name ?? '')
 
   return res.json({
-    alsa: (alsaData ?? []).slice().sort(sortFn),
-    zltac: (zltacData ?? []).slice().sort(sortFn),
+    alsa: (alsaData ?? []).slice().sort(sortFn).map(profile => (
+      publicDirectoryPerson(profile, { includePosition: true })
+    )),
+    zltac: (zltacData ?? []).slice().sort(sortFn).map(profile => publicDirectoryPerson(profile)),
   })
 }
 
@@ -106,7 +186,7 @@ async function handleMembers(_req, res) {
       .maybeSingle(),
     supabaseAdmin
       .from('alsa_lifetime_members')
-      .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url)'),
+      .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url, suspended)'),
   ])
 
   if (periodErr) return sendServerError(res, periodErr, 'public:members-period')
@@ -114,14 +194,20 @@ async function handleMembers(_req, res) {
 
   const lifetime_members = (lifetimeRows ?? [])
     .map(m => m.profiles)
-    .filter(Boolean)
+    .filter(profile => profile && !profile.suspended)
     .sort((a, b) => (a.alias ?? a.first_name ?? '').localeCompare(b.alias ?? b.first_name ?? ''))
 
-  if (!period) return res.json({ current_period: null, members: [], lifetime_members })
+  if (!period) {
+    return res.json({
+      current_period: null,
+      members: [],
+      lifetime_members: lifetime_members.map(profile => publicDirectoryPerson(profile)),
+    })
+  }
 
   const { data: memberships, error: membershipsErr } = await supabaseAdmin
     .from('alsa_memberships')
-    .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url)')
+    .select('profile_id, profiles:profile_id (id, first_name, last_name, alias, avatar_url, suspended)')
     .eq('period_id', period.id)
 
   if (membershipsErr) return sendServerError(res, membershipsErr, 'public:memberships')
@@ -129,11 +215,15 @@ async function handleMembers(_req, res) {
   const lifetimeIds = new Set(lifetime_members.map(p => p.id))
   const members = (memberships ?? [])
     .map(m => m.profiles)
-    .filter(Boolean)
+    .filter(profile => profile && !profile.suspended)
     .filter(p => !lifetimeIds.has(p.id))
     .sort((a, b) => (a.alias ?? a.first_name ?? '').localeCompare(b.alias ?? b.first_name ?? ''))
 
-  return res.json({ current_period: period, members, lifetime_members })
+  return res.json({
+    current_period: period,
+    members: members.map(profile => publicDirectoryPerson(profile)),
+    lifetime_members: lifetime_members.map(profile => publicDirectoryPerson(profile)),
+  })
 }
 
 // ── competitions ────────────────────────────────────────────────────────────
@@ -156,16 +246,12 @@ async function handleMembers(_req, res) {
 
 async function handleCompetitions(req, res) {
   const slug = typeof req.query.slug === 'string' ? req.query.slug.trim() : ''
-  const nowIso = new Date().toISOString()
 
   if (slug) {
     const { data, error } = await supabaseAdmin
-      .from('competitions')
+      .from('public_competitions')
       .select(PUBLIC_COMPETITION_COLUMNS)
       .eq('slug', slug)
-      .is('archived_at', null)
-      // Postgrest can't OR (a IS NULL, a > now) cleanly; .or() handles it.
-      .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
       .maybeSingle()
     if (error) return sendServerError(res, error, 'public:competition-detail')
     if (!data) return res.status(404).json({ error: 'competition not found' })
@@ -176,15 +262,13 @@ async function handleCompetitions(req, res) {
   // the client never has to render a partial feed.
   const [mainEventsResult, competitionsResult] = await Promise.all([
     supabaseAdmin
-      .from('zltac_events')
+      .from('public_zltac_events')
       .select(PUBLIC_ZLTAC_COLUMNS)
       .in('status', ['open', 'closed', 'archived'])
       .order('start_date', { ascending: true }),
     supabaseAdmin
-      .from('competitions')
+      .from('public_competitions')
       .select(PUBLIC_COMPETITION_COLUMNS)
-      .is('archived_at', null)
-      .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
       .order('start_date', { ascending: true }),
   ])
 
@@ -199,10 +283,9 @@ async function handleCompetitions(req, res) {
 
 // ── roster ──────────────────────────────────────────────────────────────────
 // Anon-facing public roster for a pre-nationals competition. Reads from the
-// definer-mode view public.public_competition_roster (see migration
-// 20260527030000), which exposes only alias / first_name / last_name plus
-// team metadata. Payment fields, audit timestamps, emails, etc. stay inside
-// the locked-down base tables. The view's WHERE clause also enforces:
+// alias-only public_competition_roster_safe view. Profile UUIDs, legal names,
+// payment fields, audit timestamps, and emails stay inside the locked-down
+// base tables. The view's WHERE clause also enforces:
 //   - competition not archived
 //   - registration not yet closed
 //   - team_members.invite_status = 'accepted' (pending invites stay private)
@@ -219,33 +302,26 @@ async function handleRoster(req, res) {
   // Look up the competition to source its name (the view does not expose
   // name) and to surface a clean 404 when the slug is unknown / archived /
   // closed — even though the view itself also filters on those predicates.
-  const nowIso = new Date().toISOString()
   const { data: comp, error: compErr } = await supabaseAdmin
-    .from('competitions')
-    .select('id, slug, name, archived_at, registration_close_at')
+    .from('public_competitions')
+    .select('id, slug, name')
     .eq('slug', slug)
-    .is('archived_at', null)
-    .or(`registration_close_at.is.null,registration_close_at.gt.${nowIso}`)
     .maybeSingle()
   if (compErr) return sendServerError(res, compErr, 'public:roster-competition')
   if (!comp) return res.status(404).json({ error: 'competition not found' })
 
   const { data: rows, error: rosterErr } = await supabaseAdmin
-    .from('public_competition_roster')
-    .select('team_id, team_name, team_colour, alias, first_name, last_name, role_in_team')
+    .from('public_competition_roster_safe')
+    .select('team_id, team_name, team_colour, alias, role_in_team')
     .eq('competition_slug', slug)
   if (rosterErr) return sendServerError(res, rosterErr, 'public:roster')
 
   // Group flat rows into { teams[], unteamed_players[] }. Each player entry
-  // exposes only the three public columns.
+  // exposes only an alias.
   const teamMap = new Map()
   const unteamed = []
   for (const row of rows ?? []) {
-    const entry = {
-      alias: row.alias,
-      first_name: row.first_name,
-      last_name: row.last_name,
-    }
+    const entry = { alias: row.alias }
     if (row.team_id == null) {
       unteamed.push(entry)
       continue
@@ -288,6 +364,47 @@ async function handleRoster(req, res) {
 
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
+// Only immutable, active publications are listed. Storage paths are translated
+// to branded application URLs; the private Supabase origin is never returned.
+async function handleRequiredDocuments(_req, res) {
+  const { data, error } = await supabaseAdmin
+    .from('legal_documents')
+    .select([
+      'id',
+      'document_type',
+      'version',
+      'file_path',
+      'original_filename',
+      'effective_date',
+      'requires_reacceptance',
+      'content_sha256',
+      'object_size',
+      'published_at',
+    ].join(', '))
+    .eq('is_active', true)
+    .not('published_at', 'is', null)
+    .not('content_sha256', 'is', null)
+    .not('object_size', 'is', null)
+    .order('document_type', { ascending: true })
+
+  if (error) return sendServerError(res, error, 'public:required-documents')
+
+  return res.json({
+    documents: (data ?? []).map(document => ({
+      id: document.id,
+      document_type: document.document_type,
+      version: document.version,
+      original_filename: document.original_filename,
+      effective_date: document.effective_date,
+      requires_reacceptance: document.requires_reacceptance,
+      content_sha256: document.content_sha256,
+      object_size: document.object_size,
+      published_at: document.published_at,
+      url: brandedAssetPath('legal-documents', document.file_path),
+    })),
+  })
+}
+
 function sendAssetError(res, status, message) {
   res.status(status).json({ error: message })
 }
@@ -320,30 +437,56 @@ function isAllowedAssetHost(req) {
   }
 }
 
-function setAssetHeaders(res, bucket, path, contentType, upstreamHeaders) {
+function setAssetHeaders(res, bucket, path, contentType, upstreamHeaders, filename) {
   res.setHeader('Content-Type', contentType)
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
-  res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600')
+  res.setHeader(
+    'Cache-Control',
+    bucket === 'legal-documents'
+      ? 'private, no-store, max-age=0'
+      : isMutableActorAssetBucket(bucket)
+        ? 'public, max-age=0, must-revalidate'
+      : 'public, max-age=300, s-maxage=3600',
+  )
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
 
   const length = upstreamHeaders.get('content-length')
   if (length) res.setHeader('Content-Length', length)
 
+  for (const header of ['accept-ranges', 'content-range', 'etag', 'last-modified']) {
+    const value = upstreamHeaders.get(header)
+    if (value) res.setHeader(header, value)
+  }
+
   if (bucket === 'legal-documents') {
-    res.setHeader('Content-Disposition', `inline; filename="${sanitizeFilename(path)}"`)
+    res.setHeader('Content-Disposition', `inline; filename="${sanitizeFilename(filename ?? path)}"`)
   }
 }
 
 function publicAssetUrlFor(bucket, path, query) {
   const { publicUrl } = supabaseAdmin.storage.from(bucket).getPublicUrl(path).data
+  const requestedRevision = normalizeQueryValue(query?.v)
+  const hasRequestedRevision = requestedRevision != null && requestedRevision !== ''
+  const revision = isMutableActorAssetBucket(bucket) && hasRequestedRevision
+    ? validatedMutableAssetRevision(requestedRevision)
+    : null
 
-  if (!shouldUseImageRenderer(bucket, query)) return publicUrl
+  if (isMutableActorAssetBucket(bucket) && hasRequestedRevision && !revision) {
+    return null
+  }
+
+  const parsed = new URL(publicUrl)
+
+  if (!shouldUseImageRenderer(bucket, query)) {
+    if (revision) parsed.searchParams.set('v', revision)
+    return parsed.toString()
+  }
 
   const params = validatedRenderParams(query)
   if (!params) return null
+  if (revision) params.set('v', revision)
 
-  const parsed = new URL(publicUrl)
   parsed.pathname = parsed.pathname.replace(
     '/storage/v1/object/public/',
     '/storage/v1/render/image/public/',
@@ -369,17 +512,57 @@ async function handleAsset(req, res) {
     return sendAssetError(res, 404, 'Public asset not found')
   }
 
-  const upstreamUrl = publicAssetUrlFor(bucket, path, req.query)
+  let upstreamUrl
+  let legalDocument = null
+  if (bucket === 'legal-documents') {
+    const { data, error } = await supabaseAdmin
+      .from('legal_documents')
+      .select('id, original_filename')
+      .eq('file_path', path)
+      .eq('is_active', true)
+      .not('published_at', 'is', null)
+      .not('content_sha256', 'is', null)
+      .not('object_size', 'is', null)
+      .maybeSingle()
+
+    if (error) return sendServerError(res, error, 'public:legal-document-lookup')
+    if (!data) return sendAssetError(res, 404, 'Public asset not found')
+    legalDocument = data
+
+    const { data: signed, error: signedError } = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(path, 60)
+    if (signedError || !signed?.signedUrl) {
+      return sendServerError(
+        res,
+        signedError ?? new Error('Required document URL generation returned no URL'),
+        'public:legal-document-sign',
+      )
+    }
+    upstreamUrl = signed.signedUrl
+  } else {
+    upstreamUrl = publicAssetUrlFor(bucket, path, req.query)
+  }
   if (!upstreamUrl) return sendAssetError(res, 404, 'Public asset not found')
 
-  let upstream = await fetch(upstreamUrl, { method: req.method })
-  if (!upstream.ok && shouldUseImageRenderer(bucket, req.query)) {
+  const range = typeof req.headers?.range === 'string' && /^bytes=\d*-\d*$/.test(req.headers.range.trim())
+    ? req.headers.range.trim()
+    : null
+  const fetchOptions = {
+    method: req.method,
+    headers: range ? { Range: range } : undefined,
+  }
+
+  let upstream = await fetch(upstreamUrl, fetchOptions)
+  if (!upstream.ok
+      && shouldUseImageRenderer(bucket, req.query)
+      && !isMutableActorAssetBucket(bucket)) {
     // Supabase's image renderer can transiently fail even when the original
-    // public object is healthy. Preserve the branded asset URL and serve the
-    // original image rather than showing a broken banner/avatar.
+    // trusted admin asset is healthy. Preserve the branded asset URL and serve
+    // the original rather than showing a broken banner or event image.
     const fallbackUrl = publicAssetUrlFor(bucket, path, {})
     if (fallbackUrl && fallbackUrl !== upstreamUrl) {
-      upstream = await fetch(fallbackUrl, { method: req.method })
+      upstream = await fetch(fallbackUrl, fetchOptions)
     }
   }
   if (!upstream.ok) {
@@ -391,14 +574,31 @@ async function handleAsset(req, res) {
     return sendAssetError(res, 404, 'Public asset not found')
   }
 
-  setAssetHeaders(res, bucket, path, contentType, upstream.headers)
+  setAssetHeaders(
+    res,
+    bucket,
+    path,
+    contentType,
+    upstream.headers,
+    legalDocument?.original_filename,
+  )
 
   if (req.method === 'HEAD') {
-    return res.status(200).end()
+    return res.status(upstream.status).end()
+  }
+
+  // Node's Readable.fromWeb applies backpressure and avoids buffering an
+  // entire PDF or video inside a serverless function. Minimal response mocks
+  // used by unit tests do not expose the stream interface, so retain a small
+  // compatibility fallback for those non-production objects.
+  if (upstream.body && typeof res.write === 'function' && typeof res.on === 'function') {
+    res.status(upstream.status)
+    Readable.fromWeb(upstream.body).pipe(res)
+    return
   }
 
   const body = Buffer.from(await upstream.arrayBuffer())
-  return res.status(200).send(body)
+  return res.status(upstream.status).send(body)
 }
 
 export default async function handler(req, res) {
@@ -413,5 +613,6 @@ export default async function handler(req, res) {
   if (resource === 'members')      return handleMembers(req, res)
   if (resource === 'competitions') return handleCompetitions(req, res)
   if (resource === 'roster')       return handleRoster(req, res)
-  return res.status(400).json({ error: 'resource query param must be "event", "committee", "members", "competitions", "roster", or "asset"' })
+  if (resource === 'required-documents') return handleRequiredDocuments(req, res)
+  return res.status(400).json({ error: 'resource query param must be "event", "committee", "members", "competitions", "roster", "required-documents", or "asset"' })
 }

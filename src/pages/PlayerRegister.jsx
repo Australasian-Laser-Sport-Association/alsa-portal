@@ -4,9 +4,12 @@ import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
 import { eventPhase } from '../lib/eventPhase'
+import { isValidDateOfBirth } from '../lib/dateOfBirth.js'
 import Footer from '../components/Footer'
 import VolunteerSection from '../components/VolunteerSection'
 import PlaceholderClaimPrompt from '../components/PlaceholderClaimPrompt.jsx'
+
+const REGISTRATION_CONFLICT_MESSAGE = 'This registration conflicts with an existing record. Check your Player Hub for a registration linked to your verified email, or contact the committee.'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 
@@ -40,17 +43,13 @@ export default function PlayerRegister() {
   // it's persisted after the registration row is created (below).
   const volunteerRef = useRef({ isVolunteering: false, role_ids: [], notes: '' })
 
-  // Chunk 2: ref to the shared claim prompt so we can imperatively open the
-  // modal when the server precheck returns a 'placeholder_exists' conflict.
-  const claimPromptRef = useRef(null)
-
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user || profileLoading) return
 
     async function load() {
       const [{ data: ev }, { data: reg }] = await Promise.all([
-        supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
+        supabase.from('public_zltac_events').select('id, name, year, status, reg_open_date, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
         supabase.from('zltac_registrations').select('id, team_id').eq('user_id', user.id).eq('year', parseInt(year)).maybeSingle(),
       ])
       setEvent(ev)
@@ -85,7 +84,10 @@ export default function PlayerRegister() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!firstName.trim() || !lastName.trim()) { setError('Full name is required.'); return }
-    if (!dob) { setError('Date of birth is required.'); return }
+    if (!isValidDateOfBirth(dob)) {
+      setError('Enter a valid date of birth that is not in the future.')
+      return
+    }
     if (volunteerRef.current.isVolunteering && !(volunteerRef.current.role_ids?.length)) {
       setError('Select at least one volunteer role, or turn off volunteering.'); return
     }
@@ -93,25 +95,13 @@ export default function PlayerRegister() {
     setSubmitting(true)
     setError('')
 
-    // Server-side precheck: cap-check for max_players AND placeholder-alias
-    // collision detection (Chunk 2). The precheck returns ok:false +
-    // placeholder_id when there's already a placeholder registration with this
-    // caller's alias; we surface the claim modal directly so the user can
-    // absorb it instead of hitting the payment_reference UNIQUE constraint at
-    // insert time. The ok:true / 4xx error paths are unchanged.
+    // Best-effort server-side cap check. The atomic registration RPC repeats
+    // this decision while holding the event lock.
     try {
-      const pre = await apiFetch('/api/player?resource=registration', {
+      await apiFetch('/api/player?resource=registration', {
         method: 'POST',
         body: JSON.stringify({ action: 'precheck-register', year: parseInt(year) }),
       })
-      if (pre?.ok === false && pre.error === 'placeholder_exists' && pre.placeholder_id) {
-        setSubmitting(false)
-        setError(pre.message || 'A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
-        if (claimPromptRef.current?.openForPlaceholder) {
-          claimPromptRef.current.openForPlaceholder(pre.placeholder_id)
-        }
-        return
-      }
     } catch (err) {
       setSubmitting(false)
       setError(err?.message || 'Could not start registration. Please try again.')
@@ -145,6 +135,9 @@ export default function PlayerRegister() {
         return
       }
       console.error('[PlayerRegister] Profile update failed:', profErr.message)
+      setSubmitting(false)
+      setError('We could not save your profile and date of birth. No registration was created. Please try again.')
+      return
     }
 
     let regRow
@@ -154,29 +147,24 @@ export default function PlayerRegister() {
         body: JSON.stringify({
           action: 'register',
           year: parseInt(year),
+          dob,
           emergency_contact_name: emergencyName.trim() || null,
           emergency_contact_phone: emergencyPhone.trim() || null,
         }),
       })
-      if (regRow?.ok === false && regRow.error === 'placeholder_exists' && regRow.placeholder_id) {
+      if (regRow?.ok === false) {
         setSubmitting(false)
-        setError(regRow.message || 'A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
-        if (claimPromptRef.current?.openForPlaceholder) {
-          claimPromptRef.current.openForPlaceholder(regRow.placeholder_id)
-        }
+        setError(REGISTRATION_CONFLICT_MESSAGE)
         return
       }
     } catch (regError) {
       setSubmitting(false)
-      // Friendly catch for the payment_reference UNIQUE collision (a
-      // placeholder with the same alias has a registration in this year). The
-      // precheck above should usually catch this first, but a race between
-      // precheck and insert could still let it through — fall back to a
-      // human-readable error and keep the claim banner visible.
       const msg = regError.message ?? ''
       const lowerMsg = msg.toLowerCase()
-      if (lowerMsg.includes('registration with this alias already exists') || msg.includes('zltac_registrations_payment_reference_key')) {
-        setError('A registration with this alias already exists for this event. If that\'s you, claim it via the banner above or check your Player Hub.')
+      if (lowerMsg.includes('conflicts with an existing record')
+          || lowerMsg.includes('registration with this alias already exists')
+          || msg.includes('zltac_registrations_payment_reference_key')) {
+        setError(REGISTRATION_CONFLICT_MESSAGE)
         return
       }
       setError(msg || 'Registration failed. Please try again.')
@@ -262,12 +250,10 @@ export default function PlayerRegister() {
       </section>
 
       <section className="max-w-xl mx-auto px-6 py-16">
-        {/* Chunk 2 placeholder-claim prompt. Shows above the form when the
-            committee has already created a placeholder matching this user's
-            alias or email; claiming redirects to the Player Hub. */}
+        {/* Shows only committee-created registrations associated with this
+            account's verified email. Claiming redirects to the Player Hub. */}
         {user && (
           <PlaceholderClaimPrompt
-            ref={claimPromptRef}
             userId={user.id}
             onClaimed={() => navigate('/player-hub')}
           />

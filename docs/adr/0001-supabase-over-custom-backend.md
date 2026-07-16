@@ -21,7 +21,7 @@ The portal is built and maintained by a single volunteer developer on the sub-co
 
 We also have specific non-functional requirements that shaped the choice:
 
-- **Row-level access control is the primary security model.** The data includes information about minors, signed legal documents, and financial records. We want ownership and role checks enforced by the database itself, not by application code that could have a bug or be bypassed (see [ADR-0002](./0002-rls-plus-grant-security-model.md)).
+- **Row-level access control is the primary security model.** The data includes information about minors, required acknowledgement and consent records, and financial records. We want ownership and role checks enforced by the database itself, not by application code that could have a bug or be bypassed (see [ADR-0002](./0002-rls-plus-grant-security-model.md)).
 - **The frontend is a static SPA.** React + Vite, hosted on Vercel as static assets plus serverless functions. There is no long-running application server to own state or hold database connections.
 - **Cost must scale with use, not with capacity.** A quiet off-season month should cost close to nothing; tournament registration weeks should scale up without manual intervention.
 
@@ -37,26 +37,54 @@ The portal uses **Supabase** as its backend. Supabase provides the Postgres data
 | Authentication | Supabase Auth (GoTrue) | Email + password signup and login, email confirmation, password reset, session management |
 | Authorisation | Postgres Row-Level Security | Per-row access policies written in SQL, evaluated by the database on every query |
 | File storage | Supabase Storage | Policy PDFs, guardian forms, media releases, future team logos |
-| Server-side privileged operations | Service role key, called from Vercel API routes | Committee admin actions that must bypass RLS (see [ADR-0002](./0002-rls-plus-grant-security-model.md), Layer 3) |
+| Server-side application mutations | Service role key, called from Vercel API routes | Ownership-checked member workflows and role-checked committee actions (see [ADR-0002](./0002-rls-plus-grant-security-model.md), Layer 3) |
 | Migrations | Supabase CLI | SQL migrations versioned in the repository, applied to production via the CLI |
 
 ### How it fits with the frontend
 
-The React SPA talks directly to Supabase using the `@supabase/supabase-js` client library and the public **anon key**. Every query is subject to RLS policies. The anon key is not a secret — its security posture assumes it will be visible in the browser — and it can only do what the `anon` or `authenticated` Postgres role has been granted.
+The React SPA talks directly to Supabase using the `@supabase/supabase-js`
+client library and the public **anon key** for authentication and reviewed
+public or own-account reads. The only direct application-table mutation is the
+column-limited own-profile update. Every direct query is subject to Postgres
+grants and RLS policies. The anon key is not a secret - its security posture
+assumes it will be visible in the browser - and it can only do what the `anon`
+or `authenticated` Postgres role has been granted.
 
-For operations that require bypassing RLS (committee admin, cross-user reads), the frontend calls Vercel API routes that run server-side and use the Supabase **service role key**, which is held only as a Vercel environment variable. This split is the subject of [ADR-0002](./0002-rls-plus-grant-security-model.md) and is currently being migrated from a transitional shim to proper API routes (tracked in the backlog as the `supabaseAdmin` migration).
+Registration, team, payment, acknowledgement, under-18, and committee
+mutations, plus cross-user reads, use authenticated Vercel API routes. Those
+routes hold the Supabase **service role key** only as a server-side Vercel
+environment variable and enforce account, ownership, lifecycle, and role checks
+before querying. This split is the subject of
+[ADR-0002](./0002-rls-plus-grant-security-model.md).
 
 ### Hosting and cost model
 
-The portal is hosted on Supabase's free tier during initial rollout. The free tier provides enough database, auth, and storage capacity to comfortably cover ALSA's scale (low hundreds of active members, one major tournament per year, handful of side events). Upgrading to the Pro tier ($25/month/project) unlocks specific features we want eventually — leaked-password detection, higher email rate limits, daily backups — but is not required for launch.
+> **Production-readiness addendum (2026-07-14):** The original free-tier
+> launch assumption below is no longer an approved production configuration.
+> The portal currently deploys 12 direct Vercel Functions, which consumes the
+> full Hobby allowance, and Hobby is restricted to personal use. Production
+> must use a confirmed eligible Vercel plan, with Pro the expected choice for
+> this association-operated service. Supabase Free can pause during quiet
+> periods and has no managed daily backup entitlement, which is unsuitable for
+> an off-season member portal holding member, registration, and financial
+> records. Confirm Supabase Pro for production and retain the independent
+> encrypted backup and
+> restore controls in the operations runbook. Staging may use a lower tier if
+> its isolation and availability limits are explicitly accepted.
 
-Vercel hosts the frontend and API routes on its Hobby tier, also free for our traffic levels.
+The original decision assumed Supabase Free and Vercel Hobby for the initial
+rollout because their traffic and storage allowances fit ALSA's size. That
+historical cost assumption is superseded by the production-readiness addendum
+above; it is not approval to launch this association service on those tiers.
 
 ## Consequences
 
 ### Positive
 
-- **We do not operate a server.** No OS patching, no Node process supervision, no database backups script, no TLS certificate renewal, no log rotation. For a volunteer committee, this is the single largest benefit.
+- **We do not operate a server.** There is no OS patching, Node process
+  supervision, or TLS certificate renewal. The committee still owns monitoring,
+  encrypted off-project backups, restore drills, and retention evidence; those
+  controls are automated and documented rather than delegated away.
 
 - **Security model is database-native.** RLS policies are evaluated by Postgres itself. A bug in the application cannot bypass them. This aligns with our defence-in-depth philosophy (see [ADR-0002](./0002-rls-plus-grant-security-model.md)).
 
@@ -88,7 +116,7 @@ Vercel hosts the frontend and API routes on its Hobby tier, also free for our tr
 
 - **Edge Functions are available but unused.** Supabase offers Deno-based edge functions as an alternative to Vercel API routes. We have chosen to keep server-side code on Vercel for stack coherence, but this could change.
 
-- **Supabase Storage is used lightly.** Most policy PDFs are static assets bundled with the frontend. Storage is reserved for user-uploaded files (guardian forms, media releases) and dynamic documents.
+- **Supabase Storage is used lightly.** Most policy PDFs are static assets bundled with the frontend. Storage is reserved for guardian forms and dynamic acknowledgement or consent documents.
 
 ## Alternatives considered
 

@@ -14,13 +14,13 @@ export async function verifyUser(req) {
   if (error || !user) return { user: null, error: 'Unauthorized' }
   const { data: profile, error: profileError } = await supabaseAdmin
     .from('profiles')
-    .select('roles, suspended')
+    .select('roles, suspended, access_revoked_at')
     .eq('id', user.id)
     .maybeSingle()
   if (profileError || !profile) {
     return { user: null, profile: null, roles: null, error: 'Internal error' }
   }
-  if (profile.suspended) {
+  if (profile.suspended || profile.access_revoked_at) {
     return { user: null, profile: null, roles: null, error: 'Account suspended' }
   }
   return { user, profile, roles: profile.roles ?? [], error: null }

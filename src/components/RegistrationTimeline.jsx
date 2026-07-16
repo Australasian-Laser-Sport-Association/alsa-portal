@@ -33,9 +33,9 @@ export default function RegistrationTimeline({ eventName }) {
   const steps = [
     { Icon: PersonIcon, label: 'Register as a player', description: 'Create your ALSA account and sign up for the event.' },
     { Icon: TeamShieldIcon, label: 'Join or create a team', description: 'Create a team as captain, or get added to one by your captain.' },
-    { Icon: CocDocumentIcon, label: 'Sign the Code of Conduct', description: 'Agree to the ALSA Code of Conduct before the event.' },
+    { Icon: CocDocumentIcon, label: 'Agree to the Code of Conduct', description: 'Accept the ALSA Code of Conduct before the event.' },
     { Icon: RefTestIcon, label: 'Pass the Rules Test', description: 'Complete the rules knowledge test.' },
-    { Icon: CameraIcon, label: 'Sign the Media Release', description: 'Confirm consent for event photos and footage.' },
+    { Icon: CameraIcon, label: 'Confirm Media Consent', description: 'Confirm consent for event photos and footage.' },
     { Icon: SideEventsIcon, label: 'Confirm side events', description: 'Choose your side events (Solos, Doubles, Triples, etc.).' },
     { Icon: SideEventsIcon, label: 'Confirm extras', description: 'Confirm dinner guests and other event extras.' },
     { Icon: PaymentIcon, label: 'Pay your fees', description: 'Settle your registration and side event fees.' },

@@ -1,12 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useCallback } from 'react'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
-import { recomputeOwing } from '../lib/recomputeOwing'
 import { formatDate } from '../lib/dateFormat'
 import { formatInEventTz } from '../lib/eventTimezone'
-import { maskStorageUrl, storageImageUrl } from '../lib/assetUrl'
+import { storageImageUrl } from '../lib/assetUrl'
 import Footer from '../components/Footer'
 import Dialog from '../components/Dialog'
 import PlayerHubProgress from '../components/PlayerHubProgress'
@@ -16,8 +16,7 @@ import LockedNotice from '../components/LockedNotice'
 import VolunteerSection from '../components/VolunteerSection'
 import CollapsibleSection from '../components/CollapsibleSection'
 import EventLifecycleCountdown from '../components/EventLifecycleCountdown'
-import { eventPhase } from '../lib/eventPhase'
-import { arePaymentsOpen } from '../lib/payments'
+import { eventPhase, COMMITTEE_EMAIL } from '../lib/eventPhase'
 import { isRefTestRequired, isCocRequired, isPaymentRequired } from '../lib/eventSettings'
 import { DashboardGridIcon } from '../components/icons.jsx'
 import PlaceholderClaimPrompt from '../components/PlaceholderClaimPrompt.jsx'
@@ -25,15 +24,6 @@ import { ClipboardCheck, Trophy, Sparkles, HeartHandshake, CreditCard } from 'lu
 
 function dollars(cents) {
   return `$${((cents ?? 0) / 100).toFixed(2)}`
-}
-
-function isUnder18(dob, eventYear) {
-  if (!dob) return false
-  const cutoff = new Date(`${eventYear}-07-01`)
-  const birth = new Date(dob)
-  const eighteenth = new Date(birth)
-  eighteenth.setFullYear(eighteenth.getFullYear() + 18)
-  return eighteenth > cutoff
 }
 
 const STAT_TONES = {
@@ -123,11 +113,6 @@ function ChecklistItem({ status, label, children }) {
 }
 
 // ── Helpers shared by legal-doc panels ─────────────────────────────────────
-const LEGAL_BUCKET = 'legal-documents'
-function legalDocUrl(filePath) {
-  if (!filePath) return null
-  return maskStorageUrl(supabase.storage.from(LEGAL_BUCKET).getPublicUrl(filePath).data.publicUrl)
-}
 const DOC_LABELS = {
   code_of_conduct: 'Code of Conduct',
   media_release:   'Media Release',
@@ -135,10 +120,10 @@ const DOC_LABELS = {
 }
 
 function PdfLink({ doc, label = 'View PDF' }) {
-  if (!doc?.file_path) return null
+  if (!doc?.url) return null
   return (
     <a
-      href={legalDocUrl(doc.file_path)}
+      href={doc.url}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand-hover font-medium"
@@ -213,7 +198,7 @@ function CoCPanel({ eventYear, activeDoc, stale, onAccepted }) {
         disabled={!agreed || saving}
         className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
       >
-        {saving ? 'Signing…' : 'Sign Code of Conduct'}
+        {saving ? 'Saving…' : 'Agree to Code of Conduct'}
       </button>
     </div>
   )
@@ -224,23 +209,25 @@ function CoCPanel({ eventYear, activeDoc, stale, onAccepted }) {
 // committee, and clicks "I've emailed the form" to flag the submission.
 // Committee then reviews and changes status to approved / rejected via the
 // AdminUnder18Approvals page.
-function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
+function Under18Panel({ eventYear, activeDoc, approval, onSubmitted }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function flagSubmitted() {
     setSaving(true)
     setError('')
-    const nowIso = new Date().toISOString()
-    const { error: upErr } = await supabase.from('under_18_approvals').upsert({
-      user_id: userId,
-      event_year: eventYear,
-      status: 'pending',
-      submitted_at: nowIso,
-    }, { onConflict: 'user_id,event_year' })
-    setSaving(false)
-    if (upErr) { setError(upErr.message); return }
-    onSubmitted()
+    try {
+      const result = await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'submit-under-18', year: eventYear }),
+      })
+      if (!result?.approval) throw new Error('The server did not return the submitted approval.')
+      onSubmitted(result.approval)
+    } catch (err) {
+      setError(err?.message || 'Could not flag your form for review. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const status = approval?.status ?? null
@@ -297,7 +284,7 @@ function Under18Panel({ userId, eventYear, activeDoc, approval, onSubmitted }) {
       {status !== 'approved' && (
         <button
           onClick={flagSubmitted}
-          disabled={saving}
+          disabled={saving || !activeDoc}
           className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
         >
           {saving ? 'Saving…' : status ? 'Re-flag — I\'ve emailed the form again' : 'I\'ve emailed the form'}
@@ -360,7 +347,7 @@ function MediaReleasePanel({ eventYear, activeDoc, stale, onAccepted }) {
       <label className="flex items-start gap-3 cursor-pointer">
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5 accent-[#00FF41]" />
         <span className="text-[#e5e5e5]/70 text-xs leading-relaxed">
-          I have read and agree to the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)}.
+          I have read the {DOC_LABELS.media_release} dated {formatDate(activeDoc.effective_date)} and consent to the event photos and footage it describes.
         </span>
       </label>
       {error && <p role="alert" className="text-red-400 text-xs">{error}</p>}
@@ -369,7 +356,7 @@ function MediaReleasePanel({ eventYear, activeDoc, stale, onAccepted }) {
         disabled={!agreed || saving}
         className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-5 py-2 rounded-lg text-xs transition-colors"
       >
-        {saving ? 'Submitting…' : 'Submit Media Release'}
+        {saving ? 'Saving…' : 'Confirm Media Consent'}
       </button>
     </div>
   )
@@ -390,42 +377,63 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   const isInitiator = record?.player1_id === userId
 
   async function runSearch(q) {
+    if (locked) return
     setSearch(q)
-    if (q.trim().length < 2) { setResults([]); return }
+    if (q.trim().length < 2) {
+      setResults([])
+      setSearching(false)
+      setError('')
+      return
+    }
     setSearching(true)
+    setError('')
     try {
       const { results: res } = await apiFetch('/api/player?resource=doubles', {
         method: 'POST',
         body: JSON.stringify({ action: 'search', eventYear, term: q.trim() }),
       })
       setResults(res ?? [])
-    } finally { setSearching(false) }
+    } catch (err) {
+      setResults([])
+      setError(err?.message || 'Could not search for doubles partners. Please try again.')
+    } finally {
+      setSearching(false)
+    }
   }
 
-  async function invite(pid) {
+  async function invite(profile) {
+    if (locked) return
     setSaving(true); setError('')
     try {
       const { record: rec } = await apiFetch('/api/player?resource=doubles', {
         method: 'POST',
-        body: JSON.stringify({ action: 'create', eventYear, partnerId: pid }),
+        body: JSON.stringify({ action: 'create', eventYear, partnerHandle: profile.handle }),
       })
-      onUpdate(rec, { [pid]: results.find(r => r.id === pid) })
+      const selectedId = rec?.player1_id === userId ? rec?.player2_id : rec?.player1_id
+      onUpdate(rec, selectedId ? { [selectedId]: { id: selectedId, alias: profile.alias } } : {})
       setSearch(''); setResults([])
     } catch (err) {
-      setError(err.message)
+      setError(err?.message || 'Could not invite this doubles partner. Please try again.')
     } finally {
       setSaving(false)
     }
   }
 
   async function changePartner() {
+    if (locked) return
     setSaving(true)
-    await apiFetch('/api/player?resource=doubles', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'delete', id: record.id }),
-    })
-    setSaving(false)
-    onUpdate(null, {})
+    setError('')
+    try {
+      await apiFetch('/api/player?resource=doubles', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'delete', id: record.id }),
+      })
+      onUpdate(null, {})
+    } catch (err) {
+      setError(err?.message || 'Could not remove your doubles partner. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (record) {
@@ -434,13 +442,11 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Your Doubles Partner</p>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand font-black text-xs flex-shrink-0">
-            {partnerProfile ? ((partnerProfile.first_name?.[0] ?? '') + (partnerProfile.last_name?.[0] ?? '')).toUpperCase() : '?'}
+            {partnerProfile?.alias?.[0]?.toUpperCase() ?? '?'}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white text-sm font-semibold">
-              {partnerProfile ? `${partnerProfile.first_name} ${partnerProfile.last_name}` : 'Unknown Player'}
-              {partnerProfile?.alias && <span className="text-brand ml-1">"{partnerProfile.alias}"</span>}
-              <CommitteeBadge roles={partnerProfile?.roles} size="xs" className="ml-1.5" />
+              {partnerProfile?.alias ?? 'Unknown Player'}
             </p>
           </div>
           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
@@ -452,7 +458,7 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           </span>
         </div>
         {error && <p role="alert" className="text-red-400 text-xs mb-2">{error}</p>}
-        {isInitiator && (
+        {isInitiator && !locked && (
           <button onClick={changePartner} disabled={saving}
             className="text-xs text-[#e5e5e5]/60 hover:text-white border border-line hover:border-[#374056] px-3 py-1.5 rounded-lg transition-colors">
             {saving ? 'Removing…' : 'Change partner'}
@@ -462,11 +468,15 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     )
   }
 
+  if (locked) {
+    return <p className="mt-3 text-[#e5e5e5]/60 text-xs">Partner selection is closed for this event. Contact the committee if a correction is required.</p>
+  }
+
   return (
     <div className="mt-3 bg-base border border-line rounded-xl p-4">
       <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">Select your Doubles partner</p>
       <input type="text" value={search} onChange={e => runSearch(e.target.value)}
-        placeholder="Search by name or alias…"
+        placeholder="Search by alias…"
         className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand mb-2"
       />
       {searching && <p className="text-[#e5e5e5]/60 text-xs">Searching…</p>}
@@ -475,25 +485,15 @@ function DoublesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           {results.map(p => {
             // After lock, you can only pair with someone already registered for
             // Doubles — inviting otherwise would raise their owing. Grey them out.
-            const ineligible = locked && !(p.sideEvents ?? []).includes('doubles')
             return (
-            <div key={p.id} className={`flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line ${ineligible ? 'opacity-50' : ''}`}>
+            <div key={p.handle} className="flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line">
               <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
-                {((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase()}
+                {p.alias?.[0]?.toUpperCase() ?? '?'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-semibold">
-                  {p.first_name} {p.last_name}
-                  {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
-                  <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
-                  {ineligible && <span className="text-[#e5e5e5]/60 font-normal ml-1.5">(not in Doubles)</span>}
-                </p>
-                <p className="text-[#e5e5e5]/60 text-[10px] mt-0.5">
-                  {p.teamName ?? 'No team'}
-                  {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
-                </p>
+                <p className="text-white text-xs font-semibold">{p.alias}</p>
               </div>
-              <button onClick={() => invite(p.id)} disabled={saving || ineligible}
+              <button onClick={() => invite(p)} disabled={saving || locked}
                 className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-default flex-shrink-0">
                 Invite
               </button>
@@ -523,47 +523,58 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
   const filledSlots = record ? [record.player2_id, record.player3_id].filter(Boolean).length : 0
 
   async function runSearch(q) {
+    if (locked) return
     setSearch(q)
-    if (q.trim().length < 2) { setResults([]); return }
+    if (q.trim().length < 2) {
+      setResults([])
+      setSearching(false)
+      setError('')
+      return
+    }
     setSearching(true)
+    setError('')
     try {
       const { results: res } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
         body: JSON.stringify({
-          action: 'search',
-          eventYear,
-          term: q.trim(),
-          existingPlayer2Id: record?.player2_id ?? null,
-          existingPlayer3Id: record?.player3_id ?? null,
+          action: 'search', eventYear, term: q.trim(),
         }),
       })
       setResults(res ?? [])
-    } finally { setSearching(false) }
+    } catch (err) {
+      setResults([])
+      setError(err?.message || 'Could not search for triples partners. Please try again.')
+    } finally {
+      setSearching(false)
+    }
   }
 
-  async function inviteToSlot(slot, pid) {
+  async function inviteToSlot(slot, profile) {
+    if (locked) return
     setSaving(true); setError('')
-    const partnerProfile = results.find(r => r.id === pid)
     try {
       const { record: rec } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
         body: JSON.stringify(
           record
-            ? { action: 'add-slot', id: record.id, slot, partnerId: pid, eventYear }
-            : { action: 'create', eventYear, slot, partnerId: pid }
+            ? { action: 'add-slot', id: record.id, slot, partnerHandle: profile.handle, eventYear }
+            : { action: 'create', eventYear, slot, partnerHandle: profile.handle }
         ),
       })
-      onUpdate(rec, partnerProfile ? { [pid]: partnerProfile } : {})
+      const selectedId = rec?.[`player${slot}_id`]
+      onUpdate(rec, selectedId ? { [selectedId]: { id: selectedId, alias: profile.alias } } : {})
       setSearch(''); setResults([]); setSearchSlot(null)
     } catch (err) {
-      setError(err.message)
+      setError(err?.message || 'Could not invite this triples partner. Please try again.')
     } finally {
       setSaving(false)
     }
   }
 
   async function clearSlot(slot) {
+    if (locked) return
     setSaving(true)
+    setError('')
     try {
       const { record: rec } = await apiFetch('/api/player?resource=triples', {
         method: 'POST',
@@ -571,20 +582,27 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
       })
       onUpdate(rec, {})
     } catch (err) {
-      setError(err.message)
+      setError(err?.message || 'Could not remove this triples partner. Please try again.')
     } finally {
       setSaving(false)
     }
   }
 
   async function disbandTeam() {
+    if (locked) return
     setSaving(true)
-    await apiFetch('/api/player?resource=triples', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'disband', id: record.id }),
-    })
-    setSaving(false)
-    onUpdate(null, {})
+    setError('')
+    try {
+      await apiFetch('/api/player?resource=triples', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'disband', id: record.id }),
+      })
+      onUpdate(null, {})
+    } catch (err) {
+      setError(err?.message || 'Could not disband your triples team. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const p2confirmed = record?.player2_confirmed === true
@@ -610,13 +628,21 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           <span className="text-[#e5e5e5]/60 text-xs italic">Empty slot</span>
         </div>
       )
+      if (locked) return (
+        <div key={slot} className="flex items-center gap-3 py-2.5">
+          <div className="w-7 h-7 rounded-full border border-dashed border-line flex items-center justify-center flex-shrink-0">
+            <span className="text-[#e5e5e5]/60 text-[10px]">{slot}</span>
+          </div>
+          <span className="text-[#e5e5e5]/60 text-xs italic">Empty slot. Partner selection is closed.</span>
+        </div>
+      )
       if (searchSlot === slot) return (
         <div key={slot} className="flex items-center gap-3 py-2.5">
           <div className="w-7 h-7 rounded-full border border-dashed border-brand/40 flex items-center justify-center flex-shrink-0">
             <span className="text-brand/40 text-[10px]">{slot}</span>
           </div>
           <input autoFocus type="text" value={search} onChange={e => runSearch(e.target.value)}
-            placeholder="Search by name or alias…"
+            placeholder="Search by alias…"
             className="flex-1 bg-surface border border-brand/30 rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand"
           />
           <button onClick={() => { setSearchSlot(null); setSearch(''); setResults([]) }}
@@ -641,13 +667,11 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
     return (
       <div key={slot} className="flex items-center gap-3 py-2.5">
         <div className="w-7 h-7 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
-          {isMe ? 'Y' : p ? ((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase() : '?'}
+          {isMe ? 'Y' : p?.alias?.[0]?.toUpperCase() ?? '?'}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-white text-xs font-semibold">
-            {isMe ? 'You (organiser)' : p ? `${p.first_name} ${p.last_name}` : '—'}
-            {!isMe && p?.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
-            {!isMe && <CommitteeBadge roles={p?.roles} size="xs" className="ml-1.5" />}
+            {isMe ? 'You (organiser)' : p?.alias ?? 'Unknown player'}
           </p>
         </div>
         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border flex-shrink-0 ${
@@ -657,7 +681,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         }`}>
           {slotConfirmed ? 'Confirmed' : 'Pending'}
         </span>
-        {!isMe && isCreator && (
+        {!isMe && isCreator && !locked && (
           <button onClick={() => clearSlot(slot)} disabled={saving}
             aria-label="Remove"
             className="text-[#e5e5e5]/60 hover:text-red-400 text-xs transition-colors px-1">✕</button>
@@ -686,25 +710,15 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
           {results.map(p => {
             // After lock, you can only add someone already registered for
             // Triples — adding otherwise would raise their owing. Grey them out.
-            const ineligible = locked && !(p.sideEvents ?? []).includes('triples')
             return (
-            <div key={p.id} className={`flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line ${ineligible ? 'opacity-50' : ''}`}>
+            <div key={p.handle} className="flex items-center gap-3 bg-surface rounded-lg px-3 py-2.5 border border-line">
               <div className="w-7 h-7 rounded-full bg-brand/10 flex items-center justify-center text-brand text-[10px] font-black flex-shrink-0">
-                {((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase()}
+                {p.alias?.[0]?.toUpperCase() ?? '?'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-semibold">
-                  {p.first_name} {p.last_name}
-                  {p.alias && <span className="text-brand ml-1">"{p.alias}"</span>}
-                  <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
-                  {ineligible && <span className="text-[#e5e5e5]/60 font-normal ml-1.5">(not in Triples)</span>}
-                </p>
-                <p className="text-[#e5e5e5]/60 text-[10px] mt-0.5">
-                  {p.teamName ?? 'No team'}
-                  {p.state && <span className="ml-2 text-brand/60">{p.state}</span>}
-                </p>
+                <p className="text-white text-xs font-semibold">{p.alias}</p>
               </div>
-              <button onClick={() => inviteToSlot(searchSlot, p.id)} disabled={saving || ineligible}
+              <button onClick={() => inviteToSlot(searchSlot, p)} disabled={saving || locked}
                 className="text-xs bg-brand hover:bg-brand-hover text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-default flex-shrink-0">
                 Invite
               </button>
@@ -718,7 +732,7 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
         <p className="text-[#e5e5e5]/60 text-xs mt-2">No available triples players found</p>
       )}
       {error && <p role="alert" className="text-red-400 text-xs mt-2">{error}</p>}
-      {record && isCreator && (
+      {record && isCreator && !locked && (
         <button onClick={disbandTeam} disabled={saving}
           className="mt-3 text-xs text-[#e5e5e5]/60 hover:text-red-400 transition-colors">
           Disband triples team
@@ -738,6 +752,7 @@ export default function PlayerHub() {
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [event, setEvent] = useState(null)
   const [registration, setRegistration] = useState(null)
   const [team, setTeam] = useState(null)
@@ -751,11 +766,22 @@ export default function PlayerHub() {
   const [testResult, setTestResult] = useState(null)
   const [testSettings, setTestSettings] = useState(null) // referee_test_settings (null = loading)
   const [paymentRecords, setPaymentRecords] = useState([])
+  const [paymentInstructions, setPaymentInstructions] = useState({
+    available: false,
+    reason: 'no_registration',
+    opens_at: null,
+    bank: null,
+  })
+  const [readiness, setReadiness] = useState(null)
 
   // Doubles / triples state
   const [doublesRecord, setDoublesRecord] = useState(null)
   const [triplesRecord, setTriplesRecord] = useState(null)
   const [partnerProfileMap, setPartnerProfileMap] = useState({})
+  const [doublesInvitationSaving, setDoublesInvitationSaving] = useState(false)
+  const [doublesInvitationError, setDoublesInvitationError] = useState('')
+  const [triplesInvitationSaving, setTriplesInvitationSaving] = useState(false)
+  const [triplesInvitationError, setTriplesInvitationError] = useState('')
 
   // Team roster
   const [teamRoster, setTeamRoster] = useState([])
@@ -790,37 +816,43 @@ export default function PlayerHub() {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
-  async function load(opts) {
+  const load = useCallback(async opts => {
     const preserveDrafts = opts?.preserveDrafts === true
+    if (!preserveDrafts) setLoading(true)
+    setLoadError('')
+    try {
     // 1. Get active event
-    const { data: ev } = await supabase
-      .from('zltac_events')
-      .select('id, name, year, status, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, bank_bsb, bank_account_number, bank_account_name, committee_email, payments_override, timezone')
+    const { data: ev, error: eventError } = await supabase
+      .from('public_zltac_events')
+      .select('id, name, year, status, start_date, side_events, main_fee, team_fee, processing_fee_pct, dinner_guest_price, reg_open_date, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment, committee_email, timezone')
       .eq('status', 'open')
       .maybeSingle()
+    if (eventError) throw eventError
 
     setEvent(ev)
     const eventYear = ev?.year
 
-    if (!eventYear) { setLoading(false); return }
+    if (!eventYear) {
+      setReadiness(null)
+      return
+    }
 
     const [
-      { data: reg },
-      { data: docs, error: docsErr },
+      { data: reg, error: regErr },
+      documentsResult,
       { data: accs, error: accsErr },
-      { data: testData },
-      { data: u18ApprovalData },
-      { data: settingsData },
+      { data: testData, error: testErr },
+      { data: u18ApprovalData, error: u18Err },
+      { data: settingsData, error: settingsErr },
+      readinessResult,
+      teamResult,
     ] = await Promise.all([
       supabase.from('zltac_registrations')
-        .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
+        .select('id, user_id, team_id, year, side_events, dinner_guests, emergency_contact_name, emergency_contact_phone, status, has_confirmed_side_events, has_confirmed_extras, created_at, payment_reference, amount_owing, dob_at_registration')
         .eq('user_id', user.id).eq('year', eventYear).maybeSingle(),
-      supabase.from('legal_documents')
-        .select('id, document_type, version, file_path, original_filename, effective_date, requires_reacceptance')
-        .eq('is_active', true)
-        .in('document_type', ['code_of_conduct', 'media_release', 'under_18_form']),
+      apiFetch('/api/public?resource=required-documents'),
       supabase.from('legal_acceptances')
-        .select('id, document_id, accepted_at, document:legal_documents!document_id(id, document_type, version, requires_reacceptance, file_path, original_filename, effective_date)')
+        .select('id, document_id, accepted_at, document:legal_documents!document_id(id, document_type, version, requires_reacceptance, original_filename, effective_date)')
         .eq('user_id', user.id)
         .eq('event_year', eventYear)
         .order('accepted_at', { ascending: false }),
@@ -831,21 +863,26 @@ export default function PlayerHub() {
         .eq('event_year', eventYear)
         .maybeSingle(),
       supabase
-        .from('referee_test_settings')
+        .from('public_referee_test_settings')
         .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
         .limit(1)
         .maybeSingle(),
+      apiFetch('/api/player?resource=readiness'),
+      apiFetch(`/api/player?resource=team&year=${encodeURIComponent(eventYear)}`),
     ])
 
-    if (docsErr) console.error('PlayerHub: legal_documents query failed:', docsErr)
-    if (accsErr) console.error('PlayerHub: legal_acceptances query failed:', accsErr)
+    const initialError = [regErr, accsErr, testErr, u18Err, settingsErr].find(Boolean)
+    if (initialError) throw initialError
+    if (readinessResult?.event?.id !== ev.id) {
+      throw new Error('The server returned readiness for a different event.')
+    }
 
     setRegistration(reg)
-    if (reg?.teams) setTeam(reg.teams)
+    setTeam(teamResult?.team ?? null)
 
     // Index active docs by type
     const activeMap = {}
-    for (const d of (docs ?? [])) activeMap[d.document_type] = d
+    for (const d of (documentsResult?.documents ?? [])) activeMap[d.document_type] = d
     setActiveDocs(activeMap)
 
     // Group acceptances by document_type; keep the most recent per type
@@ -860,6 +897,7 @@ export default function PlayerHub() {
     setU18Approval(u18ApprovalData ?? null)
     setTestResult(testData ?? null)
     setTestSettings(settingsData ?? {})
+    setReadiness(readinessResult.readiness ?? null)
 
     // Skip on a draft-preserving refresh so an in-progress edit isn't clobbered.
     if (reg && !preserveDrafts) {
@@ -871,15 +909,22 @@ export default function PlayerHub() {
     // Fetch payment records for this registration (depends on reg.id).
     // recorded_by is intentionally not selected — that's admin-only context.
     if (reg?.id) {
-      const { data: prData, error: prErr } = await supabase
-        .from('payment_records')
-        .select('id, amount, recorded_at, bank_reference, notes')
-        .eq('registration_id', reg.id)
-        .order('recorded_at', { ascending: false })
-      if (prErr) console.error('PlayerHub: payment_records query failed:', prErr)
+      const [{ data: prData, error: prErr }, instructionsResult] = await Promise.all([
+        supabase
+          .from('payment_records')
+          .select('id, amount, recorded_at, bank_reference, notes')
+          .eq('registration_id', reg.id)
+          .order('recorded_at', { ascending: false }),
+        apiFetch(`/api/player?resource=payment-instructions&year=${encodeURIComponent(eventYear)}`),
+      ])
+      if (prErr) throw prErr
       setPaymentRecords(prData ?? [])
+      setPaymentInstructions(instructionsResult?.payment_instructions ?? {
+        available: false, reason: 'unavailable', opens_at: null, bank: null,
+      })
     } else {
       setPaymentRecords([])
+      setPaymentInstructions({ available: false, reason: 'no_registration', opens_at: null, bank: null })
     }
 
     // Fetch team roster if player is on a team
@@ -889,10 +934,15 @@ export default function PlayerHub() {
         body: JSON.stringify({ teamId: reg.team_id, eventYear }),
       })
       setTeamRoster(rosterProfs ?? [])
+    } else {
+      setTeamRoster([])
     }
 
     // Fetch doubles/triples records
-    const [{ data: doublesData }, { data: triplesData }] = await Promise.all([
+    const [
+      { data: doublesData, error: doublesErr },
+      { data: triplesData, error: triplesErr },
+    ] = await Promise.all([
       supabase.from('doubles_pairs')
         .select('id, event_year, player1_id, player2_id, confirmed, created_at')
         .or(`player1_id.eq.${user.id},player2_id.eq.${user.id}`)
@@ -904,6 +954,7 @@ export default function PlayerHub() {
         .eq('event_year', eventYear)
         .maybeSingle(),
     ])
+    if (doublesErr || triplesErr) throw doublesErr ?? triplesErr
     setDoublesRecord(doublesData ?? null)
     setTriplesRecord(triplesData ?? null)
 
@@ -921,20 +972,33 @@ export default function PlayerHub() {
     if (partnerIds.size > 0) {
       const { profiles: partnerProfs } = await apiFetch('/api/profiles', {
         method: 'POST',
-        body: JSON.stringify({ ids: [...partnerIds] }),
+        body: JSON.stringify({ ids: [...partnerIds], year: eventYear }),
       })
       setPartnerProfileMap(Object.fromEntries((partnerProfs ?? []).map(p => [p.id, p])))
     }
 
-    setLoading(false)
+    } catch (err) {
+      console.error('[PlayerHub] load failed:', err)
+      setLoadError(err?.message || 'Could not load your Player Hub. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  async function refreshReadiness() {
+    try {
+      const result = await apiFetch('/api/player?resource=readiness')
+      setReadiness(result?.readiness ?? null)
+    } catch (err) {
+      console.error('[PlayerHub] readiness refresh failed:', err)
+    }
   }
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
-  }, [authLoading, user, navigate])
+  }, [authLoading, user, navigate, load])
 
   // Refetch when the tab regains focus/visibility so committee-side changes
   // (status, admin overrides, etc.) appear without a manual reload. Preserves
@@ -949,7 +1013,7 @@ export default function PlayerHub() {
       window.removeEventListener('focus', refetch)
       document.removeEventListener('visibilitychange', refetch)
     }
-  }, [user]) // eslint-disable-line
+  }, [user, refreshProfile, load])
 
   // Open a section when its anchor is targeted, so the checklist links
   // (#side-events, #extras) and any deep link land on expanded content.
@@ -997,14 +1061,68 @@ export default function PlayerHub() {
         apiFetch('/api/player?resource=doubles', {
           method: 'POST',
           body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
-        }).then(() => setDoublesRecord(null)).catch(err => { setSideEventsError(err.message); revert() })
+        }).then(() => { setDoublesRecord(null); refreshReadiness() }).catch(err => { setSideEventsError(err.message); revert() })
       }
       if (slug === 'triples' && triplesRecord) {
         apiFetch('/api/player?resource=triples', {
           method: 'POST',
           body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
-        }).then(() => setTriplesRecord(null)).catch(err => { setSideEventsError(err.message); revert() })
+        }).then(() => { setTriplesRecord(null); refreshReadiness() }).catch(err => { setSideEventsError(err.message); revert() })
       }
+    }
+  }
+
+  async function respondToDoublesInvitation(action) {
+    if (!doublesRecord || doublesInvitationSaving) return
+    setDoublesInvitationSaving(true)
+    setDoublesInvitationError('')
+    try {
+      const result = await apiFetch('/api/player?resource=doubles', {
+        method: 'POST',
+        body: JSON.stringify({ action, id: doublesRecord.id }),
+      })
+      if (action === 'confirm') {
+        if (!result?.record) throw new Error('The server did not return the confirmed doubles pair.')
+        setDoublesRecord(result.record)
+      } else {
+        setDoublesRecord(null)
+      }
+      await refreshReadiness()
+    } catch (err) {
+      setDoublesInvitationError(
+        err?.message || `Could not ${action === 'confirm' ? 'accept' : 'decline'} this doubles invitation. Please try again.`
+      )
+    } finally {
+      setDoublesInvitationSaving(false)
+    }
+  }
+
+  async function respondToTriplesInvitation(action, mySlot) {
+    if (!triplesRecord || triplesInvitationSaving) return
+    setTriplesInvitationSaving(true)
+    setTriplesInvitationError('')
+    try {
+      const result = await apiFetch('/api/player?resource=triples', {
+        method: 'POST',
+        body: JSON.stringify({
+          action,
+          id: triplesRecord.id,
+          ...(action === 'confirm' ? { mySlot } : {}),
+        }),
+      })
+      if (action === 'confirm') {
+        if (!result?.record) throw new Error('The server did not return the confirmed triples team.')
+        setTriplesRecord(result.record)
+      } else {
+        setTriplesRecord(null)
+      }
+      await refreshReadiness()
+    } catch (err) {
+      setTriplesInvitationError(
+        err?.message || `Could not ${action === 'confirm' ? 'accept' : 'decline'} this triples invitation. Please try again.`
+      )
+    } finally {
+      setTriplesInvitationSaving(false)
     }
   }
 
@@ -1012,43 +1130,55 @@ export default function PlayerHub() {
     if (!event || !registration) return
     setSavingConfirm(true)
     setSideEventsError(null)
-    const { data: updated, error: updateError } = await supabase.from('zltac_registrations')
-      .update({ side_events: [...selectedSlugs], has_confirmed_side_events: true })
-      .eq('user_id', user.id).eq('year', event.year).select().single()
-    if (updateError || !updated) {
-      // Hard stop on a failed write — do not refetch or advance the UI as if saved.
-      setSideEventsError(updateError?.message ?? 'Could not save your side event selections. Please try again.')
+    try {
+      const result = await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'confirm-side-events',
+          year: event.year,
+          side_events: [...selectedSlugs],
+        }),
+      })
+      if (!result?.registration) throw new Error('The server did not return the updated registration.')
+      setRegistration(current => ({
+        ...current,
+        ...result.registration,
+        amount_owing: result.amountOwing ?? current?.amount_owing,
+      }))
+      await refreshReadiness()
+    } catch (err) {
+      setSideEventsError(err?.message || 'Could not save your side event selections. Please try again.')
+    } finally {
       setSavingConfirm(false)
-      return
     }
-    await recomputeOwing(updated.id)
-    const { data: reread } = await supabase.from('zltac_registrations')
-      .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
-      .eq('id', updated.id).maybeSingle()
-    setRegistration(reread ?? updated)
-    setSavingConfirm(false)
   }
 
   async function confirmExtras() {
     if (!event || !registration) return
     setSavingExtrasConfirm(true)
     setExtrasError(null)
-    const { data: updated, error: updateError } = await supabase.from('zltac_registrations')
-      .update({ dinner_guests: dinnerGuestsDraft, has_confirmed_extras: true })
-      .eq('user_id', user.id).eq('year', event.year).select().single()
-    if (updateError || !updated) {
-      // Hard stop on a failed write — do not refetch or advance the UI as if saved.
-      setExtrasError(updateError?.message ?? 'Could not save your extras. Please try again.')
+    try {
+      const result = await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'confirm-extras',
+          year: event.year,
+          dinner_guests: dinnerGuestsDraft,
+        }),
+      })
+      if (!result?.registration) throw new Error('The server did not return the updated registration.')
+      setRegistration(current => ({
+        ...current,
+        ...result.registration,
+        amount_owing: result.amountOwing ?? current?.amount_owing,
+      }))
+      setDinnerGuests(dinnerGuestsDraft)
+      await refreshReadiness()
+    } catch (err) {
+      setExtrasError(err?.message || 'Could not save your extras. Please try again.')
+    } finally {
       setSavingExtrasConfirm(false)
-      return
     }
-    await recomputeOwing(updated.id)
-    const { data: reread } = await supabase.from('zltac_registrations')
-      .select('*, teams(id, name, captain_id, manager_id, logo_url, state, status, home_venue, profiles!teams_captain_id_fkey(first_name, last_name))')
-      .eq('id', updated.id).maybeSingle()
-    setRegistration(reread ?? updated)
-    setDinnerGuests(dinnerGuestsDraft)
-    setSavingExtrasConfirm(false)
   }
 
   // ── Cancel registration ───────────────────────────────────────────────────
@@ -1093,6 +1223,18 @@ export default function PlayerHub() {
     )
   }
 
+  if (loadError && !event) {
+    return (
+      <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
+        <h1 className="text-2xl font-black text-white mb-2">Could not load Player Hub</h1>
+        <p className="text-red-300 text-sm mb-6 max-w-md">{loadError}</p>
+        <button onClick={() => load()} className="bg-brand hover:bg-brand-hover text-black font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
+          Try again
+        </button>
+      </div>
+    )
+  }
+
   if (!event) {
     return (
       <div className="min-h-screen bg-base flex flex-col items-center justify-center text-center px-6">
@@ -1108,18 +1250,22 @@ export default function PlayerHub() {
   // 'closed', the side-event Select toggles, the Extras dinner stepper, and
   // the Confirm-Side-Events / Confirm-Extras buttons all disable, and the
   // locked banner pins above the checklist — these change amount_owing, so
-  // they're frozen to protect price stability. Partner pickers
-  // (doubles/triples) stay editable after lock: shuffling partners within
-  // already-committed events doesn't change anyone's owing, so api/player.js
-  // allows them. Team membership (join/leave) is still blocked server-side
-  // via the phase guard in api/captain.js — it affects team_fee.
+  // they're frozen to protect price stability. Partner rosters and team
+  // membership are also server-locked so the UI disables every mutation once
+  // the event leaves its open phase.
   const phase = eventPhase(event)
   const locked = phase !== 'open'
   const firstName = profile?.first_name ?? 'Player'
   const lastName = profile?.last_name ?? ''
   const aliasDisplay = profile?.alias
   const isRegistered = !!registration
-  const u18Required = isUnder18(profile?.dob, eventYear)
+  const readinessChecks = readiness?.checks ?? {}
+  const checkDone = check => check?.status === 'satisfied' || check?.status === 'not_required'
+  const checkPlayerComplete = check => checkDone(check) || check?.status === 'pending_review'
+  const dobBlocksReadiness = isRegistered && readinessChecks.identity?.status !== 'satisfied'
+  const u18Required = isRegistered
+    && readinessChecks.identity?.status === 'satisfied'
+    && readinessChecks.under_18?.status !== 'not_required'
   const memberId = user.id.split('-')[0].toUpperCase()
 
   // Legal-doc status per type. Returns 'current' (accepted active version,
@@ -1131,48 +1277,19 @@ export default function PlayerHub() {
     if (!acc) return 'none'
     if (!active) return acc ? 'current' : 'none'
     if (acc.document_id === active.id) return 'current'
-    const oldVersionDoc = acc.document
-    const requiresReaccept = !!(active.requires_reacceptance || oldVersionDoc?.requires_reacceptance)
-    return requiresReaccept ? 'stale' : 'current'
+    return active.requires_reacceptance ? 'stale' : 'current'
   }
 
   const cocStatus = legalStatus('code_of_conduct')
   const mediaStatus = legalStatus('media_release')
-  const cocSigned = cocStatus === 'current'
-  const mediaSubmitted = mediaStatus === 'current'
-  const u18Submitted = !!u18Approval && u18Approval.status !== 'rejected'
-
-  // Committee manual overrides (zltac_registrations) are tri-state: null =
-  // follow the player's real completion, true = force complete, false = force
-  // incomplete. ovCoc/ovMedia/ovRef/ovU18 keep meaning "force complete" so the
-  // "recorded by committee" labels and action-hiding stay correct; the
-  // *Satisfied flags use the full effective rule so a force-incomplete reads as
-  // NOT satisfied and the player's sign/take-test action stays available.
-  const effective = (ov, real) => (ov == null ? real : ov === true)
-  const ovCoc = registration?.admin_override_coc === true
-  const ovMedia = registration?.admin_override_media === true
-  const ovRef = registration?.admin_override_ref_test === true
-  const ovU18 = registration?.admin_override_u18 === true
-  const cocSatisfied = effective(registration?.admin_override_coc, cocSigned)
-  const mediaSatisfied = effective(registration?.admin_override_media, mediaSubmitted)
-  const refSatisfied = effective(registration?.admin_override_ref_test, !!testResult?.passed)
-  const u18Satisfied = effective(registration?.admin_override_u18, u18Submitted)
-
-  // Player-facing override audit string. Shows the date + reason so the
-  // player can see why their requirement was waived. Admin alias is NOT
-  // surfaced to the player (internal accountability only).
-  const overrideLine = (setAt, reason) => {
-    const parts = []
-    if (setAt) {
-      const d = new Date(setAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
-      parts.push(`on ${d}`)
-    }
-    if (reason) parts.push(`Reason: ${reason}`)
-    return parts.length > 0 ? `. ${parts.join('. ')}` : ''
-  }
-  const ovCocLine = overrideLine(registration?.admin_override_coc_set_at, registration?.admin_override_coc_reason)
-  const ovMediaLine = overrideLine(registration?.admin_override_media_set_at, registration?.admin_override_media_reason)
-  const ovRefLine = overrideLine(registration?.admin_override_ref_test_set_at, registration?.admin_override_ref_test_reason)
+  const ovCoc = readinessChecks.code_of_conduct?.source === 'committee_override'
+  const ovMedia = readinessChecks.media_release?.source === 'committee_override'
+  const ovRef = readinessChecks.referee_test?.source === 'committee_override'
+  const ovU18 = readinessChecks.under_18?.source === 'committee_override'
+  const cocSatisfied = checkDone(readinessChecks.code_of_conduct)
+  const mediaSatisfied = checkDone(readinessChecks.media_release)
+  const u18Satisfied = checkDone(readinessChecks.under_18)
+  const u18PlayerComplete = checkPlayerComplete(readinessChecks.under_18)
 
   // Side events from event JSONB
   const enabledSideEvents = (event.side_events ?? []).filter(se => se.enabled && se.slug !== 'presentation-dinner')
@@ -1181,8 +1298,8 @@ export default function PlayerHub() {
 
   // Team state
   const hasTeam = !!registration?.team_id
-  const isTeamCaptain = team?.captain_id === user.id
-  const isTeamManager = team?.manager_id === user.id
+  const isTeamCaptain = team?.viewer_role === 'captain'
+  const isTeamManager = team?.viewer_role === 'manager'
   const canManageTeam = isTeamCaptain || isTeamManager
 
   // Checklist / confirm button states
@@ -1241,11 +1358,17 @@ export default function PlayerHub() {
   const balanceTone = balance > 0 ? 'red' : balance === 0 ? 'green' : 'blue'
   const balanceLabel = balance < 0 ? 'overpaid ' : ''
 
-  const hasBankDetails = !!(event.bank_bsb && event.bank_account_number && event.bank_account_name)
+  const hasBankDetails = !!(
+    paymentInstructions.bank?.bsb
+    && paymentInstructions.bank?.account_number
+    && paymentInstructions.bank?.account_name
+  )
   const paymentRef = registration?.payment_reference ?? ''
-  // Committee-controlled gate on the bank details. payment_reference and
-  // amount_owing are never gated by this — only the account info to send money.
-  const paymentState = arePaymentsOpen(event)
+  const paymentState = {
+    open: paymentInstructions.available === true,
+    reason: paymentInstructions.reason,
+    opensAt: paymentInstructions.opens_at ? new Date(paymentInstructions.opens_at) : null,
+  }
 
   return (
     <div className="min-h-screen bg-base text-white">
@@ -1324,6 +1447,13 @@ export default function PlayerHub() {
 
       <div className="max-w-3xl mx-auto px-6 py-10">
 
+        {loadError && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 mb-5 flex items-center justify-between gap-4">
+            <p className="text-red-300 text-xs">Some Player Hub information could not be refreshed: {loadError}</p>
+            <button onClick={() => load({ preserveDrafts: true })} className="text-red-200 underline text-xs font-semibold flex-shrink-0">Retry</button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8">
           <p className="text-brand text-xs font-bold uppercase tracking-[0.2em] mb-1">ZLTAC {eventYear} · Player Hub</p>
@@ -1378,7 +1508,7 @@ export default function PlayerHub() {
         />
 
         {/* ── Doubles partner invitation alert ── */}
-        {doublesRecord && doublesRecord.player2_id === user.id && !doublesRecord.confirmed && (() => {
+        {!locked && doublesRecord && doublesRecord.player2_id === user.id && !doublesRecord.confirmed && (() => {
           const inviter = partnerProfileMap[doublesRecord.player1_id]
           return (
             <div className="bg-surface border border-brand/30 rounded-2xl p-5 mb-5">
@@ -1391,28 +1521,21 @@ export default function PlayerHub() {
                 <CommitteeBadge roles={inviter?.roles} size="xs" className="ml-1.5" />
                 {' '}has invited you to be their Doubles partner. Do you accept?
               </p>
+              {doublesInvitationError && (
+                <p role="alert" className="text-red-400 text-xs mb-3">{doublesInvitationError}</p>
+              )}
               <div className="flex gap-3">
                 <button
-                  onClick={async () => {
-                    const { record } = await apiFetch('/api/player?resource=doubles', {
-                      method: 'POST',
-                      body: JSON.stringify({ action: 'confirm', id: doublesRecord.id }),
-                    })
-                    if (record) setDoublesRecord(record)
-                  }}
-                  className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
-                  Accept
+                  onClick={() => respondToDoublesInvitation('confirm')}
+                  disabled={doublesInvitationSaving}
+                  className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
+                  {doublesInvitationSaving ? 'Saving…' : 'Accept'}
                 </button>
                 <button
-                  onClick={async () => {
-                    await apiFetch('/api/player?resource=doubles', {
-                      method: 'POST',
-                      body: JSON.stringify({ action: 'delete', id: doublesRecord.id }),
-                    })
-                    setDoublesRecord(null)
-                  }}
-                  className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">
-                  Decline
+                  onClick={() => respondToDoublesInvitation('delete')}
+                  disabled={doublesInvitationSaving}
+                  className="bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">
+                  {doublesInvitationSaving ? 'Saving…' : 'Decline'}
                 </button>
               </div>
             </div>
@@ -1420,7 +1543,7 @@ export default function PlayerHub() {
         })()}
 
         {/* ── Triples team invitation alert ── */}
-        {triplesRecord && triplesRecord.player1_id !== user.id && !triplesRecord.confirmed && (() => {
+        {!locked && triplesRecord && triplesRecord.player1_id !== user.id && !triplesRecord.confirmed && (() => {
           const mySlot = triplesRecord.player2_id === user.id ? 2 : 3
           const alreadyAccepted = triplesRecord[`player${mySlot}_confirmed`] === true
           if (alreadyAccepted) return null
@@ -1436,28 +1559,21 @@ export default function PlayerHub() {
                 <CommitteeBadge roles={inviter?.roles} size="xs" className="ml-1.5" />
                 {' '}has invited you to join their Triples team. Do you accept?
               </p>
+              {triplesInvitationError && (
+                <p role="alert" className="text-red-400 text-xs mb-3">{triplesInvitationError}</p>
+              )}
               <div className="flex gap-3">
                 <button
-                  onClick={async () => {
-                    const { record } = await apiFetch('/api/player?resource=triples', {
-                      method: 'POST',
-                      body: JSON.stringify({ action: 'confirm', id: triplesRecord.id, mySlot }),
-                    })
-                    if (record) setTriplesRecord(record)
-                  }}
-                  className="bg-brand hover:bg-brand-hover text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
-                  Accept
+                  onClick={() => respondToTriplesInvitation('confirm', mySlot)}
+                  disabled={triplesInvitationSaving}
+                  className="bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold px-4 py-2 rounded-xl text-sm transition-all">
+                  {triplesInvitationSaving ? 'Saving…' : 'Accept'}
                 </button>
                 <button
-                  onClick={async () => {
-                    await apiFetch('/api/player?resource=triples', {
-                      method: 'POST',
-                      body: JSON.stringify({ action: 'disband', id: triplesRecord.id }),
-                    })
-                    setTriplesRecord(null)
-                  }}
-                  className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">
-                  Decline
+                  onClick={() => respondToTriplesInvitation('disband', mySlot)}
+                  disabled={triplesInvitationSaving}
+                  className="bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 border border-red-500/20 font-bold px-4 py-2 rounded-xl text-sm transition-colors">
+                  {triplesInvitationSaving ? 'Saving…' : 'Decline'}
                 </button>
               </div>
             </div>
@@ -1474,22 +1590,23 @@ export default function PlayerHub() {
         )}
 
         {/* Personalized progress timeline (registered only) */}
-        {isRegistered && (
+        {isRegistered && !dobBlocksReadiness && (
           <PlayerHubProgress
             eventName={event.name}
-            hasTeam={hasTeam}
-            cocRequired={isCocRequired(event)}
-            cocSigned={cocSatisfied}
-            refRequired={isRefTestRequired(event)}
-            refPassed={refSatisfied}
-            mediaSubmitted={mediaSatisfied}
-            paymentRequired={isPaymentRequired(event)}
-            paid={isPaidInFull}
-            sideEventsConfirmed={sideEventsConfirmed}
-            extrasConfirmed={extrasConfirmed}
-            u18Required={u18Required}
-            u18Submitted={u18Satisfied}
+            readiness={readiness}
           />
+        )}
+
+        {dobBlocksReadiness && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl px-5 py-4 mb-5">
+            <p className="text-red-300 font-bold text-sm">Date of birth required</p>
+            <p className="text-red-200/80 text-xs mt-1 leading-relaxed">
+              We cannot determine your under-18 requirements because your registration has no valid date of birth. Your registration cannot be marked ready until the committee corrects it.
+            </p>
+            <a href={`mailto:${event.committee_email || COMMITTEE_EMAIL}`} className="inline-block text-red-200 underline text-xs mt-2">
+              Contact the committee
+            </a>
+          </div>
         )}
 
         <div className="space-y-5">
@@ -1520,7 +1637,7 @@ export default function PlayerHub() {
               phase={phase}
               email={event.committee_email}
               className="mb-2"
-              lockedSubline="You can still find or change partners for side events you're already in. Contact the committee for any other changes."
+              lockedSubline="Side-event partners and selections are now locked. Contact the committee if a correction is required."
             />
           )}
 
@@ -1532,7 +1649,7 @@ export default function PlayerHub() {
             </div>
 
             <ChecklistItem
-              status={isRegistered ? 'done' : 'error'}
+              status={readinessChecks.identity?.status === 'satisfied' ? 'done' : 'error'}
               label={isRegistered ? 'Player registration — complete' : 'Player registration — not yet registered'}
             >
               {!isRegistered && (
@@ -1542,6 +1659,28 @@ export default function PlayerHub() {
               )}
             </ChecklistItem>
 
+            {isRegistered && (
+              <ChecklistItem
+                status={dobBlocksReadiness ? 'error' : 'done'}
+                label={dobBlocksReadiness ? 'Date of birth: missing or invalid' : 'Date of birth: recorded'}
+              />
+            )}
+
+            {readinessChecks.team?.status !== 'not_required' && (
+              <ChecklistItem
+                status={readinessChecks.team?.status === 'satisfied'
+                  ? 'done'
+                  : readinessChecks.team?.status === 'pending_review'
+                    ? 'pending'
+                    : 'error'}
+                label={readinessChecks.team?.status === 'satisfied'
+                  ? 'Team - approved'
+                  : readinessChecks.team?.status === 'pending_review'
+                    ? 'Team - awaiting committee review'
+                    : 'Team - join or create a team'}
+              />
+            )}
+
             {/* CoC row is hidden entirely when the event's require_coc
                 toggle is off. */}
             {isCocRequired(event) && (
@@ -1549,12 +1688,12 @@ export default function PlayerHub() {
                 status={!isRegistered ? 'pending' : cocSatisfied ? 'done' : 'error'}
                 label={
                   cocSatisfied && cocStatus === 'current'
-                    ? `Code of Conduct — signed ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
+                    ? `Code of Conduct - accepted ${formatDate(acceptances.code_of_conduct?.accepted_at)}`
                     : ovCoc
-                      ? `Code of Conduct — recorded by committee${ovCocLine}`
+                      ? 'Code of Conduct - recorded by committee'
                       : cocStatus === 'stale'
                         ? 'Code of Conduct — updated, please re-accept'
-                        : 'Code of Conduct — not yet signed'
+                        : 'Code of Conduct - not yet accepted'
                 }
               >
                 {isRegistered && !cocSatisfied && (
@@ -1600,7 +1739,7 @@ export default function PlayerHub() {
                           {testResult?.passed
                             ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Passed ({testResult.score}%)</span>
                             : ovRef
-                              ? <span title={`Committee override${ovRefLine}`} className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Recorded by committee</span>
+                              ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand/15 text-brand border border-brand/30">✓ Recorded by committee</span>
                               : testResult
                                 ? <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">✗ Failed</span>
                                 : null}
@@ -1625,12 +1764,12 @@ export default function PlayerHub() {
               status={!isRegistered ? 'pending' : mediaSatisfied ? 'done' : 'error'}
               label={
                 mediaSatisfied && mediaStatus === 'current'
-                  ? `Media Release — signed ${formatDate(acceptances.media_release?.accepted_at)}`
+                  ? `Media Release - consent recorded ${formatDate(acceptances.media_release?.accepted_at)}`
                   : ovMedia
-                    ? `Media Release — recorded by committee${ovMediaLine}`
+                    ? 'Media Release - consent recorded by committee'
                     : mediaStatus === 'stale'
                       ? 'Media Release — updated, please re-accept'
-                      : 'Media Release — not yet submitted'
+                      : 'Media Release - consent not yet provided'
               }
             >
               {isRegistered && !mediaSatisfied && (
@@ -1644,8 +1783,8 @@ export default function PlayerHub() {
             </ChecklistItem>
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : sideEventsConfirmed ? 'done' : 'error'}
-              label={!isRegistered ? 'Side events — pending registration' : sideEventsConfirmed ? 'Side events — confirmed' : 'Side events — not yet confirmed'}
+              status={!isRegistered ? 'pending' : checkDone(readinessChecks.side_events) ? 'done' : 'error'}
+              label={!isRegistered ? 'Side events: pending registration' : checkDone(readinessChecks.side_events) ? 'Side events: confirmed' : 'Side events: not yet confirmed or awaiting partner confirmation'}
             >
               {isRegistered && !sideEventsConfirmed && (
                 <a href="#side-events" className="text-brand text-xs hover:underline">
@@ -1655,8 +1794,8 @@ export default function PlayerHub() {
             </ChecklistItem>
 
             <ChecklistItem
-              status={!isRegistered ? 'pending' : extrasConfirmed ? 'done' : 'error'}
-              label={!isRegistered ? 'Extras — pending registration' : extrasConfirmed ? 'Extras — confirmed' : 'Extras — not yet confirmed'}
+              status={!isRegistered ? 'pending' : checkDone(readinessChecks.extras) ? 'done' : 'error'}
+              label={!isRegistered ? 'Extras: pending registration' : checkDone(readinessChecks.extras) ? 'Extras: confirmed' : 'Extras: not yet confirmed'}
             >
               {isRegistered && !extrasConfirmed && (
                 <a href="#extras" className="text-brand text-xs hover:underline">
@@ -1667,7 +1806,11 @@ export default function PlayerHub() {
 
             {u18Required && (
               <ChecklistItem
-                status={!isRegistered ? 'pending' : u18Satisfied ? 'done' : 'error'}
+                status={!isRegistered
+                  ? 'pending'
+                  : readinessChecks.under_18?.status === 'pending_review'
+                    ? 'pending'
+                    : u18Satisfied ? 'done' : 'error'}
                 label={
                   u18Approval?.status === 'approved'
                     ? `Under 18 Parental Consent — approved ${formatDate(u18Approval.approved_at)}`
@@ -1680,13 +1823,15 @@ export default function PlayerHub() {
                           : 'Under 18 Parental Consent — not yet submitted'
                 }
               >
-                {isRegistered && u18Approval?.status !== 'approved' && !ovU18 && (
+                {isRegistered && !u18PlayerComplete && !ovU18 && (
                   <Under18Panel
-                    userId={user.id}
                     eventYear={eventYear}
                     activeDoc={activeDocs.under_18_form}
                     approval={u18Approval}
-                    onSubmitted={load}
+                    onSubmitted={approval => {
+                      setU18Approval(approval)
+                      refreshReadiness()
+                    }}
                   />
                 )}
               </ChecklistItem>
@@ -1696,7 +1841,7 @@ export default function PlayerHub() {
                 require_payment toggle is off. */}
             {isPaymentRequired(event) && (
               <ChecklistItem
-                status={!isRegistered ? 'pending' : isPaidInFull ? 'done' : 'error'}
+                status={!isRegistered ? 'pending' : checkDone(readinessChecks.payment) ? 'done' : 'error'}
                 label={
                   !isRegistered
                     ? 'Payment'
@@ -1739,7 +1884,7 @@ export default function PlayerHub() {
                   {team.state && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand/10 text-brand/80 border border-brand/20">{team.state}</span>}
                   {team.home_venue && <p className="text-[#e5e5e5]/60 text-xs mt-1">{team.home_venue}</p>}
                   <p className="text-[#e5e5e5]/60 text-xs mt-0.5">
-                    {isTeamCaptain ? 'You are the captain' : isTeamManager ? 'You manage this team' : `Captain: ${team.profiles ? `${team.profiles.first_name} ${team.profiles.last_name}` : '—'}`}
+                    {isTeamCaptain ? 'You are the captain' : isTeamManager ? 'You manage this team' : `Captain: ${team.captain_alias ?? 'Not listed'}`}
                   </p>
                 </div>
                 {canManageTeam && (
@@ -1760,18 +1905,15 @@ export default function PlayerHub() {
                       <div key={p.id} className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center flex-shrink-0">
                           <span className="text-brand font-black text-[10px]">
-                            {((p.first_name?.[0] ?? '') + (p.last_name?.[0] ?? '')).toUpperCase()}
+                            {p.alias?.[0]?.toUpperCase() ?? '?'}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-white text-sm font-semibold leading-tight">
-                            {p.first_name} {p.last_name}
-                            {p.alias && <span className="text-brand ml-1.5 font-normal">"{p.alias}"</span>}
+                            {p.alias ?? 'Player'}
                             {p.id === user.id && <span className="text-[#e5e5e5]/60 ml-1.5 text-xs">(You)</span>}
-                            {p.id === team.captain_id && <span className="ml-1.5 text-xs">👑</span>}
-                            <CommitteeBadge roles={p.roles} size="xs" className="ml-1.5" />
+                            {p.team_role === 'captain' && <span className="ml-1.5 text-xs">👑</span>}
                           </p>
-                          {p.state && <p className="text-[#e5e5e5]/60 text-[10px]">{p.state}</p>}
                         </div>
                       </div>
                     ))}
@@ -1857,6 +1999,7 @@ export default function PlayerHub() {
                                   onUpdate={(rec, newProfs) => {
                                     setDoublesRecord(rec)
                                     if (newProfs) setPartnerProfileMap(prev => ({ ...prev, ...newProfs }))
+                                    refreshReadiness()
                                   }}
                                 />
                               ) : (
@@ -1869,6 +2012,7 @@ export default function PlayerHub() {
                                   onUpdate={(rec, newProfs) => {
                                     setTriplesRecord(rec)
                                     if (newProfs) setPartnerProfileMap(prev => ({ ...prev, ...newProfs }))
+                                    refreshReadiness()
                                   }}
                                 />
                               )}
@@ -2065,9 +2209,9 @@ export default function PlayerHub() {
                       <div className="bg-base border border-line rounded-xl p-4 space-y-4">
                         <p className="text-white font-semibold text-sm">Pay the balance to:</p>
                         <div className="grid grid-cols-2 gap-3">
-                          <Field label="BSB" value={event.bank_bsb} />
-                          <Field label="Account Number" value={event.bank_account_number} />
-                          <Field label="Account Name" value={event.bank_account_name} className="col-span-2" />
+                          <Field label="BSB" value={paymentInstructions.bank.bsb} />
+                          <Field label="Account Number" value={paymentInstructions.bank.account_number} />
+                          <Field label="Account Name" value={paymentInstructions.bank.account_name} className="col-span-2" />
                         </div>
                       </div>
                     ) : (

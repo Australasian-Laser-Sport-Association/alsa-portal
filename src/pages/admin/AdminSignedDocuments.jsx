@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch.js'
 import { formatDate, formatDateTime } from '../../lib/dateFormat'
 
 const DOC_LABELS = {
@@ -52,38 +52,19 @@ export default function AdminSignedDocuments() {
       setLoading(true)
       setError(null)
 
-      const [docsResult, acceptancesResult] = await Promise.all([
-        supabase
-          .from('legal_documents')
-          .select('id, document_type, version, original_filename, effective_date, is_active')
-          .in('document_type', SIGNED_DOC_TYPES)
-          .order('document_type', { ascending: true })
-          .order('version', { ascending: false }),
-        supabase
-          .from('legal_acceptances')
-          .select(`
-            id,
-            document_id,
-            event_year,
-            accepted_at,
-            document:legal_documents!document_id(id, document_type, version, original_filename, effective_date),
-            profile:profiles!user_id(id, alias, first_name, last_name)
-          `)
-          .order('accepted_at', { ascending: false }),
-      ])
-
-      if (cancelled) return
-
-      if (docsResult.error || acceptancesResult.error) {
+      try {
+        const data = await apiFetch('/api/admin/event?resource=signed-documents')
+        if (cancelled) return
+        setDocuments((data.documents ?? []).filter(document => SIGNED_DOC_TYPES.includes(document.document_type)))
+        setAcceptances(data.acceptances ?? [])
+      } catch (loadError) {
+        if (cancelled) return
         setDocuments([])
         setAcceptances([])
-        setError(docsResult.error?.message || acceptancesResult.error?.message || 'Signed documents could not be loaded.')
-      } else {
-        setDocuments(docsResult.data ?? [])
-        setAcceptances(acceptancesResult.data ?? [])
+        setError(loadError.message || 'Player acknowledgements could not be loaded.')
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-
-      setLoading(false)
     }
 
     load()
@@ -141,15 +122,15 @@ export default function AdminSignedDocuments() {
     <div>
       <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
         <div>
-          <h1 className="text-lg font-black text-white">Signed Documents</h1>
+          <h1 className="text-lg font-black text-white">Player Acknowledgements</h1>
           <p className="text-xs text-[#e5e5e5]/60 mt-1">
-            Code of Conduct and Media Release acceptances. Under-18 consent is tracked separately under approvals.
+            Code of Conduct agreements and Media Release consents. Under-18 parental consent is tracked separately under approvals.
           </p>
         </div>
         {!loading && (
           <div className="flex gap-2 text-xs">
             <span className="px-3 py-1.5 rounded-lg bg-brand/10 border border-brand/20 text-brand font-bold">
-              {totalSignatures} signatures
+              {totalSignatures} acknowledgement{totalSignatures === 1 ? '' : 's'}
             </span>
             <span className="px-3 py-1.5 rounded-lg bg-surface border border-line text-[#e5e5e5]/70 font-medium">
               {totalVersions} versions
@@ -173,7 +154,7 @@ export default function AdminSignedDocuments() {
       {!loading && !error && grouped.length === 0 && (
         <div className="bg-surface border border-line rounded-2xl p-8 text-center">
           <p className="text-white font-bold">No document versions found.</p>
-            <p className="text-sm text-[#e5e5e5]/60 mt-1">Upload Code of Conduct and Media Release versions before signatures can appear here.</p>
+            <p className="text-sm text-[#e5e5e5]/60 mt-1">Upload Code of Conduct and Media Release versions before player acknowledgements can appear here.</p>
         </div>
       )}
 
@@ -187,7 +168,7 @@ export default function AdminSignedDocuments() {
                   <p className="text-xs text-[#e5e5e5]/60 mt-0.5">{group.versions.length} versions</p>
                 </div>
                 <span className="text-xs font-bold text-brand bg-brand/10 border border-brand/20 px-3 py-1.5 rounded-lg">
-                  {group.signatureCount} signatures
+                  {group.signatureCount} acknowledgement{group.signatureCount === 1 ? '' : 's'}
                 </span>
               </div>
 
@@ -227,20 +208,20 @@ function DocumentVersion({ version }) {
           </p>
         </div>
         <span className="text-xs text-[#e5e5e5]/70 bg-base border border-line px-3 py-1.5 rounded-lg">
-          {signatures.length} signed
+          {signatures.length} accepted
         </span>
       </div>
 
       {signatures.length === 0 ? (
         <div className="bg-base border border-line rounded-xl px-4 py-6 text-center">
-          <p className="text-sm text-[#e5e5e5]/60">No signatures yet for this version.</p>
+          <p className="text-sm text-[#e5e5e5]/60">No acknowledgements yet for this version.</p>
         </div>
       ) : (
         <div className="overflow-x-auto border border-line rounded-xl">
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-base text-[#e5e5e5]/50 text-[10px] uppercase tracking-wider">
               <tr>
-                <th className="text-left font-bold px-4 py-3">Signer</th>
+                <th className="text-left font-bold px-4 py-3">Player</th>
                 <th className="text-left font-bold px-4 py-3">Event year</th>
                 <th className="text-left font-bold px-4 py-3">Accepted</th>
                 <th className="text-left font-bold px-4 py-3">Version</th>

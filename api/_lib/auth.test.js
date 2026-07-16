@@ -33,6 +33,23 @@ describe('authentication boundary', () => {
     expect(statusForAuthError(result.error)).toBe(403)
   })
 
+  it('rejects a permanently revoked account even if suspension state drifts', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+    maybeSingle.mockResolvedValue({
+      data: {
+        roles: ['player'],
+        suspended: false,
+        access_revoked_at: '2026-07-14T00:00:00.000Z',
+      },
+      error: null,
+    })
+
+    const result = await verifyUser({ headers: { authorization: 'Bearer valid-token' } })
+
+    expect(result).toEqual({ user: null, profile: null, roles: null, error: 'Account suspended' })
+    expect(select).toHaveBeenCalledWith('roles, suspended, access_revoked_at')
+  })
+
   it('reuses the active profile when checking committee access', async () => {
     getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
     maybeSingle.mockResolvedValue({

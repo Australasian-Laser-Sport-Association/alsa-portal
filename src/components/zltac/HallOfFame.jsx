@@ -50,7 +50,7 @@ export default function HallOfFame() {
   useEffect(() => {
     let cancelled = false
     supabase
-      .from('zltac_hall_of_fame')
+      .from('public_zltac_hall_of_fame')
       .select('real_name, alias, induction_year, contribution')
       .eq('is_visible', true)
       .then(({ data, error }) => {

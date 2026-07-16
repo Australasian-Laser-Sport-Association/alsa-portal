@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { apiFetch } from '../../lib/apiFetch.js'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
@@ -8,6 +8,7 @@ const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracki
 const CURRENT_YEAR = new Date().getFullYear()
 const MIN_YEAR = 1999
 const MAX_YEAR = CURRENT_YEAR + 1
+const HISTORY_CONTENT_API = '/api/admin/event?resource=history-content'
 
 function emptyForm() {
   return {
@@ -41,16 +42,17 @@ export default function AdminZLTACHallOfFame() {
 
   async function loadList() {
     setLoadingList(true)
-    const { data, error } = await supabase
-      .from('zltac_hall_of_fame')
-      .select('id, real_name, alias, induction_year, contribution, is_visible, display_order')
-      .order('induction_year', { ascending: false })
-      .order('real_name', { ascending: true })
-    if (!error) setRows(data ?? [])
-    setLoadingList(false)
+    try {
+      const { records = [] } = await apiFetch(`${HISTORY_CONTENT_API}&entity=hall-of-fame`)
+      setRows(records)
+    } catch (error) {
+      showToast(error?.message || 'Could not load Hall of Fame inductees. Please try again.', 'error')
+    } finally {
+      setLoadingList(false)
+    }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadList() }, [])
 
   function showToast(msg, type = 'success') {
@@ -67,12 +69,11 @@ export default function AdminZLTACHallOfFame() {
     setSelected(id)
     setConfirmDelete(false)
     setErrors({})
-    const { data } = await supabase
-      .from('zltac_hall_of_fame')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (data) {
+    try {
+      const { record: data } = await apiFetch(
+        `${HISTORY_CONTENT_API}&entity=hall-of-fame&id=${encodeURIComponent(id)}`,
+      )
+      if (!data) throw new Error('Hall of Fame inductee was not found.')
       setForm({
         real_name: data.real_name ?? '',
         alias: data.alias ?? '',
@@ -82,6 +83,10 @@ export default function AdminZLTACHallOfFame() {
         display_order: data.display_order ?? 0,
         is_visible: data.is_visible ?? true,
       })
+    } catch (error) {
+      setSelected(null)
+      setForm(emptyForm())
+      showToast(error?.message || 'Could not load the inductee. Please try again.', 'error')
     }
   }
 
@@ -124,39 +129,47 @@ export default function AdminZLTACHallOfFame() {
       is_visible: !!form.is_visible,
     }
 
-    let res
-    if (selected === 'new') {
-      res = await supabase.from('zltac_hall_of_fame').insert(payload).select('id').single()
-    } else {
-      res = await supabase.from('zltac_hall_of_fame').update(payload).eq('id', selected).select('id').single()
-    }
-    setSaving(false)
-
-    if (res.error) {
-      showToast(res.error.message, 'error')
-      return
-    }
-    showToast('Saved.')
-    await loadList()
-    if (selected === 'new' && res.data?.id) {
-      setSelected(res.data.id)
+    try {
+      const result = await apiFetch(HISTORY_CONTENT_API, {
+        method: selected === 'new' ? 'POST' : 'PATCH',
+        body: JSON.stringify({
+          entity: 'hall-of-fame',
+          ...(selected === 'new' ? {} : { id: selected }),
+          data: payload,
+        }),
+      })
+      const savedId = result?.record?.id ?? (selected === 'new' ? null : selected)
+      if (!savedId) {
+        throw new Error('The inductee was saved but could not be reloaded. Please refresh the page.')
+      }
+      showToast('Saved.')
+      await loadList()
+      if (selected === 'new') setSelected(savedId)
+    } catch (error) {
+      showToast(error?.message || 'Could not save the inductee. Please try again.', 'error')
+    } finally {
+      setSaving(false)
     }
   }
 
   async function deleteRow() {
     if (selected === 'new' || !selected) return
     setDeleting(true)
-    const { error } = await supabase.from('zltac_hall_of_fame').delete().eq('id', selected)
-    setDeleting(false)
-    setConfirmDelete(false)
-    if (error) {
-      showToast(error.message, 'error')
-      return
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'hall-of-fame', id: selected }),
+      })
+      setConfirmDelete(false)
+      showToast('Inductee deleted.')
+      setSelected(null)
+      setForm(emptyForm())
+      loadList()
+    } catch (error) {
+      showToast(error?.message || 'Could not delete the inductee. Please try again.', 'error')
+    } finally {
+      setDeleting(false)
     }
-    showToast('Inductee deleted.')
-    setSelected(null)
-    setForm(emptyForm())
-    loadList()
   }
 
   return (

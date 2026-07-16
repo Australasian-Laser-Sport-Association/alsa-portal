@@ -51,21 +51,26 @@ function prepareQuestion(q) {
 export default function RulesTestRunner({
   settings,
   questionPool,
+  onStart,
   onComplete,
   isPreview = false,
   existingResult = null,
   onExit,
 }) {
+  const [issuedSettings, setIssuedSettings] = useState(null)
   // Normalise settings (admin inputs arrive as strings).
+  const effectiveSettings = issuedSettings ?? settings
   const cfg = {
-    safetyCount: parseInt(settings?.safety_questions_per_test) || 10,
-    safetyPass: parseInt(settings?.safety_pass_score) || 100,
-    generalCount: parseInt(settings?.general_questions_per_test) || 20,
-    generalPass: parseInt(settings?.general_pass_score) || 70,
+    safetyCount: parseInt(effectiveSettings?.safety_questions_per_test) || 10,
+    safetyPass: parseInt(effectiveSettings?.safety_pass_score) || 100,
+    generalCount: parseInt(effectiveSettings?.general_questions_per_test) || 20,
+    generalPass: parseInt(effectiveSettings?.general_pass_score) || 70,
   }
   const safetyPool = questionPool?.safety ?? []
   const generalPool = questionPool?.general ?? []
-  const hasAnyQuestions = safetyPool.length + generalPool.length > 0
+  const hasAnyQuestions = isPreview
+    ? safetyPool.length + generalPool.length > 0
+    : typeof onStart === 'function'
 
   const [phase, setPhase] = useState('intro') // intro | safety-intro | running | results
   const [questions, setQuestions] = useState([]) // composed attempt (safety first, then general)
@@ -82,6 +87,8 @@ export default function RulesTestRunner({
   // pool's correct_answer. The results phase reads from here so the same
   // render path handles both.
   const [submittedResult, setSubmittedResult] = useState(null)
+  const [attemptId, setAttemptId] = useState(null)
+  const [starting, setStarting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveErr, setSaveErr] = useState('')
 
@@ -96,21 +103,34 @@ export default function RulesTestRunner({
     return [...safety, ...general]
   }
 
-  function startTest() {
-    const composed = composeAttempt()
-    setQuestions(composed)
-    setIdx(0)
-    setAnswersByIdx({})
-    setSubmittedResult(null)
+  async function startTest() {
+    setStarting(true)
     setSaveErr('')
-    // Lead with the themed Safety intro when there are any Safety
-    // questions in this attempt; otherwise drop straight into running.
-    // The mid-test safety result gate was removed in the integrity patch
-    // (correct_answer is no longer client-side, so the runner cannot
-    // authoritatively decide Safety pass/fail mid-attempt). Free
-    // navigation across the Safety/General boundary is allowed until
-    // final Submit.
-    setPhase(composed.some(q => q.section === 'safety') ? 'safety-intro' : 'running')
+    try {
+      let composed
+      if (isPreview) {
+        composed = composeAttempt()
+        setAttemptId(null)
+      } else {
+        const issued = await onStart()
+        if (!issued?.attempt_id || !Array.isArray(issued.questions) || issued.questions.length === 0) {
+          throw new Error('The server did not issue a valid Rules Test attempt.')
+        }
+        setAttemptId(issued.attempt_id)
+        setIssuedSettings(issued.settings ?? null)
+        composed = issued.questions.map(prepareQuestion)
+      }
+
+      setQuestions(composed)
+      setIdx(0)
+      setAnswersByIdx({})
+      setSubmittedResult(null)
+      setPhase(composed.some(q => q.section === 'safety') ? 'safety-intro' : 'running')
+    } catch (error) {
+      setSaveErr(error.message || 'Could not start the Rules Test.')
+    } finally {
+      setStarting(false)
+    }
   }
 
   function beginSafety() { setPhase('running') }
@@ -181,7 +201,8 @@ export default function RulesTestRunner({
     setSaving(true)
     setSaveErr('')
     try {
-      const data = await onComplete({ answers: submittedAnswers })
+      if (!attemptId) throw new Error('This Rules Test attempt is no longer valid. Start a new attempt.')
+      const data = await onComplete({ attemptId, answers: submittedAnswers })
       setSubmittedResult(data)
       setPhase('results')
     } catch (err) {
@@ -228,8 +249,8 @@ export default function RulesTestRunner({
   const isLastQuestion = idx + 1 >= questions.length
   // Intro counts come from the pools (the attempt isn't composed until Start),
   // capped at the per-section sample size.
-  const introSafetyCount = Math.min(cfg.safetyCount, safetyPool.length)
-  const introGeneralCount = Math.min(cfg.generalCount, generalPool.length)
+  const introSafetyCount = isPreview ? Math.min(cfg.safetyCount, safetyPool.length) : cfg.safetyCount
+  const introGeneralCount = isPreview ? Math.min(cfg.generalCount, generalPool.length) : cfg.generalCount
   const introTotal = introSafetyCount + introGeneralCount
 
   // ── Intro ────────────────────────────────────────────────────────────────
@@ -278,10 +299,12 @@ export default function RulesTestRunner({
 
           <button
             onClick={startTest}
-            className="w-full bg-brand hover:bg-brand-hover text-black font-bold py-4 rounded-xl text-base transition-all"
+            disabled={starting}
+            className="w-full bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-4 rounded-xl text-base transition-all"
           >
-            Start Test →
+            {starting ? 'Starting...' : 'Start Test'}
           </button>
+          {saveErr && <p className="text-red-400 text-sm text-center mt-3">{saveErr}</p>}
         </div>
         <Footer />
       </div>
@@ -468,7 +491,7 @@ export default function RulesTestRunner({
               {finalPassed ? '✓ PASSED' : '✗ FAILED'}
             </span>
             {!isPreview && saving && <p className="text-[#e5e5e5]/60 text-xs mt-2">Saving result…</p>}
-            {!isPreview && saveErr && <p className="text-red-400 text-xs mt-2">Error saving: {saveErr}</p>}
+            {!isPreview && saveErr && <p className="text-red-400 text-xs mt-2">{saveErr}</p>}
             {isPreview && <p className="text-[#e5e5e5]/60 text-xs mt-3">Preview only — this result is not saved.</p>}
           </div>
 
@@ -515,9 +538,10 @@ export default function RulesTestRunner({
                 </button>
                 <button
                   onClick={startTest}
-                  className="flex-1 py-3 rounded-xl bg-brand hover:bg-brand-hover text-black font-bold text-sm transition-all"
+                  disabled={starting}
+                  className="flex-1 py-3 rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-sm transition-all"
                 >
-                  Run Again
+                  {starting ? 'Starting...' : 'Run Again'}
                 </button>
               </>
             ) : (
@@ -531,9 +555,10 @@ export default function RulesTestRunner({
                 {!finalPassed && (
                   <button
                     onClick={startTest}
-                    className="flex-1 py-3 rounded-xl bg-brand hover:bg-brand-hover text-black font-bold text-sm transition-all"
+                    disabled={starting}
+                    className="flex-1 py-3 rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold text-sm transition-all"
                   >
-                    Retake Test
+                    {starting ? 'Starting...' : 'Retake Test'}
                   </button>
                 )}
               </>
@@ -544,6 +569,7 @@ export default function RulesTestRunner({
               omitted because options were shuffled during the test; the
               option text comes from the runner's still-in-memory question
               array (looked up by question_id from the server response). */}
+          {perQuestion.length > 0 ? <>
           <h3 className="text-white font-bold text-base mb-4">Question Breakdown</h3>
           <div className="space-y-3">
             {perQuestion.map((p, i) => {
@@ -584,6 +610,11 @@ export default function RulesTestRunner({
               )
             })}
           </div>
+          </> : !isPreview ? (
+            <div className="rounded-xl border border-line bg-surface px-5 py-4 text-sm text-[#e5e5e5]/70">
+              Answers are not revealed after submission. Review the rules before starting another attempt.
+            </div>
+          ) : null}
         </div>
         <Footer />
       </div>

@@ -5,14 +5,24 @@
 **Supersedes:** None
 **Related:** [ADR-0002: RLS + GRANT Security Model](./0002-rls-plus-grant-security-model.md)
 
+> **Production-readiness addendum (2026-07-14):** Production now requires a
+> confirmed Supabase Pro plan. The leaked-password setting below must therefore
+> be enabled before launch rather than deferred. Re-verify every Auth setting in
+> this ADR against staging and production, and require MFA on the GitHub,
+> Vercel, Supabase, email, backup-provider, and DNS accounts that can alter or
+> recover the portal. Application-level MFA for portal members is not claimed by
+> this ADR and would require a separate enrollment, recovery, API, and RLS
+> design.
+
 ---
 
 ## Context
 
-The ALSA Portal requires user authentication for members to register for events, sign policy acknowledgements, and access role-specific features (captain hub, referee test, committee admin). The authentication system must:
+The ALSA Portal requires user authentication for members to register for events, agree to required acknowledgements or consents, and access role-specific features (captain hub, referee test, committee admin). The authentication system must:
 
 1. Protect access to personal data, including data about minors
-2. Protect the integrity of the legal audit trail (signed policies, media releases, guardian forms)
+2. Protect the integrity of acknowledgement and consent records, with guardian
+   forms handled through the separate under-18 workflow
 3. Be operable by a volunteer committee without specialist security expertise
 4. Align with contemporary authentication best practice, not historical defaults
 
@@ -35,7 +45,7 @@ Social login can be added later as an additional option without disrupting exist
 Email confirmation is required because:
 - It prevents account creation with typo'd email addresses (which would otherwise create orphan accounts that cannot recover their password)
 - It is a baseline anti-spam measure
-- It verifies that the person signing up actually controls the email address they entered — important when that email address will be used for legal document delivery
+- It verifies that the person signing up actually controls the email address they entered — important when that address is used for account recovery and required event communications
 
 ### Password policy
 
@@ -44,7 +54,7 @@ Email confirmation is required because:
 | Minimum password length | 10 characters | Above the OWASP floor of 8; resistant to modern offline brute-force on common hash algorithms. |
 | Password requirements | Lowercase, uppercase letters, and digits | Blocks trivial passwords without forcing symbol substitutions, which research shows do not meaningfully improve entropy. |
 | Symbols required | No | NIST SP 800-63B guidance: length adds more entropy than symbol complexity. Symbol requirements produce predictable substitutions (`a → @`, `o → 0`) and user frustration. |
-| Prevent use of leaked passwords | Off (requires Pro plan) | Tracked as a future upgrade — the Have I Been Pwned integration is the single highest-value auth hardening toggle available and should be enabled when the portal moves to the Pro plan. |
+| Prevent use of leaked passwords | On for production | Supabase's Have I Been Pwned integration rejects known compromised passwords and is available on the required Pro plan. |
 
 The policy favours **length over complexity**, consistent with modern guidance (NIST SP 800-63B, 2020+). A 10-character mixed-case-with-digits password provides approximately 60 bits of entropy, which is adequate for an application of this sensitivity given the other controls in place (rate limiting, email confirmation, secure password change).
 
@@ -97,7 +107,9 @@ All OAuth providers (Google, Apple, Discord, GitHub, Facebook, etc.), SAML 2.0, 
 
 - **Stricter password requirements create minor friction.** A 10-character password with mixed case and digits is harder to type on mobile than a 6-character lowercase password. The security tradeoff is worth the friction for an application handling this kind of data.
 - **Email confirmation adds a step to signup.** Members must check their email before they can log in. Mitigated by clear UI messaging and the 1-hour confirmation window.
-- **Leaked-password detection is not active.** A member who reuses a password that has been exposed in a third-party breach can still use it. This gap is accepted for the free tier and should be closed when the portal upgrades to Pro.
+- **Leaked-password protection may identify existing member passwords as weak
+  during sign-in or password change.** Communicate a safe reset path before
+  enabling it and monitor support requests without weakening the setting.
 - **Default Supabase email sender is rate-limited and unbranded.** Emails come from `noreply@mail.supabase.io` at 4/hour. This is tolerable for initial rollout but should be replaced with a dedicated SMTP provider (Resend, Postmark, or AWS SES) before broad launch. Tracked as an operational task.
 
 ### Neutral

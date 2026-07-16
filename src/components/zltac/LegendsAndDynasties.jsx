@@ -63,7 +63,7 @@ export default function LegendsAndDynasties() {
     let cancelled = false
 
     supabase
-      .from('zltac_legends')
+      .from('public_zltac_legends')
       .select('alias, titles, summary, display_order')
       .eq('is_visible', true)
       .order('display_order', { ascending: true })
@@ -73,7 +73,7 @@ export default function LegendsAndDynasties() {
       })
 
     supabase
-      .from('zltac_dynasties')
+      .from('public_zltac_dynasties')
       .select('team_name, category, years, note, display_order')
       .eq('is_visible', true)
       .order('display_order', { ascending: true })

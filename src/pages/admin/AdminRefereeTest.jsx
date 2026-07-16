@@ -1,10 +1,11 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../../lib/supabase'
 import { ShieldAlert, BookOpen } from 'lucide-react'
 import RulesTestRunner from '../../components/RulesTestRunner'
 import { maskStorageUrl, storageImageUrl } from '../../lib/assetUrl'
-import { RASTER_IMAGE_TYPES, extensionForMime } from '../../lib/uploadPolicy'
+import { RASTER_IMAGE_TYPES } from '../../lib/uploadPolicy'
 import { ConfirmDialog, InlineAlert, LoadErrorState } from '../../components/Feedback'
+import { apiFetch } from '../../lib/apiFetch.js'
+import { uploadAuthorizedAsset } from '../../lib/authorizedAssetUpload.js'
 
 const CATEGORIES = ['Rules', 'Safety', 'Equipment', 'Scoring', 'General']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
@@ -18,14 +19,9 @@ const SECTIONS = [
 ]
 
 // Per-question media (referee-test-media bucket, see migration 20260520060002).
-const REFEREE_MEDIA_BUCKET = 'referee-test-media'
 const IMAGE_TYPES = RASTER_IMAGE_TYPES
 const VIDEO_TYPES = ['video/mp4', 'video/webm']
 const MEDIA_MAX_BYTES = 25 * 1024 * 1024 // 25 MB
-const EXT_BY_MIME = {
-  'video/mp4': 'mp4', 'video/webm': 'webm',
-}
-
 const EMPTY_Q = {
   question: '', option_a: '', option_b: '', option_c: '', option_d: '',
   correct_answer: 'a', category: 'Rules', difficulty: 'medium', section: 'general',
@@ -82,6 +78,7 @@ export default function AdminRefereeTest() {
   const [filterSection, setFilterSection]     = useState('all')
   const [search, setSearch]       = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsMsg, setSettingsMsg] = useState(null)
   const [preview, setPreview]     = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -94,25 +91,13 @@ export default function AdminRefereeTest() {
     setLoading(true)
     setLoadError('')
     try {
-      const [
-        { data: qData, error: qError },
-        { data: sData, error: sError },
-      ] = await Promise.all([
-        supabase.from('referee_questions').select('*').order('created_at', { ascending: false }),
-        supabase
-          .from('referee_test_settings')
-          .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
-          .limit(1)
-          .maybeSingle(),
-      ])
-      if (qError) throw qError
-      if (sError) throw sError
-      setQuestions(qData ?? [])
-      if (sData) setSettings({
-        safety_questions_per_test: sData.safety_questions_per_test ?? 10,
-        safety_pass_score: sData.safety_pass_score ?? 100,
-        general_questions_per_test: sData.general_questions_per_test ?? 20,
-        general_pass_score: sData.general_pass_score ?? 70,
+      const data = await apiFetch('/api/admin/event?resource=referee-content')
+      setQuestions(data.questions ?? [])
+      if (data.settings) setSettings({
+        safety_questions_per_test: data.settings.safety_questions_per_test ?? 10,
+        safety_pass_score: data.settings.safety_pass_score ?? 100,
+        general_questions_per_test: data.settings.general_questions_per_test ?? 20,
+        general_pass_score: data.settings.general_pass_score ?? 70,
       })
     } catch (error) {
       setLoadError(error.message || 'Could not load referee test settings.')
@@ -122,11 +107,27 @@ export default function AdminRefereeTest() {
   }
 
   function startAdd()    { setForm(EMPTY_Q); setEditing(null); setMediaErr(''); setAdding(true) }
-  function startEdit(q)  { setForm({ ...q }); setEditing(q.id); setMediaErr(''); setAdding(true) }
+  function startEdit(q)  {
+    setForm({
+      question: q.question ?? '',
+      option_a: q.option_a ?? '',
+      option_b: q.option_b ?? '',
+      option_c: q.option_c ?? '',
+      option_d: q.option_d ?? '',
+      correct_answer: q.correct_answer ?? 'a',
+      category: q.category ?? 'General',
+      difficulty: q.difficulty ?? 'medium',
+      section: q.section ?? 'general',
+      image_url: q.image_url ?? null,
+      video_url: q.video_url ?? null,
+      active: q.active !== false,
+    })
+    setEditing(q.id); setMediaErr(''); setAdding(true)
+  }
 
-  // Upload a per-question image or video to the referee-test-media bucket and
-  // stash the public URL on the form. Path is organisational only — RLS lets
-  // committee write anywhere in the bucket; unsaved questions go under _new/.
+  // Ask the committee API for one exact-path upload capability, then retain
+  // the branded public path on the form. Unsaved questions use an actor-bound
+  // draft folder until their content record exists.
   async function uploadMedia(file, kind) {
     const allowed = kind === 'image' ? IMAGE_TYPES : VIDEO_TYPES
     if (!allowed.includes(file.type)) {
@@ -141,14 +142,13 @@ export default function AdminRefereeTest() {
     const field = kind === 'image' ? 'image_url' : 'video_url'
     setBusy(true); setMediaErr('')
     try {
-      const ext = extensionForMime(file.type) || EXT_BY_MIME[file.type]
-      const path = `questions/${editing || '_new'}/${Date.now()}.${ext}`
-      const { data, error } = await supabase.storage
-        .from(REFEREE_MEDIA_BUCKET)
-        .upload(path, file, { upsert: false, contentType: file.type })
-      if (error) throw error
-      const { data: urlData } = supabase.storage.from(REFEREE_MEDIA_BUCKET).getPublicUrl(data.path)
-      setForm(f => ({ ...f, [field]: urlData.publicUrl }))
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: kind === 'image' ? 'referee-image' : 'referee-video',
+        scopeId: editing || undefined,
+        file,
+      })
+      setForm(f => ({ ...f, [field]: uploaded.url }))
     } catch (err) {
       setMediaErr(err?.message || 'Upload failed. Please try again.')
     } finally {
@@ -162,43 +162,74 @@ export default function AdminRefereeTest() {
     // Normalise empty media to NULL rather than '' so text-only questions stay clean.
     payload.image_url = payload.image_url || null
     payload.video_url = payload.video_url || null
-    let err
-    if (editing) { ;({ error: err } = await supabase.from('referee_questions').update(payload).eq('id', editing)) }
-    else         { ;({ error: err } = await supabase.from('referee_questions').insert(payload)) }
-    setSaving(false)
-    if (err) setMsg({ type: 'error', text: err.message })
-    else { setMsg({ type: 'ok', text: editing ? 'Updated.' : 'Question added.' }); loadAll(); setTimeout(() => { setAdding(false); setMsg(null) }, 800) }
+    try {
+      await apiFetch('/api/admin/event?resource=referee-content', {
+        method: editing ? 'PATCH' : 'POST',
+        body: JSON.stringify({ entity: 'question', id: editing || undefined, data: payload }),
+      })
+      setMsg({ type: 'ok', text: editing ? 'Updated.' : 'Question added.' })
+      await loadAll()
+      setTimeout(() => { setAdding(false); setMsg(null) }, 800)
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not save the question.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function deleteQ(question) {
     if (!question?.id) return
     setDeleteBusy(true)
     setDeleteError('')
-    const { error } = await supabase.from('referee_questions').delete().eq('id', question.id)
-    setDeleteBusy(false)
-    if (error) {
-      setDeleteError(error.message)
-      return
+    try {
+      await apiFetch('/api/admin/event?resource=referee-content', {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'question', id: question.id, data: {} }),
+      })
+      setQuestions(qs => qs.filter(q => q.id !== question.id))
+      setDeleteConfirm(null)
+    } catch (error) {
+      setDeleteError(error.message || 'Could not delete the question.')
+    } finally {
+      setDeleteBusy(false)
     }
-    setQuestions(qs => qs.filter(q => q.id !== question.id))
-    setDeleteConfirm(null)
   }
 
   async function toggleActive(q) {
-    await supabase.from('referee_questions').update({ active: !q.active }).eq('id', q.id)
-    setQuestions(qs => qs.map(x => x.id === q.id ? { ...x, active: !x.active } : x))
+    setMsg(null)
+    try {
+      await apiFetch('/api/admin/event?resource=referee-content', {
+        method: 'PATCH',
+        body: JSON.stringify({ entity: 'question', id: q.id, data: { active: !q.active } }),
+      })
+      setQuestions(qs => qs.map(x => x.id === q.id ? { ...x, active: !x.active } : x))
+    } catch (error) {
+      setMsg({ type: 'error', text: error.message || 'Could not update the question.' })
+    }
   }
 
   async function saveSettings() {
     setSavingSettings(true)
-    await supabase.from('referee_test_settings').upsert({
-      id: 1,
-      safety_questions_per_test: parseInt(settings.safety_questions_per_test) || 0,
-      safety_pass_score: parseInt(settings.safety_pass_score) || 0,
-      general_questions_per_test: parseInt(settings.general_questions_per_test) || 0,
-      general_pass_score: parseInt(settings.general_pass_score) || 0,
-    })
-    setSavingSettings(false)
+    setSettingsMsg(null)
+    try {
+      await apiFetch('/api/admin/event?resource=referee-content', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity: 'settings',
+          data: {
+            safety_questions_per_test: parseInt(settings.safety_questions_per_test) || 0,
+            safety_pass_score: parseInt(settings.safety_pass_score) || 0,
+            general_questions_per_test: parseInt(settings.general_questions_per_test) || 0,
+            general_pass_score: parseInt(settings.general_pass_score) || 0,
+          },
+        }),
+      })
+      setSettingsMsg({ type: 'ok', text: 'Settings saved.' })
+    } catch (error) {
+      setSettingsMsg({ type: 'error', text: error.message || 'Could not save test settings.' })
+    } finally {
+      setSavingSettings(false)
+    }
   }
 
   function handleCSVImport(e) {
@@ -211,14 +242,23 @@ export default function AdminRefereeTest() {
         const vals = line.split(',')
         return Object.fromEntries(headers.map((h, i) => [h, (vals[i] ?? '').trim().replace(/^"|"$/g, '')]))
       })
-      await supabase.from('referee_questions').insert(rows.map(r => ({
+      const questionsToImport = rows.map(r => ({
         question: r.question, option_a: r.option_a ?? r.a, option_b: r.option_b ?? r.b,
         option_c: r.option_c ?? r.c, option_d: r.option_d ?? r.d,
         correct_answer: r.correct_answer ?? r.answer ?? 'a',
         category: r.category ?? 'General', difficulty: r.difficulty ?? 'medium',
         section: r.section === 'safety' ? 'safety' : 'general', active: true,
-      })))
-      loadAll()
+      }))
+      try {
+        await apiFetch('/api/admin/event?resource=referee-content', {
+          method: 'POST',
+          body: JSON.stringify({ entity: 'question-bulk', data: { rows: questionsToImport } }),
+        })
+        setMsg({ type: 'ok', text: `${questionsToImport.length} questions imported.` })
+        await loadAll()
+      } catch (error) {
+        setMsg({ type: 'error', text: error.message || 'Could not import the questions.' })
+      }
     }
     reader.readAsText(file); e.target.value = ''
   }
@@ -362,6 +402,11 @@ export default function AdminRefereeTest() {
             className="mt-4 text-sm bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl transition-all">
             {savingSettings ? 'Saving…' : 'Save Settings'}
           </button>
+          {settingsMsg && (
+            <span className={`ml-3 text-sm ${settingsMsg.type === 'ok' ? 'text-brand' : 'text-red-400'}`}>
+              {settingsMsg.text}
+            </span>
+          )}
         </div>
 
         {/* Add/Edit form */}

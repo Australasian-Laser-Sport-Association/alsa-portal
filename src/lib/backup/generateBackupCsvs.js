@@ -1,6 +1,8 @@
+import { neutralizeSpreadsheetFormula } from '../csv.js'
+
 // Shared backup CSV generator. Consumed by the cron handler at
 // /api/admin/event?resource=backup-run AND by the "Run backup now" admin
-// button. Returns three CSV strings plus row counts so the email body can
+// button. Returns four CSV strings plus row counts so the email body can
 // summarise without re-counting.
 //
 // Conventions:
@@ -28,7 +30,7 @@ const BOM = '﻿'
 // with internal quotes doubled.
 function csvCell(value) {
   if (value === null || value === undefined) return ''
-  const s = String(value)
+  const s = String(neutralizeSpreadsheetFormula(value))
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
@@ -98,8 +100,9 @@ async function fetchAllRows(makeQuery, label) {
 export async function generateBackupCsvs(supabase) {
   // 1. Pull everything in parallel. Each query is unscoped: backups
   //    intentionally include archived events + cancelled registrations
-  //    so the snapshot is a true restore point. The three high-volume
-  //    tables (registrations, profiles, payment_records) are paginated so a
+  //    so the snapshot is a true restore point. The four high-volume
+  //    tables (registrations, profiles, payment_records, asset upload audit)
+  //    are paginated so a
   //    PostgREST row cap can never silently truncate the backup; the small
   //    naturally-bounded tables are single reads.
   const [
@@ -110,16 +113,24 @@ export async function generateBackupCsvs(supabase) {
     registrations,
     profiles,
     paymentRecords,
+    assetUploadAudit,
   ] = await Promise.all([
     supabase.from('zltac_events').select('*'),
     supabase.from('teams').select('id, name, captain_id'),
     supabase.from('doubles_pairs').select('event_year, player1_id, player2_id'),
     supabase.from('triples_teams').select('event_year, player1_id, player2_id, player3_id'),
-    fetchAllRows(() => supabase.from('zltac_registrations').select('*'), 'zltac_registrations'),
+    fetchAllRows(() => supabase.from('zltac_registrations')
+      .select('*')
+      .order('id', { ascending: true }), 'zltac_registrations'),
     fetchAllRows(() => supabase.from('profiles')
-      .select('id, first_name, last_name, alias, dob, phone, state, placeholder_email, is_placeholder'), 'profiles'),
+      .select('id, first_name, last_name, alias, dob, phone, state, placeholder_email, is_placeholder')
+      .order('id', { ascending: true }), 'profiles'),
     fetchAllRows(() => supabase.from('payment_records')
-      .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes'), 'payment_records'),
+      .select('id, registration_id, amount, recorded_at, recorded_by, bank_reference, notes')
+      .order('id', { ascending: true }), 'payment_records'),
+    fetchAllRows(() => supabase.from('admin_asset_upload_audit')
+      .select('id, actor_id, purpose, scope_id, bucket, object_path, object_size, content_type, occurred_at')
+      .order('id', { ascending: true }), 'admin_asset_upload_audit'),
   ])
 
   const firstErr = [eventsRes, teamsRes, doublesRes, triplesRes]
@@ -386,7 +397,34 @@ export async function generateBackupCsvs(supabase) {
   const eventsCsv = BOM
     + [csvRow(eventsHeader), ...eventRows.map(csvRow)].join('\r\n')
 
-  // 9. Per-event breakdown for the email body. Counts registrations grouped
+  // 9. Privileged asset-upload audit CSV ----------------------------------
+  // Keep the immutable finalisation evidence in the operational export too.
+  // The off-project database dump remains the authoritative disaster-recovery
+  // copy, but this file lets an operator inspect and reconcile signed uploads
+  // without needing to restore the whole database.
+  const assetUploadAuditHeader = [
+    'id', 'actor_id', 'purpose', 'scope_id', 'bucket', 'object_path',
+    'object_size', 'content_type', 'occurred_at',
+  ]
+
+  const assetUploadAuditRows = assetUploadAudit.map(row => [
+    row.id,
+    row.actor_id,
+    row.purpose,
+    row.scope_id ?? '',
+    row.bucket,
+    row.object_path,
+    row.object_size,
+    row.content_type,
+    row.occurred_at,
+  ])
+
+  assetUploadAuditRows.sort((a, b) => Number(a[0]) - Number(b[0]))
+
+  const assetUploadAuditCsv = BOM
+    + [csvRow(assetUploadAuditHeader), ...assetUploadAuditRows.map(csvRow)].join('\r\n')
+
+  // 10. Per-event breakdown for the email body. Counts registrations grouped
   //    by year; only events that actually have registrations get listed.
   //    Sorted year DESC to match the events CSV order.
   const regCountByYear = new Map()
@@ -405,9 +443,11 @@ export async function generateBackupCsvs(supabase) {
     registrationsCsv,
     paymentsCsv,
     eventsCsv,
+    assetUploadAuditCsv,
     registrationsCount: registrationRows.length,
     paymentsCount: paymentRows.length,
     eventsCount: eventRows.length,
+    assetUploadAuditCount: assetUploadAuditRows.length,
     eventBreakdown,
   }
 }

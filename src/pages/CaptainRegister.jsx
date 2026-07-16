@@ -6,7 +6,8 @@ import { apiFetch } from '../lib/apiFetch.js'
 import { eventPhase } from '../lib/eventPhase'
 import Footer from '../components/Footer'
 import { TEAM_COLOURS } from '../lib/teamColours'
-import { RASTER_IMAGE_TYPES, extensionForMime } from '../lib/uploadPolicy'
+import { RASTER_IMAGE_TYPES } from '../lib/uploadPolicy'
+import { uploadCaptainLogo } from '../lib/captainLogoUpload.js'
 
 const STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ']
 const TEAM_ENTRY_TYPES = [
@@ -26,6 +27,7 @@ export default function CaptainRegister() {
   const [initialLoading, setInitialLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [logoWarning, setLogoWarning] = useState('')
 
   // Form fields
   const [teamName, setTeamName] = useState('')
@@ -43,13 +45,30 @@ export default function CaptainRegister() {
     if (!user) return
 
     async function load() {
-      const [{ data: ev }, { data: existing }] = await Promise.all([
-        supabase.from('zltac_events').select('id, name, year, status, reg_close_date, event_starts_at').eq('year', parseInt(year)).maybeSingle(),
-        supabase.from('teams').select('id').eq('captain_id', user.id).not('event_id', 'is', null).maybeSingle(),
-      ])
-      setEvent(ev)
-      if (existing) { navigate('/captain-hub'); return }
-      setInitialLoading(false)
+      try {
+        const { data: ev, error: eventError } = await supabase
+          .from('public_zltac_events')
+          .select('id, name, year, status, reg_open_date, reg_close_date, event_starts_at')
+          .eq('year', parseInt(year))
+          .maybeSingle()
+        if (eventError) throw eventError
+        setEvent(ev)
+
+        if (ev?.id) {
+          const { data: existing, error: teamError } = await supabase
+            .from('own_zltac_teams')
+            .select('id')
+            .eq('event_id', ev.id)
+            .eq('viewer_role', 'captain')
+            .maybeSingle()
+          if (teamError) throw teamError
+          if (existing) { navigate('/captain-hub'); return }
+        }
+      } catch (loadError) {
+        setError(loadError?.message || 'Could not load captain registration. Please try again.')
+      } finally {
+        setInitialLoading(false)
+      }
     }
     load()
   }, [authLoading, user, year, navigate])
@@ -86,18 +105,6 @@ export default function CaptainRegister() {
       return
     }
 
-    let logo_url = null
-    let uploadedLogoPath = null
-    if (logoFile) {
-      const ext = extensionForMime(logoFile.type)
-      const path = `${user.id}/${Date.now()}.${ext}`
-      const { data: up, error: upErr } = await supabase.storage.from('team-logos').upload(path, logoFile, { upsert: true, contentType: logoFile.type })
-      if (upErr) { setError(`Logo upload failed: ${upErr.message}`); setSaving(false); return }
-      const { data: urlData } = supabase.storage.from('team-logos').getPublicUrl(up.path)
-      logo_url = urlData.publicUrl
-      uploadedLogoPath = up.path
-    }
-
     try {
       const result = await apiFetch('/api/captain', {
         method: 'POST',
@@ -109,15 +116,29 @@ export default function CaptainRegister() {
           state: teamState,
           homeVenue: homeVenue.trim() || null,
           colour,
-          logoUrl: logo_url,
         }),
       })
-      setSubmittedTeam(result.team)
+      let createdTeam = result.team
+      if (logoFile) {
+        try {
+          const logoResult = await uploadCaptainLogo({
+            file: logoFile,
+            eventId: event.id,
+            teamId: createdTeam.id,
+          })
+          createdTeam = { ...createdTeam, ...(logoResult.team ?? {}), logo_url: logoResult.url }
+        } catch {
+          setLogoWarning(
+            'Your team was created, but the logo could not be saved. You can retry it safely from Team Hub.',
+          )
+        }
+      }
+      setSubmittedTeam(createdTeam)
       setStep(2)
     } catch (err) {
-      if (uploadedLogoPath) {
-        await supabase.storage.from('team-logos').remove([uploadedLogoPath])
-      }
+      // The API transaction may have committed even if its HTTP response was
+      // lost. Retain the uploaded object so a reconciled team never points at
+      // a logo that this client deleted after an ambiguous failure.
       setError(err?.message || 'Could not create the team. Please try again.')
     } finally {
       setSaving(false)
@@ -173,6 +194,12 @@ export default function CaptainRegister() {
                 Your team registration has been submitted for ZLTAC {year} approval.
               </p>
             </div>
+
+            {logoWarning && (
+              <p role="alert" className="text-yellow-300 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 text-sm mb-5">
+                {logoWarning}
+              </p>
+            )}
 
             <div className="bg-surface border border-brand/20 rounded-2xl p-6 mb-5">
               <p className="text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-3">What's next</p>

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { LoadErrorState } from '../../components/Feedback'
 
@@ -24,28 +23,18 @@ export default function AdminAlsaDashboard() {
       setLoadError('')
       // Portal-wide counts. ALSA Members reuses the same endpoint AdminMembers
       // reads — its `active` bucket is the canonical "currently active" set,
-      // so the count here always matches that page. The endpoint can throw,
-      // so it's guarded; the three Supabase counts return errors in-band.
-      const [
-        { count: totalUsers, error: usersError },
-        membersRes,
-        { count: lifetimeRegs, error: lifetimeError },
-        { count: eventsArchived, error: eventsError },
-      ] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        apiFetch('/api/admin/alsa?resource=members').catch(() => ({ active: [] })),
-        supabase.from('zltac_registrations').select('*', { count: 'exact', head: true }),
-        supabase.from('zltac_events').select('*', { count: 'exact', head: true }).eq('status', 'archived'),
+      // so the count here always matches that page. All cross-user counts are
+      // resolved by committee API routes rather than the browser anon client.
+      const [portalStats, membersRes] = await Promise.all([
+        apiFetch('/api/admin/event?resource=portal-dashboard'),
+        apiFetch('/api/admin/alsa?resource=members'),
       ])
-      if (usersError) throw usersError
-      if (lifetimeError) throw lifetimeError
-      if (eventsError) throw eventsError
 
       setStats({
-        totalUsers: totalUsers ?? 0,
+        totalUsers: portalStats.totalUsers ?? 0,
         alsaMembers: (membersRes?.active ?? []).length,
-        lifetimeRegs: lifetimeRegs ?? 0,
-        eventsArchived: eventsArchived ?? 0,
+        lifetimeRegs: portalStats.lifetimeRegistrations ?? 0,
+        eventsArchived: portalStats.archivedEvents ?? 0,
       })
       setLoading(false)
     }

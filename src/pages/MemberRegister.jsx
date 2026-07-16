@@ -32,7 +32,9 @@ function MemberCard({ member }) {
 function MemberGrid({ members }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
-      {members.map(p => <MemberCard key={p.id} member={p} />)}
+      {members.map((p, index) => (
+        <MemberCard key={`${p.alias ?? memberFullName(p)}-${index}`} member={p} />
+      ))}
     </div>
   )
 }

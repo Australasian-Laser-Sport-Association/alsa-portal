@@ -214,8 +214,6 @@ const TEAM_ENTRY_OPTIONS = [
   { value: 'state_association', label: 'State Association' },
   { value: 'direct_entry', label: 'Direct Entry' },
 ]
-const TEAM_STATUS_OPTIONS = ['draft', 'pending', 'approved', 'rejected']
-
 function personName(profile) {
   const full = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
   return full || profile?.alias || 'Unknown'
@@ -229,7 +227,6 @@ function TeamEditModal({ team, people, onClose, onSaved }) {
   const [name, setName] = useState(team.name ?? '')
   const [stateVal, setStateVal] = useState(team.state ?? '')
   const [entryType, setEntryType] = useState(team.entry_type ?? '')
-  const [status, setStatus] = useState(team.status ?? 'draft')
   const [format, setFormat] = useState(team.format ?? 'team')
   const [homeVenue, setHomeVenue] = useState(team.home_venue ?? '')
   const [colour, setColour] = useState(team.colour ?? '')
@@ -262,7 +259,6 @@ function TeamEditModal({ team, people, onClose, onSaved }) {
           name: name.trim(),
           state: stateVal,
           entry_type: entryType || null,
-          status,
           format,
           home_venue: homeVenue.trim() || null,
           colour: colour.trim() || null,
@@ -310,12 +306,6 @@ function TeamEditModal({ team, people, onClose, onSaved }) {
             <label htmlFor={`${uid}-entry`} className={labelCls}>Entry type</label>
             <select id={`${uid}-entry`} value={entryType} onChange={e => setEntryType(e.target.value)} className={inputCls}>
               {TEAM_ENTRY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor={`${uid}-status`} className={labelCls}>Status</label>
-            <select id={`${uid}-status`} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
-              {TEAM_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
@@ -478,7 +468,7 @@ const PlayerRow = memo(function PlayerRow({ p, onEdit, onLink, onPayment, onRemo
       </td>
       {/* CoC */}
       <td className="px-4 py-3" title={p.cocTitle}>
-        {p.coc ? <Pill color="green">Signed</Pill> : <Pill color="red">Unsigned</Pill>}
+        {p.coc ? <Pill color="green">Accepted</Pill> : <Pill color="red">Pending</Pill>}
         {p.cocOverride && <OvrBadge />}
       </td>
       {/* Rules Test */}
@@ -564,6 +554,7 @@ export default function AdminRegistrations() {
   const [doubles, setDoubles] = useState([])
   const [triples, setTriples] = useState([])
   const [u18Approvals, setU18Approvals] = useState([])
+  const [readinessByUser, setReadinessByUser] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
@@ -601,8 +592,8 @@ export default function AdminRegistrations() {
 
   useEffect(() => {
     supabase
-      .from('zltac_events')
-      .select('id, year, name, side_events, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment')
+      .from('public_zltac_events')
+      .select('id, year, name, status, side_events, reg_close_date, event_starts_at, require_ref_test, require_coc, require_payment')
       .eq('status', 'open')
       .limit(1)
       .maybeSingle()
@@ -612,18 +603,12 @@ export default function AdminRegistrations() {
       })
   }, [])
 
-  useEffect(() => {
-    if (eventYear === undefined) return
-    if (eventYear === null) { setLoading(false); return }
-    fetchAll()
-  }, [eventYear])
-
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
   }
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -638,11 +623,18 @@ export default function AdminRegistrations() {
       setDoubles(data.doubles ?? [])
       setTriples(data.triples ?? [])
       setU18Approvals(data.u18_approvals ?? [])
+      setReadinessByUser(data.readinessByUser ?? {})
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
-  }
+  }, [eventYear])
+
+  useEffect(() => {
+    if (eventYear === undefined) return
+    if (eventYear === null) { setLoading(false); return }
+    fetchAll()
+  }, [eventYear, fetchAll])
 
   // Build lookup maps. Memoised so the per-keystroke search re-render doesn't
   // rebuild them (and, downstream, the heavy `players` array) every character.
@@ -715,14 +707,20 @@ export default function AdminRegistrations() {
     const cocOk    = !cocRequired || coc
     const refOk    = !refRequired || refPassed
     const paidOk   = !paymentRequired || paid
-    const complete = cocOk && refOk && media && paidOk
+    const authoritativeReadiness = readinessByUser[reg.user_id] ?? null
+    const complete = authoritativeReadiness?.overall?.event_ready ?? (cocOk && refOk && media && paidOk)
     const checks = [
       ...(cocRequired ? [coc] : []),
       ...(refRequired ? [refPassed] : []),
       media,
       ...(paymentRequired ? [paid] : []),
     ]
-    const doneCount = checks.filter(Boolean).length
+    const authoritativeChecks = Object.values(authoritativeReadiness?.checks ?? {})
+      .filter(check => check.status !== 'not_required')
+    const doneCount = authoritativeReadiness
+      ? authoritativeChecks.filter(check => check.status === 'satisfied').length
+      : checks.filter(Boolean).length
+    const totalChecks = authoritativeReadiness ? authoritativeChecks.length : checks.length
     // Tooltip detail per concern. When the override is on, the audit string
     // gets appended so the admin can see who set it / when / why on hover.
     let refTitle = ref
@@ -736,13 +734,13 @@ export default function AdminRegistrations() {
     }
     const cocTitle = cocOverride
       ? overrideAudit(reg.admin_override_coc_set_at, reg.admin_override_coc_reason, reg.admin_override_coc_set_by)
-      : (coc ? 'Code of Conduct signed' : 'Not signed')
+      : (coc ? 'Code of Conduct accepted' : 'Not accepted')
     const mediaTitle = mediaOverride
       ? overrideAudit(reg.admin_override_media_set_at, reg.admin_override_media_reason, reg.admin_override_media_set_by)
-      : (media ? 'Media release submitted' : 'Not submitted')
-    return { ...reg, profile, team, coc, cocReal, cocOverride, cocTitle, ref, refPassed, refReal, refOverride, refTitle, media, mediaReal, mediaOverride, mediaTitle, u18Real, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks: checks.length }
+      : (media ? 'Media Release consent provided' : 'Consent not provided')
+    return { ...reg, profile, team, readiness: authoritativeReadiness, coc, cocReal, cocOverride, cocTitle, ref, refPassed, refReal, refOverride, refTitle, media, mediaReal, mediaOverride, mediaTitle, u18Real, amountOwing, amountPaid, balance, payStatus, paid, complete, doneCount, totalChecks }
   })
-  }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, u18Set, recordsByReg, refRequired, cocRequired, paymentRequired])
+  }, [regs, profMap, teamMap, cocSet, refMap, mediaSet, u18Set, recordsByReg, readinessByUser, refRequired, cocRequired, paymentRequired])
 
   // Phase + needs-follow-up derivation.
   // "Needs follow-up" = registration where the event is past the open

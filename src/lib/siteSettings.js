@@ -1,9 +1,10 @@
 import { createContext } from 'react'
 import { supabase } from './supabase'
+import { apiFetch } from './apiFetch.js'
 
 // Site-wide "testing mode" flag, stored as one row in cms_global
 // (key 'site_banner', value { enabled, message }). Reads are anon (public
-// SELECT policy); writes are gated by the cms_global committee RLS policy.
+// SELECT policy); writes use the actor-checked committee API.
 
 const BANNER_KEY = 'site_banner'
 
@@ -36,12 +37,16 @@ export async function getSiteBanner() {
 }
 
 export async function setSiteBanner({ enabled, message }) {
-  const { error } = await supabase
-    .from('cms_global')
-    .upsert({
-      key: BANNER_KEY,
-      value: { enabled: enabled === true, message },
-      last_updated_at: new Date().toISOString(),
+  try {
+    await apiFetch('/api/admin/event?resource=site-banner', {
+      method: 'POST',
+      body: JSON.stringify({
+        entity: 'banner',
+        data: { enabled: enabled === true, message },
+      }),
     })
-  return { error }
+    return { error: null }
+  } catch (error) {
+    return { error }
+  }
 }

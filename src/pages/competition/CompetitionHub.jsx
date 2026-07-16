@@ -537,14 +537,18 @@ function CaptainRosterRow({ member, isCaptainRow, fullName, canRemove, onChanged
 // client surfaces those as inline error chips on the matching row.
 function CaptainInvitePanel({ team, onChanged }) {
   const pending = (team.members ?? []).filter(m => m.invite_status === 'pending')
-  const excludeUserIds = new Set((team.members ?? []).map(m => m.user_id))
+  const memberAliases = new Set(
+    (team.members ?? [])
+      .map(m => m.profile?.alias?.trim().toLocaleLowerCase())
+      .filter(Boolean),
+  )
 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
-  const [rowError, setRowError] = useState({}) // { [profileId]: string }
-  const [inviting, setInviting] = useState({}) // { [profileId]: boolean }
+  const [rowError, setRowError] = useState({}) // { [opaqueHandle]: string }
+  const [inviting, setInviting] = useState({}) // { [opaqueHandle]: boolean }
   const [revoking, setRevoking] = useState({}) // { [membershipId]: boolean }
 
   useEffect(() => {
@@ -555,7 +559,7 @@ function CaptainInvitePanel({ team, onChanged }) {
     setSearchError(null)
     const t = setTimeout(async () => {
       try {
-        const data = await apiFetch(`/api/superadmin/profile-search?q=${encodeURIComponent(q)}`)
+        const data = await apiFetch(`/api/superadmin/profile-search?purpose=competition-team-invite&q=${encodeURIComponent(q)}`)
         if (!cancelled) setResults(Array.isArray(data) ? data : [])
       } catch (err) {
         if (!cancelled) setSearchError(err.message || 'Search failed.')
@@ -567,20 +571,20 @@ function CaptainInvitePanel({ team, onChanged }) {
   }, [query])
 
   async function invite(profile) {
-    setRowError(prev => ({ ...prev, [profile.id]: null }))
-    setInviting(prev => ({ ...prev, [profile.id]: true }))
+    setRowError(prev => ({ ...prev, [profile.handle]: null }))
+    setInviting(prev => ({ ...prev, [profile.handle]: true }))
     try {
       await apiFetch('/api/superadmin/competition-team-member', {
         method: 'POST',
-        body: JSON.stringify({ team_id: team.id, invitee_user_id: profile.id }),
+        body: JSON.stringify({ team_id: team.id, profile_handle: profile.handle }),
       })
       setQuery('')
       setResults([])
       onChanged()
     } catch (err) {
-      setRowError(prev => ({ ...prev, [profile.id]: err.message || 'Could not invite.' }))
+      setRowError(prev => ({ ...prev, [profile.handle]: err.message || 'Could not invite.' }))
     } finally {
-      setInviting(prev => ({ ...prev, [profile.id]: false }))
+      setInviting(prev => ({ ...prev, [profile.handle]: false }))
     }
   }
 
@@ -596,7 +600,9 @@ function CaptainInvitePanel({ team, onChanged }) {
     }
   }
 
-  const filteredResults = results.filter(r => !excludeUserIds.has(r.id))
+  const filteredResults = results.filter(
+    result => !memberAliases.has(result.alias?.trim().toLocaleLowerCase()),
+  )
 
   return (
     <div className="space-y-4">
@@ -664,23 +670,21 @@ function CaptainInvitePanel({ team, onChanged }) {
             <p className="text-white text-[11px] opacity-50">No matching players.</p>
           )}
           {filteredResults.map(p => {
-            const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ')
-            const err = rowError[p.id]
+            const err = rowError[p.handle]
             return (
-              <div key={p.id} className="bg-base border border-line rounded-xl px-3 py-2">
+              <div key={p.handle} className="bg-base border border-line rounded-xl px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-white text-sm font-semibold min-w-0">
                     {p.alias ? <span className="text-brand">"{p.alias}"</span> : <span className="opacity-50">(no alias)</span>}
-                    {fullName && <span className="ml-2">{fullName}</span>}
                   </p>
                   <button
                     type="button"
                     onClick={() => invite(p)}
-                    disabled={!!inviting[p.id]}
+                    disabled={!!inviting[p.handle]}
                     className="bg-brand hover:bg-brand-hover disabled:opacity-40 text-black font-bold px-3 py-1 rounded-lg text-xs transition-all"
                     title={err ?? ''}
                   >
-                    {inviting[p.id] ? 'Inviting...' : 'Invite'}
+                    {inviting[p.handle] ? 'Inviting...' : 'Invite'}
                   </button>
                 </div>
                 {err && <p className="text-red-400 text-[11px] mt-2">{err}</p>}

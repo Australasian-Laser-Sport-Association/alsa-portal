@@ -26,7 +26,7 @@ function fetchOpenEvent() {
   // In-flight dedup: concurrent mounts share one query.
   if (inFlight) return inFlight
   inFlight = supabase
-    .from('zltac_events')
+    .from('public_zltac_events')
     .select(EVENT_COLUMNS)
     .eq('status', 'open')
     .limit(1)

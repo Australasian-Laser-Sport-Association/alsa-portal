@@ -53,16 +53,16 @@ const NAV_ITEMS = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     ),
-    label: 'Required Documents',
+    label: 'Policies and Forms',
   },
   {
-    to: '/admin/signed-documents',
+    to: '/admin/player-acknowledgements',
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7 3h6l4 4v4m-2 9H7a2 2 0 01-2-2V5a2 2 0 012-2m6 0v4h4m-3 10h7m0 0l-2-2m2 2l-2 2" />
       </svg>
     ),
-    label: 'Signed Documents',
+    label: 'Player Acknowledgements',
   },
   {
     to: '/admin/under-18-approvals',

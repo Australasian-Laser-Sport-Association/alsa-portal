@@ -50,6 +50,38 @@ function parsePublicStorageUrl(url) {
   }
 }
 
+function parseBrandedStorageUrl(url) {
+  try {
+    const pathname = url.startsWith('/')
+      ? url.split(/[?#]/, 1)[0]
+      : new URL(url).pathname
+    const route = pathname.startsWith('/assets/')
+      ? 'assets'
+      : pathname.startsWith('/documents/')
+        ? 'documents'
+        : null
+    if (!route) return null
+
+    const segments = pathname.slice(route === 'assets' ? '/assets/'.length : '/documents/'.length).split('/')
+    const bucket = route === 'assets' ? decodeURIComponent(segments.shift() ?? '') : 'legal-documents'
+    const decoded = decodePathSegments(segments)
+    if (!decoded) return null
+    const path = decoded.join('/')
+    if (!PUBLIC_BUCKETS.has(bucket)
+        || !path
+        || decoded.some(segment => !segment || segment === '.' || segment === '..')) {
+      return null
+    }
+    return { bucket, path }
+  } catch {
+    return null
+  }
+}
+
+function parseStorageReference(url) {
+  return parsePublicStorageUrl(url) ?? parseBrandedStorageUrl(url)
+}
+
 function encodeStoragePath(path) {
   return path.split('/').map(encodeURIComponent).join('/')
 }
@@ -75,7 +107,7 @@ function brandedStoragePath(bucket, path, params = {}) {
 }
 
 export function maskStorageUrl(url) {
-  const storagePath = parsePublicStorageUrl(url)
+  const storagePath = parseStorageReference(url)
   if (!storagePath) return url
   return brandedStoragePath(storagePath.bucket, storagePath.path)
 }
@@ -85,17 +117,20 @@ export function storageImageUrl(url, {
   quality = 75,
   resize = 'contain',
   format = 'webp',
+  version,
 } = {}) {
-  if (!url || !width) return url
+  if (!url) return url
 
-  const storagePath = parsePublicStorageUrl(url)
+  const storagePath = parseStorageReference(url)
   if (!storagePath || !MEDIA_BUCKETS.has(storagePath.bucket)) return url
+  if (!width) return brandedStoragePath(storagePath.bucket, storagePath.path)
 
   return brandedStoragePath(storagePath.bucket, storagePath.path, {
     width,
     quality,
     resize,
     format,
+    v: version,
   })
 }
 

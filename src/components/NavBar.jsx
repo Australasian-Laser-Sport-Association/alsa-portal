@@ -137,10 +137,8 @@ export default function NavBar() {
     if (!user) return
     let cancelled = false
     supabase
-      .from('teams')
+      .from('own_zltac_teams')
       .select('status')
-      .or(`captain_id.eq.${user.id},manager_id.eq.${user.id}`)
-      .not('event_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()

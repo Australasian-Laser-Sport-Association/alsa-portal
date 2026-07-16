@@ -1,7 +1,9 @@
 import supabaseAdmin from '../_lib/supabase.js'
 import { verifyCommittee, statusForAuthError } from '../_lib/auth.js'
+import { sendServerError } from '../_lib/apiErrors.js'
 
-// Committee-gated CRUD for ALSA membership data. Dispatches by ?resource=:
+// Committee-gated CRUD for ALSA membership data. Destructive deletes require
+// superadmin. Dispatches by ?resource=:
 //   ?resource=members          → memberships    (GET grouped / POST grant / DELETE by id)
 //   ?resource=lifetime-members → lifetime member status (GET / POST grant / DELETE by profile_id)
 //   ?resource=periods          → period windows (GET list / POST create / PATCH update / DELETE by id)
@@ -45,7 +47,7 @@ async function handleMembers(req, res, user) {
       `)
       .order('created_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:members-list')
 
     const today = new Date().toISOString().slice(0, 10)
     const threeMoAgo = new Date()
@@ -98,7 +100,7 @@ async function handleMembers(req, res, user) {
       if (error.code === '23505') {
         return res.status(409).json({ error: 'This member already has a membership for that period.' })
       }
-      return res.status(500).json({ error: error.message })
+      return sendServerError(res, error, 'admin-alsa:member-create')
     }
     return res.json({ membership: data })
   }
@@ -108,7 +110,12 @@ async function handleMembers(req, res, user) {
     if (!id) return res.status(400).json({ error: 'id is required' })
 
     const { error } = await supabaseAdmin.from('alsa_memberships').delete().eq('id', id)
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) {
+      if (error.code === '23503') {
+        return res.status(409).json({ error: 'Cannot remove this membership because it is referenced by other records.' })
+      }
+      return sendServerError(res, error, 'admin-alsa:member-delete')
+    }
     return res.json({ ok: true })
   }
 
@@ -127,7 +134,7 @@ async function handleLifetimeMembers(req, res, user) {
       `)
       .order('granted_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:lifetime-list')
     return res.json({ lifetime_members: (data ?? []).slice().sort(sortProfiles) })
   }
 
@@ -148,7 +155,7 @@ async function handleLifetimeMembers(req, res, user) {
       `)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:lifetime-grant')
     return res.json({ lifetime_member: data })
   }
 
@@ -160,7 +167,12 @@ async function handleLifetimeMembers(req, res, user) {
       .from('alsa_lifetime_members')
       .delete()
       .eq('profile_id', profileId)
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) {
+      if (error.code === '23503') {
+        return res.status(409).json({ error: 'Cannot remove this lifetime membership because it is referenced by other records.' })
+      }
+      return sendServerError(res, error, 'admin-alsa:lifetime-delete')
+    }
     return res.json({ ok: true })
   }
 
@@ -175,7 +187,7 @@ async function handlePeriods(req, res) {
       .from('alsa_membership_periods')
       .select('id, label, starts_at, ends_at, created_at')
       .order('starts_at', { ascending: false })
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:period-list')
     return res.json({ periods: data ?? [] })
   }
 
@@ -199,8 +211,8 @@ async function handlePeriods(req, res) {
           overlaps,
         })
       }
-    } catch (e) {
-      return res.status(500).json({ error: e.message })
+    } catch (error) {
+      return sendServerError(res, error, 'admin-alsa:period-overlap-check')
     }
 
     const { data, error } = await supabaseAdmin
@@ -209,7 +221,7 @@ async function handlePeriods(req, res) {
       .select('id, label, starts_at, ends_at, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:period-create')
     return res.json({ period: data })
   }
 
@@ -243,7 +255,7 @@ async function handlePeriods(req, res) {
         .select('starts_at, ends_at')
         .eq('id', id)
         .maybeSingle()
-      if (exErr) return res.status(500).json({ error: exErr.message })
+      if (exErr) return sendServerError(res, exErr, 'admin-alsa:period-load')
       if (!existing) return res.status(404).json({ error: 'Period not found' })
 
       const effStart = update.starts_at ?? existing.starts_at
@@ -259,8 +271,8 @@ async function handlePeriods(req, res) {
             overlaps,
           })
         }
-      } catch (e) {
-        return res.status(500).json({ error: e.message })
+      } catch (error) {
+        return sendServerError(res, error, 'admin-alsa:period-overlap-check')
       }
     }
 
@@ -270,7 +282,7 @@ async function handlePeriods(req, res) {
       .eq('id', id)
       .select('id, label, starts_at, ends_at, created_at')
       .single()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(res, error, 'admin-alsa:period-update')
     return res.json({ period: data })
   }
 
@@ -285,7 +297,7 @@ async function handlePeriods(req, res) {
       if (error.code === '23503') {
         return res.status(409).json({ error: 'Cannot delete a period that has memberships. Remove the memberships first.' })
       }
-      return res.status(500).json({ error: error.message })
+      return sendServerError(res, error, 'admin-alsa:period-delete')
     }
     return res.json({ ok: true })
   }
@@ -296,12 +308,26 @@ async function handlePeriods(req, res) {
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  const { user, error: authErr } = await verifyCommittee(req)
-  if (authErr) return res.status(statusForAuthError(authErr)).json({ error: authErr })
+  try {
+    const { user, roles, error: authErr } = await verifyCommittee(req)
+    if (authErr) {
+      const status = statusForAuthError(authErr)
+      if (status === 500) return sendServerError(res, new Error(authErr), 'admin-alsa:auth')
+      return res.status(status).json({ error: authErr })
+    }
 
-  const resource = req.query.resource
-  if (resource === 'members') return handleMembers(req, res, user)
-  if (resource === 'lifetime-members') return handleLifetimeMembers(req, res, user)
-  if (resource === 'periods') return handlePeriods(req, res, user)
-  return res.status(400).json({ error: 'resource query param must be "members", "lifetime-members", or "periods"' })
+    const resource = req.query.resource
+    if (!['members', 'lifetime-members', 'periods'].includes(resource)) {
+      return res.status(400).json({ error: 'resource query param must be "members", "lifetime-members", or "periods"' })
+    }
+    if (req.method === 'DELETE' && !roles?.includes('superadmin')) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+
+    if (resource === 'members') return await handleMembers(req, res, user)
+    if (resource === 'lifetime-members') return await handleLifetimeMembers(req, res, user)
+    return await handlePeriods(req, res, user)
+  } catch (error) {
+    return sendServerError(res, error, 'admin-alsa')
+  }
 }

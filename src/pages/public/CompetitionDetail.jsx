@@ -45,10 +45,6 @@ function Fact({ label, value }) {
   )
 }
 
-function fullName(p) {
-  return [p.first_name, p.last_name].filter(Boolean).join(' ')
-}
-
 // Description + structured links sections. Rendered when either field is
 // populated; the whole region is omitted if both are empty so the page reads
 // the same as before Phase 2a.
@@ -96,13 +92,11 @@ function DescriptionAndLinks({ description, links }) {
 }
 
 function PlayerLine({ player }) {
-  const name = fullName(player)
   return (
     <p className="text-white text-sm">
       {player.alias
         ? <span className="text-brand font-semibold">"{player.alias}"</span>
         : <span className="opacity-50">(no alias)</span>}
-      {name && <span className="ml-2 opacity-80">{name}</span>}
     </p>
   )
 }

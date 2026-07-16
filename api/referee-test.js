@@ -1,177 +1,152 @@
 import supabaseAdmin from './_lib/supabase.js'
 import { sendServerError } from './_lib/apiErrors.js'
-import { verifyUser } from './_lib/auth.js'
+import { verifyUser, statusForAuthError } from './_lib/auth.js'
+import { enforceRateLimit } from './_lib/rateLimit.js'
 
-// Server-authoritative Rules Test scoring.
-//
-// The client submits only raw answers — { question_id, letter } pairs — and
-// this handler:
-//   1. Verifies every submitted question_id is in the active question bank.
-//   2. Confirms the per-section submitted count matches the configured
-//      sample size (or the active pool size if that pool is smaller),
-//      mirroring RulesTestRunner.composeAttempt().
-//   3. Scores each answer against the stored correct_answer.
-//   4. Derives safety_correct / safety_total / general_correct /
-//      general_total / safety_passed / general_passed / overall passed /
-//      score entirely server-side.
-//   5. Writes to referee_test_results via service-role (the only allowed
-//      write path post-20260528010000_rules_test_integrity_patch).
-//
-// The response carries the per-question breakdown so the client can render
-// the post-submit reveal without ever holding correct_answer pre-submit.
-//
-// Already-passed guard preserved: once a player's stored result is
-// passed=true, this endpoint refuses re-submissions (committee can clear
-// the row or use admin_override_ref_test for retake).
-
+const QUESTION_COLUMNS = 'id, section, question, option_a, option_b, option_c, option_d, category, image_url, video_url'
 const ALLOWED_LETTERS = new Set(['a', 'b', 'c', 'd'])
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function retryAfterSeconds(error) {
+  const retryAt = new Date(error?.details ?? '').getTime()
+  if (!Number.isFinite(retryAt)) return 60
+  return Math.max(1, Math.ceil((retryAt - Date.now()) / 1000))
+}
+
+function sendAttemptError(res, error, operation) {
+  const message = String(error?.message ?? '')
+  if (error?.code === '55P03') {
+    const retryAfter = retryAfterSeconds(error)
+    res.setHeader('Retry-After', String(retryAfter))
+    return res.status(429).json({
+      error: 'Please wait before starting another Rules Test attempt.',
+      retry_after_seconds: retryAfter,
+    })
+  }
+  if (error?.code === '42501') return res.status(403).json({ error: message || 'Not allowed.' })
+  if (error?.code === '23514' && /already been passed/i.test(message)) {
+    return res.status(403).json({ error: 'You have already passed the Rules Test.' })
+  }
+  if (error?.code === 'P0002') return res.status(404).json({ error: message || 'Rules Test attempt not found.' })
+  if (error?.code === '22023') return res.status(400).json({ error: message || 'Invalid Rules Test submission.' })
+  if (error?.code === '57014') return res.status(410).json({ error: 'This Rules Test attempt has expired.' })
+  if (error?.code === '55000') return res.status(409).json({ error: message || 'Rules Test attempt is unavailable.' })
+  return sendServerError(res, error, operation)
+}
+
+function validateAnswers(answers) {
+  if (!Array.isArray(answers) || answers.length === 0 || answers.length > 100) {
+    return 'answers must be a non-empty array of at most 100 entries'
+  }
+  const ids = new Set()
+  for (const answer of answers) {
+    if (!answer || typeof answer !== 'object' || Array.isArray(answer)) {
+      return 'each answer must be an object'
+    }
+    if (typeof answer.question_id !== 'string' || !UUID_PATTERN.test(answer.question_id)) {
+      return 'each answer requires a valid question_id'
+    }
+    if (typeof answer.letter !== 'string' || !ALLOWED_LETTERS.has(answer.letter)) {
+      return "letter must be one of 'a', 'b', 'c', or 'd'"
+    }
+    if (ids.has(answer.question_id)) return 'duplicate question_id in payload'
+    ids.add(answer.question_id)
+  }
+  return null
+}
+
+async function startAttempt(res, user) {
+  const { data: attempt, error } = await supabaseAdmin.rpc('start_referee_test_attempt', {
+    p_user_id: user.id,
+  })
+  if (error) return sendAttemptError(res, error, 'referee-test:start')
+
+  const questionIds = Array.isArray(attempt?.question_ids) ? attempt.question_ids : []
+  if (!UUID_PATTERN.test(attempt?.attempt_id ?? '') || questionIds.length === 0) {
+    return sendServerError(res, new Error('Attempt RPC returned an invalid payload.'), 'referee-test:start-payload')
+  }
+
+  const { data: questionRows, error: questionError } = await supabaseAdmin
+    .from('referee_questions')
+    .select(QUESTION_COLUMNS)
+    .in('id', questionIds)
+  if (questionError) return sendServerError(res, questionError, 'referee-test:start-questions')
+
+  const byId = new Map((questionRows ?? []).map(question => [question.id, question]))
+  const questions = questionIds.map(id => byId.get(id)).filter(Boolean)
+  if (questions.length !== questionIds.length) {
+    return res.status(409).json({ error: 'One or more issued Rules Test questions are unavailable.' })
+  }
+
+  return res.json({
+    attempt_id: attempt.attempt_id,
+    expires_at: attempt.expires_at,
+    resumed: attempt.resumed === true,
+    settings: {
+      safety_questions_per_test: attempt.safety_total,
+      safety_pass_score: attempt.safety_pass_score,
+      general_questions_per_test: attempt.general_total,
+      general_pass_score: attempt.general_pass_score,
+    },
+    questions,
+  })
+}
+
+async function submitAttempt(res, user, body) {
+  if (typeof body.attempt_id !== 'string' || !UUID_PATTERN.test(body.attempt_id)) {
+    return res.status(400).json({ error: 'A valid attempt_id is required.' })
+  }
+  const validationError = validateAnswers(body.answers)
+  if (validationError) return res.status(400).json({ error: validationError })
+
+  const { data, error } = await supabaseAdmin.rpc('submit_referee_test_attempt', {
+    p_attempt_id: body.attempt_id,
+    p_user_id: user.id,
+    p_answers: body.answers,
+  })
+  if (error) return sendAttemptError(res, error, 'referee-test:submit')
+  if (data?.expired === true) {
+    return res.status(410).json({
+      error: 'This Rules Test attempt has expired.',
+      attempt_id: data.attempt_id,
+      expires_at: data.expires_at,
+    })
+  }
+
+  // The transactional RPC closes the attempt before returning. It deliberately
+  // returns aggregate scores only, never a reusable answer key.
+  return res.json({
+    ok: true,
+    attempt_id: data?.attempt_id,
+    score: data?.score,
+    passed: data?.passed === true,
+    taken_at: data?.taken_at,
+    safety_correct: data?.safety_correct,
+    safety_total: data?.safety_total,
+    general_correct: data?.general_correct,
+    general_total: data?.general_total,
+    safety_passed: data?.safety_passed === true,
+    general_passed: data?.general_passed === true,
+  })
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { user, error: authErr } = await verifyUser(req)
-  if (authErr) return res.status(401).json({ error: authErr })
+  const { user, error: authError } = await verifyUser(req)
+  if (authError) return res.status(statusForAuthError(authError)).json({ error: authError })
+
+  const permitted = await enforceRateLimit(req, res, {
+    identifier: user.id,
+    limit: 30,
+    window: '15m',
+    prefix: 'referee-test',
+    requireDistributed: true,
+  })
+  if (!permitted) return
 
   const body = req.body ?? {}
-  const answers = body.answers
-  const takenAt = body.taken_at
-
-  // ── 1. Payload shape ───────────────────────────────────────────────────────
-  if (!Array.isArray(answers) || answers.length === 0) {
-    return res.status(400).json({ error: 'answers must be a non-empty array' })
-  }
-
-  const submittedById = new Map()
-  const submittedIds = []
-  for (const a of answers) {
-    if (!a || typeof a !== 'object') {
-      return res.status(400).json({ error: 'each answer must be an object' })
-    }
-    const qid = a.question_id
-    const letter = a.letter
-    if (typeof qid !== 'string' || qid.length === 0) {
-      return res.status(400).json({ error: 'each answer requires a question_id' })
-    }
-    if (typeof letter !== 'string' || !ALLOWED_LETTERS.has(letter)) {
-      return res.status(400).json({ error: "letter must be one of 'a', 'b', 'c', 'd'" })
-    }
-    if (submittedById.has(qid)) {
-      return res.status(400).json({ error: 'duplicate question_id in payload' })
-    }
-    submittedById.set(qid, letter)
-    submittedIds.push(qid)
-  }
-
-  // ── 2. Verify against the live question bank ───────────────────────────────
-  const { data: questions, error: qErr } = await supabaseAdmin
-    .from('referee_questions')
-    .select('id, section, correct_answer')
-    .in('id', submittedIds)
-    .eq('active', true)
-  if (qErr) return sendServerError(res, qErr, 'referee-test:q')
-
-  if ((questions ?? []).length !== submittedIds.length) {
-    return res.status(400).json({ error: 'one or more questions are not active or do not exist' })
-  }
-
-  // ── 3. Per-section expected counts (match composeAttempt's sampling) ──────
-  const { data: cfg } = await supabaseAdmin
-    .from('referee_test_settings')
-    .select('safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
-    .limit(1)
-    .maybeSingle()
-  const safetyPerTest    = cfg?.safety_questions_per_test ?? 10
-  const generalPerTest   = cfg?.general_questions_per_test ?? 20
-  const safetyPassScore  = cfg?.safety_pass_score ?? 100
-  const generalPassScore = cfg?.general_pass_score ?? 70
-
-  const { data: activeAll, error: actErr } = await supabaseAdmin
-    .from('referee_questions')
-    .select('id, section')
-    .eq('active', true)
-  if (actErr) return sendServerError(res, actErr, 'referee-test:act')
-
-  const activeSafety  = (activeAll ?? []).filter(q => q.section === 'safety').length
-  const activeGeneral = (activeAll ?? []).filter(q => q.section !== 'safety').length
-
-  const expectedSafety  = Math.min(safetyPerTest, activeSafety)
-  const expectedGeneral = Math.min(generalPerTest, activeGeneral)
-
-  let submittedSafety = 0
-  let submittedGeneral = 0
-  for (const q of questions) {
-    if (q.section === 'safety') submittedSafety++
-    else submittedGeneral++
-  }
-  if (submittedSafety !== expectedSafety) {
-    return res.status(400).json({ error: `expected ${expectedSafety} safety answer(s), got ${submittedSafety}` })
-  }
-  if (submittedGeneral !== expectedGeneral) {
-    return res.status(400).json({ error: `expected ${expectedGeneral} general answer(s), got ${submittedGeneral}` })
-  }
-
-  // ── 4. Score ──────────────────────────────────────────────────────────────
-  const perQuestion = []
-  let safetyCorrect = 0
-  let generalCorrect = 0
-  for (const q of questions) {
-    const selected = submittedById.get(q.id)
-    const isCorrect = selected === q.correct_answer
-    perQuestion.push({
-      question_id: q.id,
-      section: q.section,
-      selected_letter: selected,
-      correct_answer: q.correct_answer,
-      is_correct: isCorrect,
-    })
-    if (q.section === 'safety' && isCorrect) safetyCorrect++
-    if (q.section !== 'safety' && isCorrect) generalCorrect++
-  }
-
-  const safetyTotal  = expectedSafety
-  const generalTotal = expectedGeneral
-  const safetyPct  = safetyTotal > 0 ? Math.round((safetyCorrect / safetyTotal) * 100) : 100
-  const generalPct = generalTotal > 0 ? Math.round((generalCorrect / generalTotal) * 100) : 100
-  const safetyPassed  = safetyPct >= safetyPassScore
-  const generalPassed = generalPct >= generalPassScore
-  const passed = safetyPassed && generalPassed
-  const totalQ = safetyTotal + generalTotal
-  const totalCorrect = safetyCorrect + generalCorrect
-  const score = totalQ > 0 ? Math.min(Math.round((totalCorrect / totalQ) * 100), 100) : 0
-
-  // ── 5. Already-passed guard + write ───────────────────────────────────────
-  const { data: existing, error: existingErr } = await supabaseAdmin
-    .from('referee_test_results')
-    .select('id, passed')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  if (existingErr) return sendServerError(res, existingErr, 'referee-test:existing')
-
-  if (existing?.passed === true) {
-    return res.status(403).json({ error: "You've already passed the Rules Test. Contact the committee for retake." })
-  }
-
-  const payload = {
-    score,
-    passed,
-    taken_at: takenAt ?? new Date().toISOString(),
-    safety_correct: safetyCorrect,
-    safety_total:   safetyTotal,
-    general_correct: generalCorrect,
-    general_total:   generalTotal,
-    safety_passed:  safetyPassed,
-    general_passed: generalPassed,
-  }
-
-  const { error: saveErr } = existing
-    ? await supabaseAdmin.from('referee_test_results').update(payload).eq('user_id', user.id)
-    : await supabaseAdmin.from('referee_test_results').insert({ user_id: user.id, ...payload })
-
-  if (saveErr) return sendServerError(res, saveErr, 'referee-test:save')
-
-  return res.json({
-    ok: true,
-    ...payload,
-    per_question: perQuestion,
-  })
+  if (body.action === 'start') return startAttempt(res, user)
+  if (body.action === 'submit') return submitAttempt(res, user, body)
+  return res.status(400).json({ error: 'action must be "start" or "submit"' })
 }

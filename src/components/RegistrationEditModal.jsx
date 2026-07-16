@@ -412,7 +412,6 @@ export default function RegistrationEditModal({
                 <select id={`${uid}-status`} value={status} onChange={e => setStatus(e.target.value)} className={inputCls}>
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
-                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
             </div>
@@ -494,7 +493,7 @@ export default function RegistrationEditModal({
               rows={2}
               value={adminNote}
               onChange={e => setAdminNote(e.target.value)}
-              placeholder="Reason for any change or override — e.g. CoC signed on paper at venue, partner withdrew"
+              placeholder="Reason for any change or override - e.g. CoC accepted on paper at venue, partner withdrew"
               className="w-full bg-base border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand resize-none"
             />
             <p className="text-[10px] text-[#e5e5e5]/60 mt-1">Stored on the registration as audit trail; never shown to the player.</p>

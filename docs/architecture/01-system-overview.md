@@ -14,7 +14,8 @@ The ALSA Portal is the member-facing web application for the Australasian Laser 
 - Member account creation and authentication
 - Event registration (primarily ZLTAC, the Zone Laser Tag Australasian Championship)
 - Team formation and captain management
-- Policy acknowledgements and legal audit trail
+- Required policy acknowledgements and consent records, with under-18 approval
+  handled separately
 - Referee test and accreditation
 - Committee administration (user management, registration management, event configuration)
 
@@ -56,8 +57,16 @@ There is no separately-operated server, no container infrastructure, and no queu
 
 ## Data flow
 
-- **Normal member activity** (viewing your team, registering for an event, signing a policy) goes from the browser directly to Supabase over HTTPS, using the Supabase JavaScript client. Access is enforced by database-level policies — users can only see and modify rows they are permitted to.
-- **Committee admin activity** (managing registrations, editing event settings) goes from the browser to a Vercel API route, which then talks to Supabase with elevated privileges on the user's behalf. This keeps the elevated credentials on the server side.
+- **Public and own-account reads** go from the browser directly to Supabase over
+  HTTPS using the public client. Grants and row-level policies limit each read;
+  the only direct application-table update is the reviewed own-profile column
+  allow-list.
+- **Member workflow mutations** (registration, teams, payments,
+  acknowledgements, and under-18 submissions) go through authenticated Vercel
+  API routes that enforce account state, ownership, and event lifecycle.
+- **Committee admin activity** (managing registrations and editing event
+  settings) also goes through authenticated Vercel API routes with explicit
+  role checks. The service-role credential stays server-side.
 
 The reasoning behind this split is documented in [ADR-0002: RLS + GRANT Security Model](../adr/0002-rls-plus-grant-security-model.md).
 
@@ -72,7 +81,6 @@ The reasoning behind this split is documented in [ADR-0002: RLS + GRANT Security
 | Security documentation | `docs/security/` |
 | Operational runbook | `docs/operations/runbook.md` |
 | Environment variable reference | `docs/operations/environment-variables.md` |
-| Running to-do / backlog | `docs/BACKLOG.md` |
 | Brand guidelines | `brand.md` |
 
 ## Who can do what
@@ -89,6 +97,5 @@ The precise table-by-table permissions are recorded in the [Data Access Matrix](
 
 - [ADR index](../adr/) — architectural decisions with reasoning
 - [Data Access Matrix](../security/data-access-matrix.md) — authoritative per-table permissions
-- [Runbook](./runbook.md) — day-to-day operations
-- [Environment variables](./environment-variables.md) — configuration reference
-- [Backlog](../BACKLOG.md) — current priorities and open work
+- [Runbook](../operations/runbook.md) — day-to-day operations
+- [Environment variables](../operations/environment-variables.md) — configuration reference

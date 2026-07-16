@@ -11,6 +11,8 @@ import SiteBanner from './components/SiteBanner'
 import ActiveEventBanner from './components/ActiveEventBanner'
 import ScrollToTop from './components/ScrollToTop'
 import ProtectedRoute from './components/ProtectedRoute'
+import CommitteeRoute from './components/CommitteeRoute'
+import ManagerRoute from './components/ManagerRoute'
 import Home from './pages/Home'
 
 // Lazy: every other route loads its own chunk on navigation, so anonymous
@@ -175,6 +177,7 @@ function App() {
             {/* Admin panel */}
             <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
               <Route index element={<AdminHub />} />
+              <Route element={<CommitteeRoute />}>
               <Route path="zltac-dashboard" element={<AdminZltacDashboard />} />
               <Route path="portal-dashboard" element={<AdminAlsaDashboard />} />
               <Route path="event" element={<AdminEvent />} />
@@ -182,7 +185,8 @@ function App() {
               <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
               <Route path="registrations" element={<AdminRegistrations />} />
               <Route path="required-documents" element={<AdminRequiredDocuments />} />
-              <Route path="signed-documents" element={<AdminSignedDocuments />} />
+              <Route path="player-acknowledgements" element={<AdminSignedDocuments />} />
+              <Route path="signed-documents" element={<Navigate to="/admin/player-acknowledgements" replace />} />
               {/* Legacy slug — keep links/bookmarks to /admin/legal-documents working */}
               <Route path="legal-documents" element={<Navigate to="/admin/required-documents" replace />} />
               <Route path="under-18-approvals" element={<AdminUnder18Approvals />} />
@@ -192,20 +196,23 @@ function App() {
               <Route path="users" element={<AdminUsers />} />
               <Route path="members" element={<AdminMembers />} />
               <Route path="alsa-documents" element={<AdminDocuments key="alsa" scope="alsa" />} />
-              <Route path="competitions" element={<AdminCompetitions />} />
               <Route path="backups" element={<AdminBackups />} />
+              </Route>
+              <Route element={<CommitteeRoute allowedRoles={['superadmin']} />}>
+                <Route path="competitions" element={<AdminCompetitions />} />
+              </Route>
               {/* Committee users reach managed-competition pages from the Admin
                   Hub tile + sidebar. Mounting the manager page inside
                   AdminLayout keeps them in the full admin shell instead of
                   dropping into the narrow ManagerLayout. Non-committee managers
                   still use /manage/competitions/:slug below. */}
-              <Route path="manage/competitions/:slug" element={<ManagerCompetitionDetail />} />
+              <Route path="manage/competitions/:slug" element={<ManagerRoute><ManagerCompetitionDetail /></ManagerRoute>} />
             </Route>
 
             {/* Manager (pre-nationals) panel */}
             <Route path="/manage" element={<ProtectedRoute><ManagerLayout /></ProtectedRoute>}>
-              <Route index element={<ManagerHub />} />
-              <Route path="competitions/:slug" element={<ManagerCompetitionDetail />} />
+              <Route index element={<ManagerRoute><ManagerHub /></ManagerRoute>} />
+              <Route path="competitions/:slug" element={<ManagerRoute><ManagerCompetitionDetail /></ManagerRoute>} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

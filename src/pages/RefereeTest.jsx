@@ -18,7 +18,7 @@ export default function RefereeTest() {
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
-  const [pool, setPool] = useState({ safety: [], general: [] })
+  const [loadError, setLoadError] = useState('')
   const [settings, setSettings] = useState({
     safety_questions_per_test: 10, safety_pass_score: 100,
     general_questions_per_test: 20, general_pass_score: 70,
@@ -30,63 +30,58 @@ export default function RefereeTest() {
   const [passedResult, setPassedResult] = useState(null)
 
   async function loadData() {
-    // Player-facing fetch uses the column-masked view. correct_answer is
-    // never sent to the browser; scoring happens server-side in
-    // api/referee-test.js. (Admin preview surface keeps base-table access
-    // through the committee FOR ALL policy; that path is untouched.)
-    const [{ data: qData }, { data: sData }] = await Promise.all([
-      supabase
-        .from('referee_questions_public')
-        .select('id, section, question, option_a, option_b, option_c, option_d, category, image_url, video_url'),
-      supabase
-        .from('referee_test_settings')
+    setLoading(true)
+    setLoadError('')
+    try {
+      const { data: sData, error: settingsError } = await supabase
+        .from('public_referee_test_settings')
         .select('id, safety_questions_per_test, safety_pass_score, general_questions_per_test, general_pass_score')
         .limit(1)
-        .maybeSingle(),
-    ])
+        .maybeSingle()
+      if (settingsError) throw settingsError
 
-    if (sData) setSettings({
-      safety_questions_per_test: sData.safety_questions_per_test ?? 10,
-      safety_pass_score: sData.safety_pass_score ?? 100,
-      general_questions_per_test: sData.general_questions_per_test ?? 20,
-      general_pass_score: sData.general_pass_score ?? 70,
-    })
+      if (sData) setSettings({
+        safety_questions_per_test: sData.safety_questions_per_test ?? 10,
+        safety_pass_score: sData.safety_pass_score ?? 100,
+        general_questions_per_test: sData.general_questions_per_test ?? 20,
+        general_pass_score: sData.general_pass_score ?? 70,
+      })
 
-    if (user) {
-      const { data: existing } = await supabase
+      const { data: existing, error: resultError } = await supabase
         .from('referee_test_results')
         .select('passed, score, safety_correct, safety_total, general_correct, general_total, taken_at')
         .eq('user_id', user.id)
         .maybeSingle()
+      if (resultError) throw resultError
       setExistingResult(existing ?? null)
       if (existing?.passed === true) setPassedResult(existing)
+    } catch (error) {
+      setLoadError(error.message || 'Could not load the Rules Test.')
+    } finally {
+      setLoading(false)
     }
-
-    const active = qData ?? []
-    setPool({
-      safety: active.filter(q => q.section === 'safety'),
-      general: active.filter(q => q.section !== 'safety'),
-    })
-    setLoading(false)
   }
 
   useEffect(() => {
     if (!authLoading && !user) { navigate('/login'); return }
     if (!user) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
   }, [authLoading, user]) // eslint-disable-line
 
-  // Submit the raw answers and let the server score them. The response
-  // carries the authoritative result + per-question breakdown so the runner
-  // can render its results phase without ever holding correct_answer
-  // pre-submit. We bubble the response back to the runner; we also update
-  // the local "already passed" state so a follow-up refresh shows the
-  // locked banner.
-  async function handleComplete({ answers }) {
+  async function handleStart() {
+    return apiFetch('/api/referee-test', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'start' }),
+    })
+  }
+
+  // Submit only answers bound to the server-issued, one-use attempt. The
+  // server closes and scores it transactionally and never returns an answer
+  // key or accepts a client-controlled timestamp.
+  async function handleComplete({ attemptId, answers }) {
     const data = await apiFetch('/api/referee-test', {
       method: 'POST',
-      body: JSON.stringify({ answers, taken_at: new Date().toISOString() }),
+      body: JSON.stringify({ action: 'submit', attempt_id: attemptId, answers }),
     })
     setExistingResult({ passed: data.passed, score: data.score })
     return data
@@ -96,6 +91,17 @@ export default function RefereeTest() {
     return (
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-base flex items-center justify-center px-6 text-center">
+        <div>
+          <p className="text-red-400 mb-4">{loadError}</p>
+          <button onClick={loadData} className="bg-brand text-black font-bold px-5 py-3 rounded-xl">Try Again</button>
+        </div>
       </div>
     )
   }
@@ -140,8 +146,9 @@ export default function RefereeTest() {
   return (
     <RulesTestRunner
       settings={settings}
-      questionPool={pool}
+      questionPool={{ safety: [], general: [] }}
       existingResult={existingResult}
+      onStart={handleStart}
       onComplete={handleComplete}
     />
   )

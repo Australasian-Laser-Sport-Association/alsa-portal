@@ -8,8 +8,11 @@ function hasRedisConfig() {
   return !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN
 }
 
-function isProductionRuntime() {
-  if (process.env.VERCEL_ENV) return process.env.VERCEL_ENV === 'production'
+function isDeployedRuntime() {
+  if (process.env.VERCEL_ENV) {
+    return ['preview', 'production'].includes(process.env.VERCEL_ENV)
+  }
+  if (process.env.VERCEL) return true
   return process.env.NODE_ENV === 'production'
 }
 
@@ -75,14 +78,14 @@ export async function enforceRateLimit(req, res, {
     try {
       result = await getLimiter({ limit, window, prefix }).limit(identifier)
     } catch (error) {
-      if (requireDistributed && isProductionRuntime()) {
+      if (requireDistributed && isDeployedRuntime()) {
         console.error(`[rate-limit:${prefix}] Redis unavailable:`, error)
         return rejectRateLimitUnavailable(res, prefix)
       }
       console.error(`[rate-limit:${prefix}] Redis unavailable; using in-memory fallback:`, error)
     }
   } else {
-    if (requireDistributed && isProductionRuntime()) {
+    if (requireDistributed && isDeployedRuntime()) {
       return rejectRateLimitUnavailable(res, prefix)
     }
     console.warn(`[rate-limit:${prefix}] Redis configuration is missing; using in-memory fallback`)

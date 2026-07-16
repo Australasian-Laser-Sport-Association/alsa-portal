@@ -26,8 +26,16 @@ function vercelStyleApiPlugin() {
           if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
             const chunks = []
             for await (const chunk of req) chunks.push(chunk)
-            const raw = Buffer.concat(chunks).toString('utf8')
-            try { req.body = raw ? JSON.parse(raw) : undefined } catch { req.body = raw }
+            const raw = Buffer.concat(chunks)
+            const contentType = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase()
+            if (contentType === 'application/json') {
+              const text = raw.toString('utf8')
+              try { req.body = text ? JSON.parse(text) : undefined } catch { req.body = text }
+            } else {
+              // Mirror Vercel's binary request handling for server-validated
+              // uploads. Converting arbitrary PDF bytes to UTF-8 corrupts them.
+              req.body = raw.length > 0 ? raw : undefined
+            }
           }
           res.status = (code) => { res.statusCode = code; return res }
           res.json = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(data)) }
@@ -88,6 +96,10 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'node',
       pool: 'forks',
+      include: [
+        'src/**/*.test.{js,jsx,ts,tsx}',
+        'api/**/*.test.{js,jsx,ts,tsx}',
+      ],
     },
   }
 })

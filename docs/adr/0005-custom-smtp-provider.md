@@ -4,6 +4,11 @@
 
 Accepted — 2026-04-26.
 
+Implementation update — 2026-07-15: the contact endpoint now enforces an
+Upstash-backed per-IP limit and fails closed when distributed limiting is
+unavailable in Preview or Production. Production and non-production Vercel
+scopes must use different contact-form sending keys.
+
 ## Context
 
 Supabase Auth's default email sender (`noreply@mail.supabase.io`) has three limitations that block production launch:
@@ -41,18 +46,20 @@ Resend chosen for:
 
 All three are required for production-grade deliverability and to avoid being flagged as spam by major mail providers (Gmail, Outlook, iCloud).
 
-### Two-key separation
+### Credential separation
 
-Two separate Resend API keys are provisioned, both with "Sending access" permission only:
+Resend credentials are separated by responsibility and environment, with
+"Sending access" permission only:
 
 | Key name | Used by | Stored in |
 |---|---|---|
 | `Supabase SMTP` | Supabase Auth (password reset, email confirmation, magic links) | Supabase dashboard → Project Settings → Auth → SMTP |
-| `Vercel Contact Form` | `/api/contact` Vercel API route | Vercel env var `RESEND_API_KEY`, scoped to Production + Preview + Development |
+| `Vercel Contact Form - Production` | `/api/contact` and backup-summary mail | Vercel `RESEND_API_KEY`, Production scope only |
+| `Vercel Contact Form - Non-production` | Approved Preview/Development canaries | Vercel `RESEND_API_KEY`, Preview and Development scopes only |
 
-The keys are separated to:
+The credentials are separated to:
 
-1. **Limit blast radius of compromise** — rotating one key does not affect the other system
+1. **Limit blast radius of compromise** — rotating one credential does not affect another flow or environment
 2. **Aid audit** — Resend's logs label sends by API key, making it easy to distinguish auth emails from contact-form messages
 3. **Decouple lifecycles** — if either provider is changed in the future, only one key needs to move
 
@@ -89,7 +96,7 @@ The forwarder is one-way: the committee receives mail at the branded address but
 
 - **External dependency.** If Resend has an outage, both auth emails and the contact form fail. Mitigated by the fact that auth emails (password reset, etc.) are infrequent and a temporary outage is recoverable.
 - **DNS records must be maintained.** SPF/DKIM/DMARC records on `lasersport.org.au` need to remain accurate. If the domain is ever moved or the DNS provider changes, these must be re-applied or auth/contact emails will fail silently.
-- **Contact form endpoint is unauthenticated and thus rate-limit-exposed.** Tracked as a P2 backlog item — needs Upstash Redis or Vercel KV-based per-IP throttling before public launch traffic ramps up.
+- **Contact form endpoint is unauthenticated and thus rate-limit-exposed.** The implemented Upstash per-IP limit is therefore a mandatory deployed dependency and fails closed if Redis is unavailable.
 
 ### Neutral
 
@@ -122,4 +129,3 @@ The forwarder is one-way: the committee receives mail at the branded address but
 - [Resend documentation](https://resend.com/docs)
 - [Supabase custom SMTP configuration](https://supabase.com/docs/guides/auth/auth-smtp)
 - [SPF, DKIM, and DMARC explained](https://www.cloudflare.com/learning/email-security/dmarc-dkim-spf/)
-- [BACKLOG.md](../BACKLOG.md) — tracks the rate-limit followup for `/api/contact`

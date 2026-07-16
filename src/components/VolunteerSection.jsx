@@ -61,7 +61,7 @@ export default function VolunteerSection({ registrationId = null, eventId, mode 
     async function load() {
       setLoading(true)
       const [{ data: ev }, { data: roleData }, { data: settings }] = await Promise.all([
-        supabase.from('zltac_events').select('reg_close_date, event_starts_at, committee_email').eq('id', eventId).maybeSingle(),
+        supabase.from('public_zltac_events').select('status, reg_close_date, event_starts_at, committee_email').eq('id', eventId).maybeSingle(),
         supabase
           .from('volunteer_roles')
           .select('id, code, name, short_description, target_count, min_count, requires_experience, experience_notes, is_default, sort_order, is_active')

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
 import { storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
+import { apiFetch } from '../../lib/apiFetch.js'
+import { uploadAuthorizedAsset } from '../../lib/authorizedAssetUpload.js'
 
 const inputClass = 'w-full bg-[#191919] border border-line rounded-lg px-3 py-2 text-sm text-white placeholder-[#e5e5e5]/30 focus:outline-none focus:border-brand/50 transition-colors'
 const labelClass = 'block text-xs font-medium text-[#e5e5e5]/60 uppercase tracking-wider mb-1.5'
@@ -18,6 +19,7 @@ const DIVISIONS = [
 ]
 
 const CURRENT_YEAR = new Date().getFullYear()
+const HISTORY_CONTENT_API = '/api/admin/event?resource=history-content'
 
 // ---------------------------------------------------------------------------
 // Shared bits
@@ -127,22 +129,9 @@ function TournamentsTab() {
   async function loadList() {
     setLoadingList(true)
     try {
-      const [yearsRes, placingsRes] = await Promise.all([
-        supabase
-          .from('zltac_event_history')
-          .select('id, year, name, location_city, location_state, location_venue, location_country, is_cancelled, is_upcoming, team_count')
-          .order('year', { ascending: false }),
-        supabase
-          .from('zltac_event_placings')
-          .select('tournament_year'),
-      ])
-      if (yearsRes.error) throw yearsRes.error
-      if (placingsRes.error) throw placingsRes.error
-      setYears(yearsRes.data ?? [])
-      const counts = new Map()
-      for (const p of (placingsRes.data ?? [])) {
-        counts.set(p.tournament_year, (counts.get(p.tournament_year) ?? 0) + 1)
-      }
+      const { records = [] } = await apiFetch(`${HISTORY_CONTENT_API}&entity=event`)
+      setYears(records)
+      const counts = new Map(records.map(record => [record.year, record.placing_count ?? 0]))
       setPlacingCounts(counts)
     } catch (error) {
       showToast(error.message || 'Could not load tournaments.', 'error')
@@ -283,40 +272,48 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
         setLoaded(true)
         return
       }
-      const evRes = await supabase.from('zltac_event_history').select('*').eq('id', rowId).single()
-      if (cancelled) return
-      if (evRes.data) {
-        const d = evRes.data
-        setForm({
-          year: d.year ?? '',
-          name: d.name ?? '',
-          location_venue: d.location_venue ?? '',
-          location_city: d.location_city ?? '',
-          location_state: d.location_state ?? '',
-          location_country: d.location_country ?? '',
-          start_date: d.start_date ?? '',
-          end_date: d.end_date ?? '',
-          description: d.description ?? '',
-          historic_note: d.historic_note ?? '',
-          team_count: d.team_count ?? '',
-          is_cancelled: !!d.is_cancelled,
-          is_upcoming: !!d.is_upcoming,
-          mvp_name: d.mvp_name ?? '',
-          mvp_alias: d.mvp_alias ?? '',
-        })
-        const plRes = await supabase.from('zltac_event_placings')
-          .select('division, rank, name, subtitle')
-          .eq('tournament_year', d.year)
-          .order('division').order('rank')
+      try {
+        const { record: d, placings: savedPlacings = [] } = await apiFetch(
+          `${HISTORY_CONTENT_API}&entity=event&id=${encodeURIComponent(rowId)}`,
+        )
         if (cancelled) return
-        setPlacings(plRes.data ?? [])
-      } else {
-        setPlacings([])
+        if (d) {
+          setForm({
+            year: d.year ?? '',
+            name: d.name ?? '',
+            location_venue: d.location_venue ?? '',
+            location_city: d.location_city ?? '',
+            location_state: d.location_state ?? '',
+            location_country: d.location_country ?? '',
+            start_date: d.start_date ?? '',
+            end_date: d.end_date ?? '',
+            description: d.description ?? '',
+            historic_note: d.historic_note ?? '',
+            team_count: d.team_count ?? '',
+            is_cancelled: !!d.is_cancelled,
+            is_upcoming: !!d.is_upcoming,
+            mvp_name: d.mvp_name ?? '',
+            mvp_alias: d.mvp_alias ?? '',
+          })
+          setPlacings(savedPlacings)
+        } else {
+          setPlacings([])
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPlacings([])
+          showToast(error?.message || 'Could not load the tournament. Please try again.', 'error')
+          onClose()
+        }
+      } finally {
+        if (!cancelled) setLoaded(true)
       }
-      setLoaded(true)
     }
     load()
     return () => { cancelled = true }
+    // showToast is provided by the parent toast hook and intentionally does
+    // not trigger a reload while the same tournament remains selected.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowId, isNew])
 
   function setField(key, val) {
@@ -383,81 +380,55 @@ function TournamentEditor({ rowId, onClose, onSaved, onDeleted, showToast }) {
       is_upcoming: !!form.is_upcoming,
       mvp_name: form.mvp_name?.trim() || null,
       mvp_alias: form.mvp_alias?.trim() || null,
-      updated_at: new Date().toISOString(),
     }
 
-    let savedYear = payload.year
-    let savedId = rowId
-
-    if (isNew) {
-      const res = await supabase.from('zltac_event_history').insert(payload).select('id, year').single()
-      if (res.error) {
-        setSaving(false)
-        showToast(res.error.message, 'error')
-        return
-      }
-      savedId = res.data.id
-      savedYear = res.data.year
-    } else {
-      const res = await supabase.from('zltac_event_history').update(payload).eq('id', rowId)
-      if (res.error) {
-        setSaving(false)
-        showToast(res.error.message, 'error')
-        return
-      }
-    }
-
-    // Sync placings: delete all for this year, re-insert the current set.
-    // Simple + safe — race-free for a single editor.
     const placingsPayload = placings
       .filter(p => p.name?.trim() && Number.isInteger(parseInt(p.rank)))
       .map(p => ({
-        tournament_year: savedYear,
         division: p.division,
         rank: parseInt(p.rank),
         name: p.name.trim(),
         subtitle: p.subtitle?.trim() || null,
       }))
 
-    const delRes = await supabase
-      .from('zltac_event_placings')
-      .delete()
-      .eq('tournament_year', savedYear)
-    if (delRes.error) {
-      setSaving(false)
-      showToast(`Placings clear failed: ${delRes.error.message}`, 'error')
-      return
-    }
-
-    if (placingsPayload.length > 0) {
-      const insRes = await supabase.from('zltac_event_placings').insert(placingsPayload)
-      if (insRes.error) {
-        setSaving(false)
-        showToast(`Placings save failed (year metadata saved, placings empty): ${insRes.error.message}`, 'error')
-        return
+    try {
+      const result = await apiFetch(HISTORY_CONTENT_API, {
+        method: isNew ? 'POST' : 'PATCH',
+        body: JSON.stringify({
+          entity: 'event',
+          ...(isNew ? {} : { id: rowId }),
+          data: payload,
+          placings: placingsPayload,
+        }),
+      })
+      const savedId = result?.record?.id ?? (isNew ? null : rowId)
+      if (!savedId) {
+        throw new Error('The tournament was saved but could not be reloaded. Please refresh the page.')
       }
+      showToast('Saved.')
+      onSaved(savedId)
+    } catch (error) {
+      showToast(error?.message || 'Could not save the tournament. Please try again.', 'error')
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
-    showToast('Saved.')
-    onSaved(savedId)
   }
 
   async function deleteRow() {
     if (isNew) return
     setDeleting(true)
-    // Wipe placings first to avoid dangling rows by year (no FK, but tidy).
-    if (form.year) {
-      await supabase.from('zltac_event_placings').delete().eq('tournament_year', parseInt(form.year))
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'event', id: rowId }),
+      })
+      showToast('Tournament deleted.')
+      onDeleted()
+    } catch (error) {
+      showToast(error?.message || 'Could not delete the tournament. Please try again.', 'error')
+    } finally {
+      setDeleting(false)
     }
-    const { error } = await supabase.from('zltac_event_history').delete().eq('id', rowId)
-    setDeleting(false)
-    if (error) {
-      showToast(error.message, 'error')
-      return
-    }
-    showToast('Tournament deleted.')
-    onDeleted()
   }
 
   if (!loaded) {
@@ -820,13 +791,8 @@ function LegendsSection({ showToast }) {
   async function load() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('zltac_legends')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('alias', { ascending: true })
-      if (error) throw error
-      setRows(data ?? [])
+      const { records = [] } = await apiFetch(`${HISTORY_CONTENT_API}&entity=legend`)
+      setRows(records)
     } catch (error) {
       showToast(error.message || 'Could not load legends.', 'error')
     } finally {
@@ -871,28 +837,37 @@ function LegendsSection({ showToast }) {
       display_order: parseInt(draft.display_order) || 0,
       is_visible: !!draft.is_visible,
     }
-    const res = editingId === 'new'
-      ? await supabase.from('zltac_legends').insert(payload)
-      : await supabase.from('zltac_legends').update(payload).eq('id', editingId)
-    setSaving(false)
-    if (res.error) {
-      showToast(res.error.message, 'error')
-      return
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: editingId === 'new' ? 'POST' : 'PATCH',
+        body: JSON.stringify({
+          entity: 'legend',
+          ...(editingId === 'new' ? {} : { id: editingId }),
+          data: payload,
+        }),
+      })
+      showToast('Saved.')
+      cancel()
+      load()
+    } catch (error) {
+      showToast(error?.message || 'Could not save the legend. Please try again.', 'error')
+    } finally {
+      setSaving(false)
     }
-    showToast('Saved.')
-    cancel()
-    load()
   }
 
   async function doDelete(id) {
-    const { error } = await supabase.from('zltac_legends').delete().eq('id', id)
-    setConfirmDelete(null)
-    if (error) {
-      showToast(error.message, 'error')
-      return
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'legend', id }),
+      })
+      setConfirmDelete(null)
+      showToast('Legend deleted.')
+      load()
+    } catch (error) {
+      showToast(error?.message || 'Could not delete the legend. Please try again.', 'error')
     }
-    showToast('Legend deleted.')
-    load()
   }
 
   return (
@@ -1088,13 +1063,8 @@ function DynastiesSection({ showToast }) {
   async function load() {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('zltac_dynasties')
-        .select('*')
-        .order('display_order', { ascending: true })
-        .order('team_name', { ascending: true })
-      if (error) throw error
-      setRows(data ?? [])
+      const { records = [] } = await apiFetch(`${HISTORY_CONTENT_API}&entity=dynasty`)
+      setRows(records)
     } catch (error) {
       showToast(error.message || 'Could not load dynasties.', 'error')
     } finally {
@@ -1145,28 +1115,37 @@ function DynastiesSection({ showToast }) {
       display_order: parseInt(draft.display_order) || 0,
       is_visible: !!draft.is_visible,
     }
-    const res = editingId === 'new'
-      ? await supabase.from('zltac_dynasties').insert(payload)
-      : await supabase.from('zltac_dynasties').update(payload).eq('id', editingId)
-    setSaving(false)
-    if (res.error) {
-      showToast(res.error.message, 'error')
-      return
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: editingId === 'new' ? 'POST' : 'PATCH',
+        body: JSON.stringify({
+          entity: 'dynasty',
+          ...(editingId === 'new' ? {} : { id: editingId }),
+          data: payload,
+        }),
+      })
+      showToast('Saved.')
+      cancel()
+      load()
+    } catch (error) {
+      showToast(error?.message || 'Could not save the dynasty. Please try again.', 'error')
+    } finally {
+      setSaving(false)
     }
-    showToast('Saved.')
-    cancel()
-    load()
   }
 
   async function doDelete(id) {
-    const { error } = await supabase.from('zltac_dynasties').delete().eq('id', id)
-    setConfirmDelete(null)
-    if (error) {
-      showToast(error.message, 'error')
-      return
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: 'DELETE',
+        body: JSON.stringify({ entity: 'dynasty', id }),
+      })
+      setConfirmDelete(null)
+      showToast('Dynasty deleted.')
+      load()
+    } catch (error) {
+      showToast(error?.message || 'Could not delete the dynasty. Please try again.', 'error')
     }
-    showToast('Dynasty deleted.')
-    load()
   }
 
   return (
@@ -1372,7 +1351,6 @@ function ExtrasTab() {
   const [years, setYears] = useState([])
   const [loadingList, setLoadingList] = useState(true)
   const [selectedId, setSelectedId] = useState('')
-  const [selectedYear, setSelectedYear] = useState(null)
   const [form, setForm] = useState(emptyExtras())
   const [saving, setSaving] = useState(false)
   const [logoUploading, setLogoUploading] = useState(false)
@@ -1384,14 +1362,10 @@ function ExtrasTab() {
   async function loadYears() {
     setLoadingList(true)
     try {
-    // Existing zltac_event_history rows only — same table/scope the Tournaments
-    // tab lists from. Years that don't exist yet are created there first.
-    const { data, error } = await supabase
-      .from('zltac_event_history')
-      .select('id, year, name')
-      .order('year', { ascending: false })
-    if (error) throw error
-    setYears(data ?? [])
+      // Existing history rows only. Years that do not exist yet are created
+      // on the Tournaments tab before their extras can be edited here.
+      const { records = [] } = await apiFetch(`${HISTORY_CONTENT_API}&entity=event`)
+      setYears(records)
     } catch (error) {
       showToast(error.message || 'Could not load tournament years.', 'error')
     } finally {
@@ -1405,19 +1379,24 @@ function ExtrasTab() {
   async function selectYear(id) {
     setSelectedId(id)
     if (!id) {
-      setSelectedYear(null)
       setForm(emptyExtras())
       return
     }
-    const { data } = await supabase.from('zltac_event_history').select('*').eq('id', id).single()
-    if (data) {
-      setSelectedYear(data.year)
+    try {
+      const { record } = await apiFetch(
+        `${HISTORY_CONTENT_API}&entity=event&id=${encodeURIComponent(id)}`,
+      )
+      if (!record) throw new Error('Tournament history was not found.')
       setForm({
-        logo_url: data.logo_url ?? '',
-        full_results_text: data.full_results_text ?? '',
-        photo_urls: data.photo_urls ?? [],
-        internal_notes: data.internal_notes ?? '',
+        logo_url: record.logo_url ?? '',
+        full_results_text: record.full_results_text ?? '',
+        photo_urls: record.photo_urls ?? [],
+        internal_notes: record.internal_notes ?? '',
       })
+    } catch (error) {
+      setSelectedId('')
+      setForm(emptyExtras())
+      showToast(error?.message || 'Could not load the tournament extras. Please try again.', 'error')
     }
   }
 
@@ -1433,36 +1412,52 @@ function ExtrasTab() {
       full_results_text: form.full_results_text || null,
       photo_urls: form.photo_urls?.length > 0 ? form.photo_urls : null,
       internal_notes: form.internal_notes || null,
-      updated_at: new Date().toISOString(),
     }
-    const { error } = await supabase.from('zltac_event_history').update(payload).eq('id', selectedId)
-    setSaving(false)
-    if (error) showToast(error.message, 'error')
-    else showToast('Saved.')
+    try {
+      await apiFetch(HISTORY_CONTENT_API, {
+        method: 'PATCH',
+        body: JSON.stringify({ entity: 'event', id: selectedId, data: payload }),
+      })
+      showToast('Saved.')
+    } catch (error) {
+      showToast(error?.message || 'Could not save the tournament extras. Please try again.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function uploadLogo(file) {
     setLogoUploading(true)
-    const ext = file.name.split('.').pop()
-    const path = `history/${selectedYear ?? 'unknown'}-logo-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('event-logos').upload(path, file, { upsert: true })
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from('event-logos').getPublicUrl(path)
-      setField('logo_url', publicUrl)
+    try {
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: 'history-logo',
+        scopeId: selectedId,
+        file,
+      })
+      setField('logo_url', uploaded.url)
+    } catch (error) {
+      showToast(error?.message || 'Logo upload failed. Please try again.', 'error')
+    } finally {
+      setLogoUploading(false)
     }
-    setLogoUploading(false)
   }
 
   async function uploadPhoto(file) {
     setPhotoUploading(true)
-    const ext = file.name.split('.').pop()
-    const path = `history/${selectedYear ?? 'unknown'}-${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('event-photos').upload(path, file, { upsert: true })
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from('event-photos').getPublicUrl(path)
-      setField('photo_urls', [...(form.photo_urls ?? []), publicUrl])
+    try {
+      const uploaded = await uploadAuthorizedAsset({
+        endpoint: '/api/admin/event?resource=asset-upload',
+        purpose: 'history-photo',
+        scopeId: selectedId,
+        file,
+      })
+      setField('photo_urls', [...(form.photo_urls ?? []), uploaded.url])
+    } catch (error) {
+      showToast(error?.message || 'Photo upload failed. Please try again.', 'error')
+    } finally {
+      setPhotoUploading(false)
     }
-    setPhotoUploading(false)
   }
 
   function addPhotoUrl() {
