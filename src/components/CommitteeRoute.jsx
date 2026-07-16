@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router-dom'
 import { useAuth } from '../lib/useAuth'
 import { COMMITTEE_ROLES } from '../lib/roles'
 import LoadError from './LoadError'
@@ -14,6 +14,7 @@ function RouteLoading() {
 export default function CommitteeRoute({ children, allowedRoles = COMMITTEE_ROLES }) {
   const { user, profile, loading, profileLoading, profileError, refreshProfile } = useAuth()
   const location = useLocation()
+  const outletContext = useOutletContext()
 
   if (loading || profileLoading) return <RouteLoading />
   if (!user) {
@@ -29,5 +30,5 @@ export default function CommitteeRoute({ children, allowedRoles = COMMITTEE_ROLE
     return <Navigate to="/dashboard" replace state={{ accessDenied: true }} />
   }
 
-  return children ?? <Outlet />
+  return children ?? <Outlet context={outletContext} />
 }

@@ -151,7 +151,7 @@ const UserRow = memo(function UserRow({ u, onView }) {
 })
 
 export default function AdminUsers() {
-  const { userRoles: adminRoles = [] } = useOutletContext()
+  const { userRoles: adminRoles = [] } = useOutletContext() ?? {}
   const isSuperAdmin = adminRoles.includes('superadmin')
   const uid = useId()
 
