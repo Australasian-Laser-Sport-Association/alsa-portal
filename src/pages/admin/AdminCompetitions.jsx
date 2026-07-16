@@ -372,7 +372,7 @@ function ManagerPanel({ competition, onCountChanged }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function AdminCompetitions() {
-  const { userRoles = [] } = useOutletContext()
+  const { userRoles = [] } = useOutletContext() ?? {}
   const allowed = isSuperAdmin({ roles: userRoles })
 
   const [competitions, setCompetitions] = useState(null) // null = loading
