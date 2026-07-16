@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 async function source(relativeUrl) {
-  return readFile(new URL(relativeUrl, import.meta.url), 'utf8')
+  return (await readFile(new URL(relativeUrl, import.meta.url), 'utf8'))
+    .replace(/\r\n?/g, '\n')
 }
 
 describe('masked public database surfaces', () => {

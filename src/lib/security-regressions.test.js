@@ -107,10 +107,10 @@ describe('deployment security configuration', () => {
   })
 
   it('keeps disaster-recovery copies encrypted and outside GitHub artifacts', async () => {
-    const workflow = await readFile(
+    const workflow = (await readFile(
       new URL('../../.github/workflows/disaster-recovery-backup.yml', import.meta.url),
       'utf8',
-    )
+    )).replace(/\r\n?/g, '\n')
     const jobEnvironment = workflow.match(
       /timeout-minutes: 60\n {4}env:\n([\s\S]*?)\n\n {4}steps:/,
     )?.[1]

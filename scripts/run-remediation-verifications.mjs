@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// This CLI is also imported by Vitest; .gitattributes keeps its shebang LF-safe.
 
 import { readdirSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
