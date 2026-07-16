@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// This CLI is also imported by Vitest; .gitattributes keeps its shebang LF-safe.
 
 import { createHmac } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
