@@ -370,11 +370,14 @@ SELECT ok(
 -- event date, so every player - adults included - stayed permanently blocked.
 -- ---------------------------------------------------------------------------
 
+-- The year must stay within the function's own `current_year + 10` bound. The
+-- fixtures above can use far-future years only because they throw on the frozen
+-- check before reaching year validation; a successful backfill reaches it.
 INSERT INTO public.zltac_events (
   id, name, year, status, start_date, end_date, reg_open_date,
   reg_close_date, main_fee, team_fee, side_events
 ) VALUES (
-  'b2000000-0000-4000-8000-000000000009', 'Dateless fixture', 2196,
+  'b2000000-0000-4000-8000-000000000009', 'Dateless fixture', 2031,
   'open', NULL, NULL,
   clock_timestamp() - interval '1 day', clock_timestamp() + interval '30 days',
   1000, 500, '[]'::jsonb
@@ -383,7 +386,7 @@ INSERT INTO public.zltac_events (
 INSERT INTO public.zltac_registrations (id, user_id, year, status)
 VALUES (
   'b4000000-0000-4000-8000-000000000009',
-  'b1000000-0000-4000-8000-000000000005', 2196, 'pending'
+  'b1000000-0000-4000-8000-000000000005', 2031, 'pending'
 );
 
 SELECT lives_ok(
@@ -391,14 +394,14 @@ SELECT lives_ok(
     SELECT public.committee_save_zltac_event(
       'b1000000-0000-4000-8000-000000000001',
       'b2000000-0000-4000-8000-000000000009',
-      '{"start_date":"2196-07-01","end_date":"2196-07-03"}'::jsonb
+      '{"start_date":"2031-07-01","end_date":"2031-07-03"}'::jsonb
     )
   $$,
   'an unset event date can be backfilled even once registrations exist'
 );
 SELECT is(
-  (SELECT start_date FROM public.zltac_events WHERE year = 2196),
-  DATE '2196-07-01',
+  (SELECT start_date FROM public.zltac_events WHERE year = 2031),
+  DATE '2031-07-01',
   'the backfilled start date is persisted'
 );
 
@@ -407,7 +410,7 @@ SELECT throws_ok(
     SELECT public.committee_save_zltac_event(
       'b1000000-0000-4000-8000-000000000001',
       'b2000000-0000-4000-8000-000000000009',
-      '{"start_date":"2196-08-01"}'::jsonb
+      '{"start_date":"2031-08-01"}'::jsonb
     )
   $$,
   '55000',
