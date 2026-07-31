@@ -87,6 +87,31 @@ describe('canonical ZLTAC readiness', () => {
     expect(readiness.overall.player_actions_complete).toBe(false)
   })
 
+  // Regression: a missing EVENT date is a committee configuration gap, but the
+  // reason was discarded and every blocked case reported as a date-of-birth
+  // problem. Captains saw a "U18" badge on adult players as a result.
+  it('names the event date, not the player DOB, when the event has no date', () => {
+    const input = readyInput()
+    input.under18 = {
+      requirement: 'blocked',
+      requirementReason: 'missing_or_invalid_event_date',
+      approval: null,
+    }
+    const readiness = calculateZltacReadiness(input)
+    expect(readiness.checks.under_18.status).toBe(READINESS_STATUS.ACTION_REQUIRED)
+    expect(readiness.checks.under_18.source).toBe('missing_or_invalid_event_date')
+  })
+
+  it('still reports a genuine date-of-birth gap against the date of birth', () => {
+    const input = readyInput()
+    input.under18 = {
+      requirement: 'blocked',
+      requirementReason: 'missing_or_invalid_dob',
+      approval: null,
+    }
+    expect(calculateZltacReadiness(input).checks.under_18.source).toBe('missing_or_invalid_dob')
+  })
+
   it('treats a pending team review as committee work, not event ready', () => {
     const input = readyInput()
     input.team.status = 'pending'

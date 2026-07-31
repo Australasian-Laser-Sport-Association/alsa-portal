@@ -854,8 +854,22 @@ export default function CaptainHub() {
                   const avatarUrl = r.profiles?.avatar_url
                   const comp = completionMap[r.user_id] ?? {}
                   const checks = comp.checks ?? {}
-                  const u18 = checks.under_18?.status !== 'not_required'
-                  const dobBlocked = checks.identity?.status !== 'satisfied'
+                  // These badges make a claim about a named person, so they must
+                  // only appear on positive evidence. `?.status !== 'x'` is true
+                  // when the check is absent entirely, which previously labelled
+                  // every adult "U18" whenever readiness data failed to load.
+                  //
+                  // An indeterminate under-18 result (the event has no date, so
+                  // age at event cannot be computed) is a configuration problem,
+                  // not a statement that the player is a minor. Report it as a
+                  // date-of-birth gap instead of asserting U18.
+                  const u18Check = checks.under_18
+                  const identityCheck = checks.identity
+                  const u18Indeterminate = u18Check?.source === 'invalid_or_missing_date_of_birth'
+                    || u18Check?.source === 'missing_or_invalid_event_date'
+                  const u18 = Boolean(u18Check) && u18Check.status !== 'not_required' && !u18Indeterminate
+                  const dobBlocked = (Boolean(identityCheck) && identityCheck.status !== 'satisfied')
+                    || u18Indeterminate
                   const ready = isPlayerReady(r.user_id)
                   const awaitingReview = comp.overall?.awaiting_committee === true
                   const isMe = r.user_id === user.id

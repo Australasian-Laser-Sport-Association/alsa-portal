@@ -129,6 +129,24 @@ export function toInputValue(utcValue, timezone) {
   return `${m.year}-${m.month}-${m.day}T${m.hour}:${m.minute}`
 }
 
+// `datetime-local` inputs only carry minute precision, so a stored timestamp
+// with non-zero seconds cannot survive a toInputValue -> parseFromEventTz round
+// trip. Re-sending the truncated value makes an untouched field look edited,
+// which trips the event immutability guard and blocks every save on a closed
+// event (or one with registrations).
+//
+// Resolve the field against what was loaded: if the input still matches the
+// stored instant at minute precision, keep the stored value byte for byte.
+// Only a genuine edit produces a new, minute-precision timestamp.
+export function resolveEventTimestamp(localString, storedUtcValue, timezone) {
+  if (storedUtcValue && toInputValue(storedUtcValue, timezone) === (localString || '')) {
+    return typeof storedUtcValue === 'string'
+      ? storedUtcValue
+      : new Date(storedUtcValue).toISOString()
+  }
+  return parseFromEventTz(localString, timezone)
+}
+
 export function parseFromEventTz(localString, timezone) {
   if (!localString) return null
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localString)

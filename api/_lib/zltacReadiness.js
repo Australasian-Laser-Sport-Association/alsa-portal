@@ -67,10 +67,18 @@ function teamReadiness(team) {
   return result(ACTION_REQUIRED, 'team_status')
 }
 
-function under18Readiness(requirement, approval, override, activeDocument) {
+// `requirementReason` distinguishes why the age test could not be resolved.
+// under18Requirement() reports 'missing_or_invalid_event_date' when the EVENT
+// has no date, which is a committee configuration gap, not a problem with the
+// player's date of birth. Collapsing every blocked reason into
+// 'invalid_or_missing_date_of_birth' told captains an adult was a minor.
+function under18Readiness(requirement, approval, override, activeDocument, requirementReason) {
   if (requirement === 'not_required') return result(NOT_REQUIRED, 'event_age')
   if (requirement !== 'required') {
-    return overrideResult(override, result(ACTION_REQUIRED, 'invalid_or_missing_date_of_birth'))
+    return overrideResult(
+      override,
+      result(ACTION_REQUIRED, requirementReason ?? 'invalid_or_missing_date_of_birth'),
+    )
   }
 
   if (!activeDocument?.id) {
@@ -188,6 +196,7 @@ export function calculateZltacReadiness(input) {
       input.under18?.approval,
       overrides.under18,
       documents.under18Form,
+      input.under18?.requirementReason,
     ),
     payment: paymentReadiness(
       event.requirePayment !== false,

@@ -2,11 +2,50 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { existsSync, statSync } from 'fs'
+import { existsSync, statSync, readdirSync } from 'fs'
+
+// Resolve a request path to an api/ handler the way Vercel's file-system router
+// does: prefer an exact file, then fall back to a [param] segment at the same
+// depth. Without the dynamic fallback, routes backed by files such as
+// api/superadmin/[resource].js never match in dev and silently fall through to
+// the SPA, so every call returns index.html with a 200 and local testing of
+// those features is impossible.
+function resolveApiHandler(segments) {
+  const exact = resolve(process.cwd(), `${segments.join('/')}.js`)
+  if (existsSync(exact) && statSync(exact).isFile()) return { file: exact, params: {} }
+
+  const params = {}
+  const parts = []
+  for (let depth = 0; depth < segments.length; depth += 1) {
+    const segment = segments[depth]
+    const literal = resolve(process.cwd(), [...parts, segment].join('/'))
+    const isLastSegment = depth === segments.length - 1
+    if (!isLastSegment && existsSync(literal) && statSync(literal).isDirectory()) {
+      parts.push(segment)
+      continue
+    }
+    // Look for a [param].js (leaf) or [param] directory at this depth.
+    const parentDir = resolve(process.cwd(), parts.join('/'))
+    if (!existsSync(parentDir) || !statSync(parentDir).isDirectory()) return null
+    const dynamic = readdirSync(parentDir).find(entry => (
+      isLastSegment
+        ? /^\[[^\]]+\]\.js$/.test(entry)
+        : /^\[[^\]]+\]$/.test(entry) && statSync(resolve(parentDir, entry)).isDirectory()
+    ))
+    if (!dynamic) return null
+    // "[resource].js" -> "resource"; "[slug]" -> "slug"
+    const name = dynamic.replace(/\.js$/, '').slice(1, -1)
+    params[name] = segment
+    if (isLastSegment) return { file: resolve(parentDir, dynamic), params }
+    parts.push(dynamic)
+  }
+  return null
+}
 
 // Dev-only plugin: serve api/*.js files as Vercel-style handlers through vite.
 // Mirrors Vercel's runtime behaviour: skips _-prefixed segments (api/_lib/),
-// decorates req.query, parses JSON bodies, decorates res.status/.json/.send.
+// resolves [param] segments, decorates req.query, parses JSON bodies, and
+// decorates res.status/.json/.send.
 function vercelStyleApiPlugin() {
   return {
     name: 'vercel-style-api',
@@ -16,13 +55,16 @@ function vercelStyleApiPlugin() {
         const [pathOnly, qs = ''] = req.url.split('?')
         const segments = pathOnly.slice(1).split('/')
         if (segments.some(s => s.startsWith('_'))) return next()
-        const candidate = resolve(process.cwd(), `${pathOnly.slice(1)}.js`)
-        if (!existsSync(candidate) || !statSync(candidate).isFile()) return next()
+        const resolved = resolveApiHandler(segments)
+        if (!resolved) return next()
+        const { file: candidate, params } = resolved
         try {
           const mod = await server.ssrLoadModule(candidate)
           const handler = mod.default
           if (typeof handler !== 'function') return next()
-          req.query = Object.fromEntries(new URLSearchParams(qs))
+          // Dynamic segment values are part of req.query on Vercel, and lose to
+          // a real query-string key of the same name.
+          req.query = { ...params, ...Object.fromEntries(new URLSearchParams(qs)) }
           if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
             const chunks = []
             for await (const chunk of req) chunks.push(chunk)

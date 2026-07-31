@@ -2,19 +2,32 @@ import { useState, useId } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { safeInternalRedirect } from '../lib/safeRedirect'
+import { useAuth } from '../lib/useAuth'
+
+// A suspended account authenticates successfully and is then signed straight
+// back out by AuthContext. Without this message the visitor is returned to an
+// untouched login form with no indication of why, and simply tries again.
+const SIGN_OUT_REASONS = {
+  suspended: 'This account is suspended. Contact the committee if you believe this is a mistake.',
+}
 
 export default function Login() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { signOutReason, clearSignOutReason } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const uid = useId()
+  const forcedSignOutMessage = SIGN_OUT_REASONS[signOutReason] ?? null
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    // Drop the previous forced-sign-out notice so it cannot linger over the
+    // result of this fresh attempt.
+    clearSignOutReason()
     setLoading(true)
 
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -64,6 +77,12 @@ export default function Login() {
               className="w-full bg-base text-white rounded-lg px-4 py-2 border border-line focus:outline-none focus:border-brand"
             />
           </div>
+
+          {!error && forcedSignOutMessage && (
+            <p role="alert" className="text-amber-400 text-sm bg-amber-400/10 border border-amber-400/30 rounded-lg px-4 py-2">
+              {forcedSignOutMessage}
+            </p>
+          )}
 
           {error && (
             <p role="alert" className="text-red-400 text-sm bg-red-400/10 border border-red-400/30 rounded-lg px-4 py-2">
