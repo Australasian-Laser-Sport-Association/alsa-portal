@@ -10,6 +10,12 @@ export function AuthProvider({ children }) {
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState(null)
   const [passwordRecovery, setPasswordRecovery] = useState(false)
+  // Why the session was terminated by the app rather than by the user. Set when
+  // a forced sign-out happens (currently: suspended account) and deliberately
+  // NOT cleared by the SIGNED_OUT handler, which wipes every other piece of
+  // profile state. Without that exemption the reason is destroyed before the
+  // login screen can mount and explain what happened.
+  const [signOutReason, setSignOutReason] = useState(null)
 
   // Tracks the user id whose profile is currently in-flight or already loaded,
   // so the getSession() recovery and the SIGNED_IN emit don't double-fetch on
@@ -61,6 +67,7 @@ export function AuthProvider({ children }) {
         fetchedForUserId.current = null
         setProfile(null)
         setProfileError(new Error('Account suspended'))
+        setSignOutReason('suspended')
         await supabase.auth.signOut({ scope: 'local' })
         return
       }
@@ -121,6 +128,7 @@ export function AuthProvider({ children }) {
         setPasswordRecovery(true)
       }
       if (event === 'SIGNED_IN' && u) {
+        setSignOutReason(null)
         fetchProfile(u.id)
       }
       if (event === 'SIGNED_OUT') {
@@ -130,6 +138,9 @@ export function AuthProvider({ children }) {
         setProfileError(null)
         setProfileLoading(false)
         setPasswordRecovery(false)
+        // signOutReason is intentionally preserved here so the login screen can
+        // explain a forced sign-out. It is cleared on the next SIGNED_IN or by
+        // clearSignOutReason() once shown.
       }
     })
 
@@ -141,6 +152,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function signOut() {
+    // A deliberate sign-out is not a forced one; drop any stale reason so the
+    // login screen doesn't accuse the next visitor of being suspended.
+    setSignOutReason(null)
     await supabase.auth.signOut()
   }
 
@@ -149,9 +163,10 @@ export function AuthProvider({ children }) {
   function hasRole(role) { return userRoles.includes(role) }
   function refreshProfile() { return user ? fetchProfile(user.id, { force: true }) : Promise.resolve() }
   function clearPasswordRecovery() { setPasswordRecovery(false) }
+  function clearSignOutReason() { setSignOutReason(null) }
 
   return (
-    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, hasRole, refreshProfile, passwordRecovery, clearPasswordRecovery }}>
+    <AuthContext.Provider value={{ user, loading, profileLoading, profileError, signOut, profile, userRoles, isAdmin, hasRole, refreshProfile, passwordRecovery, clearPasswordRecovery, signOutReason, clearSignOutReason }}>
       {children}
     </AuthContext.Provider>
   )

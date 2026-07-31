@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { apiFetch } from '../../lib/apiFetch.js'
 import { uploadAuthorizedAsset } from '../../lib/authorizedAssetUpload.js'
 import { arePaymentsOpen } from '../../lib/payments'
-import { formatInEventTz, toInputValue, parseFromEventTz, getTzAbbr } from '../../lib/eventTimezone'
+import { formatInEventTz, toInputValue, parseFromEventTz, resolveEventTimestamp, getTzAbbr } from '../../lib/eventTimezone'
 import { maskStorageUrl, storageImageSrcSet, storageImageUrl } from '../../lib/assetUrl'
 import Dialog from '../../components/Dialog'
 import { LoadErrorState } from '../../components/Feedback'
@@ -408,9 +408,12 @@ export default function AdminEvent() {
         max_participants: se.max_participants ? parseInt(se.max_participants) : null,
       })),
       timezone: settings.timezone || 'Australia/Melbourne',
-      reg_open_date: parseFromEventTz(settings.reg_open_date, settings.timezone),
-      reg_close_date: parseFromEventTz(settings.reg_close_date, settings.timezone),
-      event_starts_at: parseFromEventTz(settings.event_starts_at, settings.timezone),
+      // resolveEventTimestamp keeps the stored value when the field was never
+      // edited, so sub-minute precision does not get truncated into a phantom
+      // change that the immutability guard rejects.
+      reg_open_date: resolveEventTimestamp(settings.reg_open_date, event?.reg_open_date, settings.timezone),
+      reg_close_date: resolveEventTimestamp(settings.reg_close_date, event?.reg_close_date, settings.timezone),
+      event_starts_at: resolveEventTimestamp(settings.event_starts_at, event?.event_starts_at, settings.timezone),
       max_teams: settings.max_teams ? parseInt(settings.max_teams) : null,
       max_players: settings.max_players ? parseInt(settings.max_players) : null,
       max_players_per_team: settings.max_players_per_team ? parseInt(settings.max_players_per_team) : null,

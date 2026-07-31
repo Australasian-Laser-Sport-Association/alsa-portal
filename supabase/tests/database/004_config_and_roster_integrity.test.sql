@@ -75,7 +75,7 @@ SELECT throws_ok(
     )
   $$,
   '55000',
-  'Pricing, requirements, capacity, side events, and registration windows are frozen once registrations exist or the event closes.',
+  'Pricing, requirements, capacity, side events, and registration windows are frozen once registrations exist or the event closes. Event dates may still be filled in if they were never set.',
   'event prices cannot race existing registrations'
 );
 SELECT is(
@@ -360,6 +360,89 @@ SELECT ok(
     'public.captain_mutate_zltac_team(uuid,uuid,uuid,text,jsonb)'::regprocedure
   ) ILIKE '%FOR UPDATE%',
   'captain submit serializes concurrent roster changes under event-first locks'
+);
+
+-- ---------------------------------------------------------------------------
+-- Event dates: a value that was never set can still be filled in.
+--
+-- Freezing an unset date was a trap rather than a protection: an event opened
+-- without dates could never be given them, and under18Requirement() needs an
+-- event date, so every player - adults included - stayed permanently blocked.
+-- ---------------------------------------------------------------------------
+
+-- The year must stay within the function's own `current_year + 10` bound. The
+-- fixtures above can use far-future years only because they throw on the frozen
+-- check before reaching year validation; a successful backfill reaches it.
+INSERT INTO public.zltac_events (
+  id, name, year, status, start_date, end_date, reg_open_date,
+  reg_close_date, main_fee, team_fee, side_events
+) VALUES (
+  'b2000000-0000-4000-8000-000000000009', 'Dateless fixture', 2031,
+  'open', NULL, NULL,
+  clock_timestamp() - interval '1 day', clock_timestamp() + interval '30 days',
+  1000, 500, '[]'::jsonb
+);
+
+INSERT INTO public.zltac_registrations (id, user_id, year, status)
+VALUES (
+  'b4000000-0000-4000-8000-000000000009',
+  'b1000000-0000-4000-8000-000000000005', 2031, 'pending'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.committee_save_zltac_event(
+      'b1000000-0000-4000-8000-000000000001',
+      'b2000000-0000-4000-8000-000000000009',
+      '{"start_date":"2031-07-01","end_date":"2031-07-03"}'::jsonb
+    )
+  $$,
+  'an unset event date can be backfilled even once registrations exist'
+);
+SELECT is(
+  (SELECT start_date FROM public.zltac_events WHERE year = 2031),
+  DATE '2031-07-01',
+  'the backfilled start date is persisted'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT public.committee_save_zltac_event(
+      'b1000000-0000-4000-8000-000000000001',
+      'b2000000-0000-4000-8000-000000000009',
+      '{"start_date":"2031-08-01"}'::jsonb
+    )
+  $$,
+  '55000',
+  'Pricing, requirements, capacity, side events, and registration windows are frozen once registrations exist or the event closes. Event dates may still be filled in if they were never set.',
+  'a date that is already set stays frozen once registrations exist'
+);
+SELECT throws_ok(
+  $$
+    SELECT public.committee_save_zltac_event(
+      'b1000000-0000-4000-8000-000000000001',
+      'b2000000-0000-4000-8000-000000000009',
+      '{"start_date":null}'::jsonb
+    )
+  $$,
+  '55000',
+  'Pricing, requirements, capacity, side events, and registration windows are frozen once registrations exist or the event closes. Event dates may still be filled in if they were never set.',
+  'clearing an already-set date is not treated as a backfill'
+);
+
+-- ---------------------------------------------------------------------------
+-- service_role must not be able to wipe consent/approval evidence. It cannot
+-- DELETE a single row, so TRUNCATE (strictly more destructive) must be denied
+-- too.
+-- ---------------------------------------------------------------------------
+
+SELECT ok(
+  NOT has_table_privilege('service_role', 'public.legal_acceptances', 'TRUNCATE'),
+  'service_role cannot truncate legal_acceptances'
+);
+SELECT ok(
+  NOT has_table_privilege('service_role', 'public.under_18_approvals', 'TRUNCATE'),
+  'service_role cannot truncate under_18_approvals'
 );
 
 SELECT * FROM finish();

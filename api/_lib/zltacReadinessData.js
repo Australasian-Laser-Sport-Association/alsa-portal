@@ -203,6 +203,9 @@ export function assembleZltacReadiness({
       },
       under18: {
         requirement: ageRequirement.status,
+        // Carries 'missing_or_invalid_event_date' / 'missing_or_invalid_dob' /
+        // 'dob_after_event' so the readiness source names the real blocker.
+        requirementReason: ageRequirement.reason ?? null,
         approval: under18ByUser[userId] ?? null,
       },
       payment: {
