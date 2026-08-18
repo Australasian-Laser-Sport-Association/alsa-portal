@@ -37,6 +37,18 @@ describe('apiFetch authentication failure handling', () => {
     expect(signOut).not.toHaveBeenCalled()
   })
 
+  it('replaces raw fetch failures with network and blocker guidance', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }))
+
+    await expect(apiFetch('/api/example')).rejects.toThrow(
+      'Unable to reach the portal. Check your internet connection. If the problem continues, temporarily disable any ad blockers, script blockers, or other content-blocking extensions for this site, or add the site to their allowlist, then try again.',
+    )
+    expect(refreshSession).not.toHaveBeenCalled()
+    expect(signOut).not.toHaveBeenCalled()
+  })
+
   it('retries one genuine 401 with a refreshed token', async () => {
     refreshSession.mockResolvedValue({
       data: { session: { access_token: 'refreshed-token' } },

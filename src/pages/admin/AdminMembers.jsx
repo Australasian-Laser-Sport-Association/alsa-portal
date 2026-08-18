@@ -208,6 +208,86 @@ function GrantModal({ open, profile, periods, defaultPeriodId, onClose, onGrante
   )
 }
 
+function LifetimeModal({ profile, row, onClose, onSaved }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [memberSince, setMemberSince] = useState(row?.member_since ?? today)
+  const [notes, setNotes] = useState(row?.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  if (!profile) return null
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      const existing = !!row
+      await apiFetch(existing
+        ? `/api/admin/alsa?resource=lifetime-members&profile_id=${encodeURIComponent(profile.id)}`
+        : '/api/admin/alsa?resource=lifetime-members', {
+        method: existing ? 'PATCH' : 'POST',
+        body: JSON.stringify({
+          ...(existing ? {} : { profile_id: profile.id }),
+          member_since: memberSince,
+          notes: notes.trim() || null,
+        }),
+      })
+      onSaved()
+      onClose()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} variant="center" size="sm" closeOnBackdrop className="p-6">
+      <Dialog.Title as="h3" className="text-white font-bold mb-1">
+        {row ? 'Edit lifetime membership' : 'Add lifetime member'}
+      </Dialog.Title>
+      <p className="text-[#e5e5e5]/60 text-xs mb-4">
+        {memberName(profile)}{profile.alias && ` "${profile.alias}"`}
+      </p>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">
+            Lifetime member since
+          </label>
+          <input
+            type="date"
+            min="1900-01-01"
+            max={today}
+            value={memberSince}
+            onChange={e => setMemberSince(e.target.value)}
+            className="w-full bg-base border border-line rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-brand"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Notes (optional)</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={2}
+            className="w-full bg-base border border-line rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-brand resize-none"
+          />
+        </div>
+      </div>
+      <InlineAlert className="mt-3 text-xs">{error}</InlineAlert>
+      <div className="flex gap-2 mt-5">
+        <button onClick={save} disabled={saving || !memberSince}
+          className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg text-xs">
+          {saving ? 'Saving...' : 'Save lifetime membership'}
+        </button>
+        <button onClick={onClose}
+          className="border border-line text-[#e5e5e5]/60 hover:text-white font-semibold px-4 py-2 rounded-lg text-xs">
+          Cancel
+        </button>
+      </div>
+    </Dialog>
+  )
+}
+
 // ── Membership row ────────────────────────────────────────────────────────────
 function MembershipRow({ row, onRemove }) {
   const p = row.profiles ?? {}
@@ -269,7 +349,7 @@ function Section({ title, count, color, rows, onRemove, defaultOpen = true }) {
 }
 
 // ── Main page ────────────────────────────────────────────────────────────────
-function LifetimeRow({ row, onRemove }) {
+function LifetimeRow({ row, onEdit, onRemove }) {
   const p = row.profiles ?? {}
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-line/50 last:border-0">
@@ -283,21 +363,25 @@ function LifetimeRow({ row, onRemove }) {
         </p>
         <p className="text-[#e5e5e5]/60 text-xs">
           Lifetime member
-          {row.granted_at && <span className="ml-2">since {formatDate(row.granted_at, 'short')}</span>}
+          {row.member_since && <span className="ml-2">since {formatDate(row.member_since, 'short')}</span>}
         </p>
         {row.notes && <p className="text-[#e5e5e5]/60 text-[11px] mt-0.5 italic">{row.notes}</p>}
       </div>
-      <button
-        onClick={() => onRemove(row)}
-        className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-      >
-        Remove
-      </button>
+      <div className="flex gap-1 flex-shrink-0">
+        <button onClick={() => onEdit(row)}
+          className="text-xs text-[#e5e5e5]/60 hover:text-white hover:bg-line/40 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
+          Edit
+        </button>
+        <button onClick={() => onRemove(row)}
+          className="text-xs text-red-400/50 hover:text-red-400 hover:bg-red-400/10 font-semibold px-2.5 py-1.5 rounded-lg transition-colors">
+          Remove
+        </button>
+      </div>
     </div>
   )
 }
 
-function LifetimeSection({ rows, onRemove }) {
+function LifetimeSection({ rows, onEdit, onRemove }) {
   const [open, setOpen] = useState(true)
   return (
     <div className="bg-surface border border-brand/30 rounded-2xl overflow-hidden">
@@ -319,7 +403,7 @@ function LifetimeSection({ rows, onRemove }) {
         <div className="border-t border-line">
           {rows.length === 0
             ? <p className="px-5 py-6 text-center text-[#e5e5e5]/60 text-sm">No lifetime members selected yet.</p>
-            : rows.map(r => <LifetimeRow key={r.profile_id} row={r} onRemove={onRemove} />)
+            : rows.map(r => <LifetimeRow key={r.profile_id} row={r} onEdit={onEdit} onRemove={onRemove} />)
           }
         </div>
       )}
@@ -340,6 +424,7 @@ export default function AdminMembers() {
   const [editingPeriod, setEditingPeriod] = useState(null)
   const [grantTarget, setGrantTarget] = useState(null)
   const [removeConfirm, setRemoveConfirm] = useState(null)
+  const [lifetimeTarget, setLifetimeTarget] = useState(null)
   const [removeMembershipBusy, setRemoveMembershipBusy] = useState(false)
   const [removeMembershipError, setRemoveMembershipError] = useState('')
   const [deletePeriodConfirm, setDeletePeriodConfirm] = useState(null)
@@ -412,18 +497,6 @@ export default function AdminMembers() {
       setRemoveMembershipError(e.message)
     } finally {
       setRemoveMembershipBusy(false)
-    }
-  }
-
-  async function addLifetimeMember(profile) {
-    try {
-      await apiFetch('/api/admin/alsa?resource=lifetime-members', {
-        method: 'POST',
-        body: JSON.stringify({ profile_id: profile.id }),
-      })
-      await loadAll()
-    } catch (e) {
-      setError(e.message)
     }
   }
 
@@ -578,7 +651,7 @@ export default function AdminMembers() {
                           Grant
                         </button>
                         <button
-                          onClick={() => addLifetimeMember(p)}
+                          onClick={() => setLifetimeTarget({ profile: p, row: null })}
                           disabled={alreadyLifetime}
                           className="text-xs bg-brand/10 hover:bg-brand/20 disabled:opacity-40 text-brand font-bold px-3 py-1.5 rounded-lg"
                         >
@@ -593,7 +666,11 @@ export default function AdminMembers() {
           </div>
 
           {/* Member sections */}
-          <LifetimeSection rows={lifetimeMembers} onRemove={removeLifetimeMember} />
+          <LifetimeSection
+            rows={lifetimeMembers}
+            onEdit={row => setLifetimeTarget({ profile: row.profiles, row })}
+            onRemove={removeLifetimeMember}
+          />
           <Section title="Active" count={memberships.active.length} color="text-emerald-400"
             rows={memberships.active} onRemove={setRemoveConfirm} defaultOpen={true} />
           <Section title="Recently expired" count={memberships.recently_expired.length} color="text-yellow-400"
@@ -618,6 +695,15 @@ export default function AdminMembers() {
         onClose={() => setGrantTarget(null)}
         onGranted={() => loadAll()}
       />
+
+      {lifetimeTarget && (
+        <LifetimeModal
+          profile={lifetimeTarget.profile}
+          row={lifetimeTarget.row}
+          onClose={() => setLifetimeTarget(null)}
+          onSaved={() => loadAll()}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deletePeriodConfirm}

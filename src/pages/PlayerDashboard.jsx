@@ -76,8 +76,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobL
   const [state, setState]         = useState('')
   const [homeArena, setHomeArena] = useState('')
   const [phone, setPhone]         = useState('')
-  const [ecName, setEcName]       = useState('')
-  const [ecPhone, setEcPhone]     = useState('')
 
   function startEdit() {
     setFirstName(profile?.first_name ?? '')
@@ -87,8 +85,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobL
     setState(profile?.state ?? '')
     setHomeArena(profile?.home_arena ?? '')
     setPhone(profile?.phone ?? '')
-    setEcName(profile?.emergency_contact_name ?? '')
-    setEcPhone(profile?.emergency_contact_phone ?? '')
     setMsg(null)
     setEditing(true)
   }
@@ -116,8 +112,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobL
       last_name: lastName.trim() || null,
       home_arena: homeArena.trim() || null,
       phone: phone.trim() || null,
-      emergency_contact_name: ecName.trim() || null,
-      emergency_contact_phone: ecPhone.trim() || null,
     }
     if (!dobLocked) payload.dob = dob || null
     if (!aliasLocked) payload.alias = alias.trim() || null
@@ -251,10 +245,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobL
             </div>
             <Input label="Home Arena" value={homeArena} onChange={setHomeArena} placeholder="e.g. Zone Laser Force Sydney" />
             <Input label="Phone" type="tel" value={phone} onChange={setPhone} placeholder="04XX XXX XXX" />
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Emergency Contact Name" value={ecName} onChange={setEcName} placeholder="Full name" />
-              <Input label="Emergency Contact Phone" value={ecPhone} onChange={setEcPhone} placeholder="04XX XXX XXX" />
-            </div>
             <div className="flex items-center gap-3 pt-2">
               <button onClick={save} disabled={saving} className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-all">
                 {saving ? 'Saving…' : 'Save Changes'}
@@ -275,7 +265,6 @@ function ProfileCard({ profile, userId, userEmail, membership, aliasLocked, dobL
             <Field label="Home Arena" value={profile?.home_arena} />
             <Field label="Email" value={userEmail} />
             <Field label="Phone" value={profile?.phone} />
-            <Field label="Emergency Contact" value={profile?.emergency_contact_name ? `${profile.emergency_contact_name}${profile.emergency_contact_phone ? ` · ${profile.emergency_contact_phone}` : ''}` : null} />
             <Field label="Member Since" value={formatDate(profile?.created_at, 'monthYear') || null} />
           </div>
         )}

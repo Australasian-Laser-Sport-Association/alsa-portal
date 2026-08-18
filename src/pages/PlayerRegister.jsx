@@ -113,8 +113,6 @@ export default function PlayerRegister() {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       dob: dob || null,
-      emergency_contact_name: emergencyName.trim() || null,
-      emergency_contact_phone: emergencyPhone.trim() || null,
     }
     // Alias is locked once the player has registered for any competition. Omit
     // it so this update never trips enforce_alias_lock; the existing alias is
@@ -341,6 +339,7 @@ export default function PlayerRegister() {
           {/* Emergency contact */}
           <div>
             <p className="text-brand text-xs font-bold uppercase tracking-wider mb-4">Emergency Contact <span className="text-[#e5e5e5]/60 font-normal normal-case">(optional)</span></p>
+            <p className="text-[#e5e5e5]/60 text-xs mb-3">Used only for this ZLTAC event. You can update it later in the Player Hub.</p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor={`${uid}-ec-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Name</label>
@@ -348,6 +347,7 @@ export default function PlayerRegister() {
                   id={`${uid}-ec-name`}
                   type="text"
                   value={emergencyName}
+                  maxLength={120}
                   onChange={e => setEmergencyName(e.target.value)}
                   placeholder="Full name"
                   className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
@@ -359,6 +359,7 @@ export default function PlayerRegister() {
                   id={`${uid}-ec-phone`}
                   type="tel"
                   value={emergencyPhone}
+                  maxLength={50}
                   onChange={e => setEmergencyPhone(e.target.value)}
                   placeholder="04XX XXX XXX"
                   className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"

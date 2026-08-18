@@ -50,7 +50,7 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, alias, dob, phone, state, home_arena, emergency_contact_name, emergency_contact_phone, avatar_url, roles, suspended, created_at')
+        .select('id, first_name, last_name, alias, dob, phone, state, home_arena, avatar_url, roles, suspended, created_at')
         .eq('id', userId)
         .single()
       if (!isCurrentRequest()) return

@@ -77,6 +77,7 @@ function queryResult(result) {
     order: vi.fn(() => query),
     range: vi.fn(() => query),
     eq: vi.fn(() => query),
+    is: vi.fn(() => query),
     neq: vi.fn(() => query),
     in: vi.fn(() => query),
     contains: vi.fn(() => query),
@@ -211,6 +212,7 @@ describe('admin users list', () => {
     expect(response.body.total).toBe(125)
     expect(response.body.page).toBe(2)
     expect(response.body.pageSize).toBe(25)
+    expect(profilesQuery.is).toHaveBeenCalledWith('access_revoked_at', null)
     expect(profilesQuery.range).toHaveBeenCalledWith(25, 49)
     expect(regsQuery.in).toHaveBeenCalledWith('user_id', ['user-1', 'user-2'])
     expect(teamsQuery.in).toHaveBeenCalledWith('captain_id', ['user-1', 'user-2'])
@@ -253,6 +255,40 @@ describe('admin users list', () => {
     expect(verifyCommittee).not.toHaveBeenCalled()
     expect(from).not.toHaveBeenCalled()
     expect(acquireAccountAccessLock).not.toHaveBeenCalled()
+  })
+
+  it('returns the selected user email through the committee-authorized detail endpoint', async () => {
+    const profileQuery = queryResult({ data: { email: 'player@example.test' }, error: null })
+    const registrationsQuery = queryResult({ data: [], error: null })
+    const paymentsQuery = queryResult({ data: [], error: null })
+    from
+      .mockReturnValueOnce(profileQuery)
+      .mockReturnValueOnce(registrationsQuery)
+      .mockReturnValueOnce(paymentsQuery)
+
+    const response = res()
+    await handler(req({ id: 'user-1' }), response)
+
+    expect(response.statusCode).toBe(200)
+    expect(verifyCommittee).toHaveBeenCalledTimes(1)
+    expect(profileQuery.select).toHaveBeenCalledWith('email')
+    expect(profileQuery.eq).toHaveBeenCalledWith('id', TARGET_ID)
+    expect(response.body).toEqual({
+      email: 'player@example.test',
+      registrations: [],
+      payments: [],
+    })
+  })
+
+  it('does not read email when committee authorization fails', async () => {
+    verifyCommittee.mockResolvedValueOnce({ user: null, error: 'Forbidden' })
+
+    const response = res()
+    await handler(req({ id: 'user-1' }), response)
+
+    expect(response.statusCode).toBe(401)
+    expect(response.body).toEqual({ error: 'Forbidden' })
+    expect(from).not.toHaveBeenCalled()
   })
 
   it.each([

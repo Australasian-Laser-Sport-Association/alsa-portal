@@ -65,6 +65,17 @@ function selectByUserYear(data, error = null) {
   return { query: { select }, select, userEq, yearEq, maybeSingle }
 }
 
+function updateByUserYear(data, error = null) {
+  const query = {}
+  query.update = vi.fn(() => query)
+  query.eq = vi.fn(() => query)
+  query.neq = vi.fn(() => query)
+  query.select = vi.fn(() => query)
+  query.maybeSingle = vi.fn(() => Promise.resolve({ data, error }))
+  return query
+}
+
+
 function selectByOneField(data, error = null) {
   const maybeSingle = vi.fn(() => Promise.resolve({ data, error }))
   const eq = vi.fn(() => ({ maybeSingle }))
@@ -117,6 +128,54 @@ describe('player registration security boundary', () => {
     expect(response.body.error).toMatch(/date of birth/i)
     expect(from).not.toHaveBeenCalled()
   })
+  it('updates only the authenticated player registration for the requested event', async () => {
+    const registration = {
+      id: 'reg-contact',
+      user_id: USER_ID,
+      year: 2027,
+      emergency_contact_name: 'New Helper',
+      emergency_contact_phone: '0400 222 333',
+      status: 'registered',
+    }
+    const update = updateByUserYear(registration)
+    from.mockReturnValueOnce(update)
+
+    const response = res()
+    await handler(req({
+      action: 'update-emergency-contact',
+      year: 2027,
+      emergency_contact_name: ' New Helper ',
+      emergency_contact_phone: ' 0400 222 333 ',
+    }), response)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.body).toEqual({ ok: true, registration })
+    expect(from).toHaveBeenCalledWith('zltac_registrations')
+    expect(update.update).toHaveBeenCalledWith({
+      emergency_contact_name: 'New Helper',
+      emergency_contact_phone: '0400 222 333',
+    })
+    expect(update.eq).toHaveBeenNthCalledWith(1, 'user_id', USER_ID)
+    expect(update.eq).toHaveBeenNthCalledWith(2, 'year', 2027)
+    expect(update.neq).toHaveBeenCalledWith('status', 'cancelled')
+  })
+
+  it('rejects overlong emergency contacts before registration work', async () => {
+    const response = res()
+    await handler(req({
+      action: 'register',
+      year: 2027,
+      dob: '2000-01-02',
+      emergency_contact_phone: '1'.repeat(51),
+    }), response)
+
+    expect(response.statusCode).toBe(400)
+    expect(response.body.error).toMatch(/emergency contact phone/i)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(from).not.toHaveBeenCalled()
+  })
+
+
 
   it('routes profile, cap, insert, and pricing work through one registration RPC', async () => {
     const registration = {

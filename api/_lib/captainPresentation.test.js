@@ -131,6 +131,8 @@ describe('captain team presentation boundary', () => {
       name: 'Team Photon',
       entryType: 'direct_entry',
       state: 'NSW',
+      emergencyContactName: 'Captain Helper',
+      emergencyContactPhone: '0400 111 222',
       homeVenue: 'Central Arena',
       colour: '#00ff41',
     }
@@ -142,8 +144,27 @@ describe('captain team presentation boundary', () => {
     expect(rpc).toHaveBeenCalledWith('create_zltac_captain_team', expect.objectContaining({
       p_user_id: USER_ID,
       p_logo_url: null,
+      p_emergency_contact_name: 'Captain Helper',
+      p_emergency_contact_phone: '0400 111 222',
     }))
   })
+
+  it('rejects overlong captain emergency contact fields before the database call', async () => {
+    const response = res()
+    await handler(req({
+      action: 'create-team',
+      year: 2026,
+      name: 'Team Photon',
+      entryType: 'direct_entry',
+      state: 'NSW',
+      emergencyContactName: 'x'.repeat(121),
+    }), response)
+
+    expect(response.statusCode).toBe(400)
+    expect(response.body.error).toMatch(/emergency contact name/i)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
 
   it.each(['logoUrl', 'logo_url'])(
     'rejects client-controlled %s during team creation',

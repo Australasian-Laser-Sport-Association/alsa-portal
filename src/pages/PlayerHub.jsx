@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useCallback } from 'react'
+import { useCallback, useId } from 'react'
 import { useAuth } from '../lib/useAuth'
 import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/apiFetch.js'
@@ -743,6 +743,139 @@ function TriplesSelector({ userId, eventYear, record, partnerProfileMap, onUpdat
 }
 
 // ── Main Page ───────────────────────────────────────────────────────────────
+function EmergencyContactCard({ eventYear, registration, onSaved }) {
+  const uid = useId()
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const hasContact = !!(registration?.emergency_contact_name || registration?.emergency_contact_phone)
+
+  async function persist(nextName, nextPhone) {
+    setSaving(true)
+    setError('')
+    try {
+      const result = await apiFetch('/api/player?resource=registration', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'update-emergency-contact',
+          year: eventYear,
+          emergency_contact_name: nextName.trim() || null,
+          emergency_contact_phone: nextPhone.trim() || null,
+        }),
+      })
+      setName(result.registration.emergency_contact_name ?? '')
+      setPhone(result.registration.emergency_contact_phone ?? '')
+      onSaved(result.registration)
+      setEditing(false)
+    } catch (saveError) {
+      setError(saveError?.message || 'Could not update your emergency contact.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="bg-surface border border-line rounded-2xl p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-white font-black text-lg">Emergency Contact</h2>
+          <p className="text-[#e5e5e5]/60 text-xs mt-1">
+            Optional and used only for this ZLTAC event. Committee members can access it in an emergency.
+          </p>
+        </div>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => {
+              setName(registration?.emergency_contact_name ?? '')
+              setPhone(registration?.emergency_contact_phone ?? '')
+              setError('')
+              setEditing(true)
+            }}
+            className="text-xs bg-brand/10 hover:bg-brand/20 text-brand font-bold px-3 py-2 rounded-lg transition-colors"
+          >
+            {hasContact ? 'Edit' : 'Add contact'}
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="mt-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor={`${uid}-emergency-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Name</label>
+              <input
+                type="text"
+                maxLength={120}
+                id={`${uid}-emergency-name`}
+                value={name}
+                onChange={event => setName(event.target.value)}
+                placeholder="Full name"
+                className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand"
+              />
+            </div>
+            <div>
+              <label htmlFor={`${uid}-emergency-phone`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Phone</label>
+              <input
+                type="tel"
+                maxLength={50}
+                value={phone}
+                id={`${uid}-emergency-phone`}
+                onChange={event => setPhone(event.target.value)}
+                placeholder="04XX XXX XXX"
+                className="w-full bg-base border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand"
+              />
+            </div>
+          </div>
+          {error && <p role="alert" className="text-red-400 text-xs mt-3">{error}</p>}
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => persist(name, phone)}
+              disabled={saving}
+              className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-4 py-2 rounded-lg text-xs"
+            >
+              {saving ? 'Saving...' : 'Save contact'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setName(registration?.emergency_contact_name ?? '')
+                setPhone(registration?.emergency_contact_phone ?? '')
+                setError('')
+                setEditing(false)
+              }}
+              disabled={saving}
+              className="border border-line text-[#e5e5e5]/60 hover:text-white px-4 py-2 rounded-lg text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : hasContact ? (
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <span className="text-white font-semibold">{registration.emergency_contact_name || 'Name not provided'}</span>
+          <span className="text-[#e5e5e5]/70">{registration.emergency_contact_phone || 'Phone not provided'}</span>
+          <button
+            type="button"
+            onClick={() => persist('', '')}
+            disabled={saving}
+            className="text-xs text-red-400/70 hover:text-red-400 disabled:opacity-50"
+          >
+            {saving ? 'Clearing...' : 'Clear'}
+          </button>
+        </div>
+      ) : (
+        <p className="text-[#e5e5e5]/60 text-sm mt-4">No emergency contact provided.</p>
+      )}
+    </section>
+  )
+}
+
+
 export default function PlayerHub() {
   // Profile comes from AuthContext (already holds the full select('*') row)
   // instead of being re-queried in load(). refreshProfile() is called on the
@@ -1610,6 +1743,13 @@ export default function PlayerHub() {
         )}
 
         <div className="space-y-5">
+          {isRegistered && (
+            <EmergencyContactCard
+              eventYear={eventYear}
+              registration={registration}
+              onSaved={updated => setRegistration(current => ({ ...current, ...updated }))}
+            />
+          )}
 
           {/* ── Team CTA (registered, not yet on a team) ── */}
           {isRegistered && !hasTeam && (

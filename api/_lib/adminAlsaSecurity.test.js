@@ -132,6 +132,44 @@ describe('admin ALSA membership security', () => {
     expect(sendServerError).toHaveBeenCalledWith(res, expect.any(Error), 'admin-alsa:auth')
   })
 
+  it('lets committee update the real lifetime-member start date', async () => {
+    const updated = {
+      profile_id: 'profile-1',
+      member_since: '2012-07-01',
+      notes: 'Honorary service',
+    }
+    const update = queryResult({ data: updated, error: null })
+    from.mockReturnValueOnce(update)
+    const res = response()
+
+    await handler(request('lifetime-members', 'PATCH', {
+      query: { profile_id: 'profile-1' },
+      body: { member_since: '2012-07-01', notes: ' Honorary service ' },
+    }), res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({ lifetime_member: updated })
+    expect(update.update).toHaveBeenCalledWith({
+      member_since: '2012-07-01',
+      notes: 'Honorary service',
+    })
+    expect(update.eq).toHaveBeenCalledWith('profile_id', 'profile-1')
+  })
+
+  it('rejects a future lifetime-member date before querying the database', async () => {
+    const res = response()
+
+    await handler(request('lifetime-members', 'PATCH', {
+      query: { profile_id: 'profile-1' },
+      body: { member_since: '2999-01-01' },
+    }), res)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body.error).toMatch(/member_since/)
+    expect(from).not.toHaveBeenCalled()
+  })
+
+
   it('contains no direct unexpected-error response that can leak error.message', async () => {
     const source = await readFile(new URL('../admin/alsa.js', import.meta.url), 'utf8')
 
