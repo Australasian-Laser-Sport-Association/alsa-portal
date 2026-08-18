@@ -256,7 +256,8 @@ export default function AdminUsers() {
     setDeleteImpact(null)
     setDeleteErr(null)
     setLoadingDetail(true)
-    const { registrations: regs, payments: pays } = await apiFetch(`/api/admin/users?id=${u.id}`)
+    const { email, registrations: regs, payments: pays } = await apiFetch(`/api/admin/users?id=${u.id}`)
+    setSelected(current => current?.id === u.id ? { ...current, email: email ?? null } : current)
     setSelectedRegs(regs ?? [])
     setSelectedPayments(pays ?? [])
     setLoadingDetail(false)
@@ -505,6 +506,16 @@ export default function AdminUsers() {
                   <p className="text-sm text-white">{val}</p>
                 </div>
               ))}
+              <div className="col-span-2 bg-base border border-line rounded-lg px-3 py-2.5">
+                <p className="text-[10px] text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-0.5">Email</p>
+                {loadingDetail ? (
+                  <p className="text-sm text-[#e5e5e5]/60">Loading...</p>
+                ) : selected.email ? (
+                  <a href={`mailto:${selected.email}`} className="text-sm text-brand hover:underline break-all">{selected.email}</a>
+                ) : (
+                  <p className="text-sm text-[#e5e5e5]/60">Not available</p>
+                )}
+              </div>
             </div>
 
             {/* Alias (in-game name) - committee-editable identity field */}

@@ -441,6 +441,7 @@ async function buildUsersPage(req) {
   let query = supabaseAdmin
     .from('profiles')
     .select(PROFILE_LIST_COLUMNS, { count: 'exact' })
+    .is('access_revoked_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -517,9 +518,15 @@ export default async function handler(req, res) {
       if (error) return res.status(statusForAuthError(error)).json({ error })
 
       const [
+        { data: profile, error: e0 },
         { data: registrations, error: e1 },
         { data: payments, error: e2 },
       ] = await Promise.all([
+        supabaseAdmin
+          .from('profiles')
+          .select('email')
+          .eq('id', id)
+          .maybeSingle(),
         supabaseAdmin
           .from('zltac_registrations')
           .select(USER_REGISTRATION_COLUMNS)
@@ -532,9 +539,9 @@ export default async function handler(req, res) {
           .order('created_at', { ascending: false }),
       ])
 
-      const errs = [e1, e2].filter(Boolean)
+      const errs = [e0, e1, e2].filter(Boolean)
       if (errs.length) return sendServerError(res, errs[0], 'admin-users:history')
-      return res.json({ registrations, payments })
+      return res.json({ email: profile?.email ?? null, registrations, payments })
     }
 
     if (req.method === 'PATCH') {

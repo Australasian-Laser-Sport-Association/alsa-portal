@@ -1,12 +1,21 @@
 import { supabase } from './supabase.js'
 
+const NETWORK_ERROR_MESSAGE = 'Unable to reach the portal. Check your internet connection. If the problem continues, temporarily disable any ad blockers, script blockers, or other content-blocking extensions for this site, or add the site to their allowlist, then try again.'
+
 async function requestWithSession(path, options, session) {
   const headers = {
     'Content-Type': 'application/json',
     ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
     ...(options.headers ?? {}),
   }
-  return fetch(path, { ...options, headers })
+  try {
+    return await fetch(path, { ...options, headers })
+  } catch (error) {
+    if (error?.name === 'TypeError' || error?.name === 'NetworkError') {
+      throw new Error(NETWORK_ERROR_MESSAGE, { cause: error })
+    }
+    throw error
+  }
 }
 
 async function errorFromResponse(res) {
