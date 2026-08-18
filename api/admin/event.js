@@ -201,8 +201,24 @@ async function handleEvent(req, res, user) {
     if (eventId && !isUuid(eventId)) {
       return res.status(400).json({ error: 'A valid eventId is required' })
     }
-    const { data, error } = await supabaseAdmin.rpc('committee_save_zltac_event', {
-      p_actor_id: user.id,
+    if (req.body?.allowDateOverride !== undefined
+        && typeof req.body.allowDateOverride !== 'boolean') {
+      return res.status(400).json({ error: 'allowDateOverride must be a boolean.' })
+    }
+
+    let actor = user
+    let rpcName = 'committee_save_zltac_event'
+    if (req.body?.allowDateOverride === true) {
+      const { user: superadmin, error: superErr } = await verifySuperAdmin(req)
+      if (superErr) {
+        return res.status(statusForAuthError(superErr)).json({ error: 'Only a superadmin can override event dates.' })
+      }
+      actor = superadmin
+      rpcName = 'superadmin_save_zltac_event_with_date_override'
+    }
+
+    const { data, error } = await supabaseAdmin.rpc(rpcName, {
+      p_actor_id: actor.id,
       p_event_id: eventId || null,
       p_changes: sanitized.payload,
     })

@@ -430,6 +430,84 @@ SELECT throws_ok(
   'clearing an already-set date is not treated as a backfill'
 );
 
+-- A frozen date correction is a separate, explicit superadmin operation.
+SELECT throws_ok(
+  $$
+    SELECT public.superadmin_save_zltac_event_with_date_override(
+      'b1000000-0000-4000-8000-000000000001',
+      'b2000000-0000-4000-8000-000000000009',
+      '{"reg_close_date":"2031-07-01T00:00:00Z"}'::jsonb
+    )
+  $$,
+  '42501',
+  'Only an active superadmin can override event dates.',
+  'committee accounts cannot use the frozen date override'
+);
+SELECT isnt(
+  (SELECT reg_close_date FROM public.zltac_events WHERE year = 2031),
+  TIMESTAMPTZ '2031-07-01T00:00:00Z',
+  'a rejected committee override leaves the date unchanged'
+);
+
+SELECT throws_ok(
+  $$
+    SELECT public.superadmin_save_zltac_event_with_date_override(
+      'b1000000-0000-4000-8000-000000000002',
+      'b2000000-0000-4000-8000-000000000009',
+      '{"reg_close_date":"2031-07-01T00:00:00Z","main_fee":2500}'::jsonb
+    )
+  $$,
+  '55000',
+  'Pricing, requirements, capacity, side events, and registration windows are frozen once registrations exist or the event closes. Event dates may still be filled in if they were never set.',
+  'the date override cannot bypass frozen pricing'
+);
+SELECT is(
+  (SELECT main_fee::bigint FROM public.zltac_events WHERE year = 2031),
+  1000::bigint,
+  'a rejected mixed override does not reprice registrations'
+);
+
+SELECT lives_ok(
+  $$
+    SELECT public.superadmin_save_zltac_event_with_date_override(
+      'b1000000-0000-4000-8000-000000000002',
+      'b2000000-0000-4000-8000-000000000009',
+      '{
+        "start_date":"2031-08-01",
+        "end_date":"2031-08-03",
+        "reg_close_date":"2031-07-01T00:00:00Z"
+      }'::jsonb
+    )
+  $$,
+  'an active superadmin can correct frozen event and registration dates'
+);
+SELECT is(
+  (SELECT start_date FROM public.zltac_events WHERE year = 2031),
+  DATE '2031-08-01',
+  'the corrected event start date is persisted'
+);
+SELECT is(
+  (SELECT reg_close_date FROM public.zltac_events WHERE year = 2031),
+  TIMESTAMPTZ '2031-07-01T00:00:00Z',
+  'the corrected registration lock is persisted'
+);
+SELECT ok(
+  has_function_privilege(
+    'service_role',
+    'public.superadmin_save_zltac_event_with_date_override(uuid,uuid,jsonb)',
+    'EXECUTE'
+  ),
+  'service_role can execute the date override RPC'
+);
+SELECT ok(
+  NOT has_function_privilege(
+    'authenticated',
+    'public.superadmin_save_zltac_event_with_date_override(uuid,uuid,jsonb)',
+    'EXECUTE'
+  ),
+  'authenticated clients cannot execute the date override RPC'
+);
+
 -- ---------------------------------------------------------------------------
 -- service_role must not be able to wipe consent/approval evidence. It cannot
 -- DELETE a single row, so TRUNCATE (strictly more destructive) must be denied
