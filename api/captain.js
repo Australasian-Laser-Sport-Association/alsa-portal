@@ -20,7 +20,10 @@ import {
 
 const TEAM_STATES = new Set(['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA', 'NZ'])
 const TEAM_ENTRY_TYPES = new Set(['state_association', 'direct_entry'])
-const TEAM_CREATE_FIELDS = new Set(['year', 'name', 'entryType', 'state', 'homeVenue', 'colour'])
+const TEAM_CREATE_FIELDS = new Set([
+  'year', 'name', 'entryType', 'state', 'homeVenue', 'colour',
+  'emergencyContactName', 'emergencyContactPhone',
+])
 const TEAM_PRESENTATION_FIELDS = new Set(['action', 'teamId', 'eventId', 'name', 'state', 'homeVenue', 'colour'])
 
 function captainRosterScope(eventYear) {
@@ -169,6 +172,10 @@ export default async function handler(req, res) {
     const state = typeof body.state === 'string' ? body.state.trim() : ''
     const homeVenue = typeof body.homeVenue === 'string' ? body.homeVenue.trim() : ''
     const colour = typeof body.colour === 'string' ? body.colour.trim() : ''
+    const emergencyContactName = typeof body.emergencyContactName === 'string'
+      ? body.emergencyContactName.trim() : ''
+    const emergencyContactPhone = typeof body.emergencyContactPhone === 'string'
+      ? body.emergencyContactPhone.trim() : ''
 
     if (!Number.isInteger(year)) return res.status(400).json({ error: 'year is required' })
     if (await denyIfLocked(res, year)) return
@@ -177,6 +184,12 @@ export default async function handler(req, res) {
     if (!TEAM_STATES.has(state)) return res.status(400).json({ error: 'A valid team state is required.' })
     if (homeVenue.length > 120) return res.status(400).json({ error: 'Home venue must be 120 characters or fewer.' })
     if (colour && !/^#[0-9a-f]{6}$/i.test(colour)) return res.status(400).json({ error: 'Invalid team colour.' })
+    if (emergencyContactName.length > 120) {
+      return res.status(400).json({ error: 'Emergency contact name must be 120 characters or fewer.' })
+    }
+    if (emergencyContactPhone.length > 50) {
+      return res.status(400).json({ error: 'Emergency contact phone must be 50 characters or fewer.' })
+    }
     const { data, error: createErr } = await supabaseAdmin.rpc('create_zltac_captain_team', {
       p_user_id: user.id,
       p_year: year,
@@ -186,6 +199,8 @@ export default async function handler(req, res) {
       p_home_venue: homeVenue || null,
       p_colour: colour || null,
       p_logo_url: null,
+      p_emergency_contact_name: emergencyContactName || null,
+      p_emergency_contact_phone: emergencyContactPhone || null,
     })
     if (createErr) {
       return sendCaptainMutationError(res, createErr, 'captain:create-team')

@@ -29,6 +29,12 @@ function validDate(s) {
   return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))
 }
 
+function validMemberSince(value) {
+  if (!validDate(value)) return false
+  const today = new Date().toISOString().slice(0, 10)
+  return value >= '1900-01-01' && value <= today
+}
+
 function sortProfiles(a, b) {
   return (a.profiles?.alias ?? a.profiles?.first_name ?? '')
     .localeCompare(b.profiles?.alias ?? b.profiles?.first_name ?? '')
@@ -129,7 +135,7 @@ async function handleLifetimeMembers(req, res, user) {
     const { data, error } = await supabaseAdmin
       .from('alsa_lifetime_members')
       .select(`
-        profile_id, granted_at, granted_by, notes,
+        profile_id, member_since, granted_at, granted_by, notes,
         profiles:profile_id (id, first_name, last_name, alias, avatar_url)
       `)
       .order('granted_at', { ascending: false })
@@ -139,23 +145,62 @@ async function handleLifetimeMembers(req, res, user) {
   }
 
   if (req.method === 'POST') {
-    const { profile_id, notes } = req.body ?? {}
+    const { profile_id, member_since, notes } = req.body ?? {}
     if (!profile_id) return res.status(400).json({ error: 'profile_id is required' })
+    if (member_since !== undefined && !validMemberSince(member_since)) {
+      return res.status(400).json({ error: 'member_since must be a valid date from 1900-01-01 through today' })
+    }
+
+    const row = {
+      profile_id,
+      granted_by: user.id,
+      notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+    }
+    if (member_since !== undefined) row.member_since = member_since
 
     const { data, error } = await supabaseAdmin
       .from('alsa_lifetime_members')
-      .upsert({
-        profile_id,
-        granted_by: user.id,
-        notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
-      }, { onConflict: 'profile_id' })
+      .upsert(row, { onConflict: 'profile_id' })
       .select(`
-        profile_id, granted_at, granted_by, notes,
+        profile_id, member_since, granted_at, granted_by, notes,
         profiles:profile_id (id, first_name, last_name, alias, avatar_url)
       `)
       .single()
 
     if (error) return sendServerError(res, error, 'admin-alsa:lifetime-grant')
+    return res.json({ lifetime_member: data })
+  }
+
+  if (req.method === 'PATCH') {
+    const profileId = req.query.profile_id
+    if (!profileId) return res.status(400).json({ error: 'profile_id is required' })
+
+    const { member_since, notes } = req.body ?? {}
+    const update = {}
+    if (member_since !== undefined) {
+      if (!validMemberSince(member_since)) {
+        return res.status(400).json({ error: 'member_since must be a valid date from 1900-01-01 through today' })
+      }
+      update.member_since = member_since
+    }
+    if (notes !== undefined) {
+      update.notes = typeof notes === 'string' && notes.trim() ? notes.trim() : null
+    }
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ error: 'member_since or notes is required' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('alsa_lifetime_members')
+      .update(update)
+      .eq('profile_id', profileId)
+      .select(`
+        profile_id, member_since, granted_at, granted_by, notes,
+        profiles:profile_id (id, first_name, last_name, alias, avatar_url)
+      `)
+      .single()
+
+    if (error) return sendServerError(res, error, 'admin-alsa:lifetime-update')
     return res.json({ lifetime_member: data })
   }
 

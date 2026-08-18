@@ -35,6 +35,8 @@ export default function CaptainRegister() {
   const [teamState, setTeamState] = useState('')
   const [homeVenue, setHomeVenue] = useState('')
   const [colour, setColour] = useState('#00E6FF')
+  const [emergencyName, setEmergencyName] = useState('')
+  const [emergencyPhone, setEmergencyPhone] = useState('')
   const [agreed, setAgreed] = useState(false)
   const [logoFile, setLogoFile] = useState(null)
   const [logoPreview, setLogoPreview] = useState(null)
@@ -116,6 +118,8 @@ export default function CaptainRegister() {
           state: teamState,
           homeVenue: homeVenue.trim() || null,
           colour,
+          emergencyContactName: emergencyName.trim() || null,
+          emergencyContactPhone: emergencyPhone.trim() || null,
         }),
       })
       let createdTeam = result.team
@@ -359,6 +363,42 @@ export default function CaptainRegister() {
                 <p className="text-[#e5e5e5]/60 group-hover:text-brand text-sm transition-colors">Click to upload team logo</p>
               </button>
             )}
+          </div>
+
+          {/* Emergency contact */}
+          <div>
+            <p className="text-brand text-xs font-bold uppercase tracking-wider mb-2">
+              Emergency Contact <span className="text-[#e5e5e5]/60 font-normal normal-case">(optional)</span>
+            </p>
+            <p className="text-[#e5e5e5]/60 text-xs mb-3">
+              Used only for this ZLTAC event. You can update it later in the Player Hub.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor={`${uid}-ec-name`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Name</label>
+                <input
+                  id={`${uid}-ec-name`}
+                  type="text"
+                  maxLength={120}
+                  value={emergencyName}
+                  onChange={e => setEmergencyName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
+                />
+              </div>
+              <div>
+                <label htmlFor={`${uid}-ec-phone`} className="block text-xs text-[#e5e5e5]/60 font-bold uppercase tracking-wider mb-1.5">Phone</label>
+                <input
+                  id={`${uid}-ec-phone`}
+                  type="tel"
+                  maxLength={50}
+                  value={emergencyPhone}
+                  onChange={e => setEmergencyPhone(e.target.value)}
+                  placeholder="04XX XXX XXX"
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-white placeholder-[#e5e5e5]/25 focus:outline-none focus:border-brand transition-colors"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Agreement */}

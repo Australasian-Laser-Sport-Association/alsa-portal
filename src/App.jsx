@@ -52,6 +52,7 @@ const AdminZltacDashboard = lazy(() => import('./pages/admin/AdminZltacDashboard
 const AdminAlsaDashboard = lazy(() => import('./pages/admin/AdminAlsaDashboard'))
 const AdminEvent = lazy(() => import('./pages/admin/AdminEvent'))
 const AdminRegistrations = lazy(() => import('./pages/admin/AdminRegistrations'))
+const AdminEmergencyContacts = lazy(() => import('./pages/admin/AdminEmergencyContacts'))
 const AdminRefereeTest = lazy(() => import('./pages/admin/AdminRefereeTest'))
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers'))
 const AdminMembers = lazy(() => import('./pages/admin/AdminMembers'))
@@ -184,6 +185,7 @@ function App() {
               <Route path="zltac-results" element={<AdminZLTACResults />} />
               <Route path="zltac-hall-of-fame" element={<AdminZLTACHallOfFame />} />
               <Route path="registrations" element={<AdminRegistrations />} />
+              <Route path="emergency-contacts" element={<AdminEmergencyContacts />} />
               <Route path="required-documents" element={<AdminRequiredDocuments />} />
               <Route path="player-acknowledgements" element={<AdminSignedDocuments />} />
               <Route path="signed-documents" element={<Navigate to="/admin/player-acknowledgements" replace />} />
