@@ -37,6 +37,21 @@ const EMPTY_CUSTOM = { name: '', description: '', max_participants: '' }
 const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg']
 const LOGO_MAX_BYTES = 2 * 1024 * 1024
 
+const EVENT_DATE_LABELS = {
+  start_date: 'Event start date',
+  end_date: 'Event end date',
+  reg_open_date: 'Registration opens',
+  reg_close_date: 'Registration lock and payment opens',
+  event_starts_at: 'Registration fully closes',
+}
+
+function changedEventDateLabels(payload, savedEvent) {
+  if (!savedEvent) return []
+  return Object.entries(EVENT_DATE_LABELS)
+    .filter(([field]) => (payload[field] ?? null) !== (savedEvent[field] ?? null))
+    .map(([, label]) => label)
+}
+
 function centsToDisplay(cents) { return ((cents ?? 0) / 100).toFixed(2) }
 function displayToCents(val) { return Math.round((parseFloat(val) || 0) * 100) }
 
@@ -137,6 +152,10 @@ export default function AdminEvent() {
   const [saving, setSaving] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [msg, setMsg] = useState(null)
+
+  const [dateOverrideOpen, setDateOverrideOpen] = useState(false)
+  const [dateOverrideFields, setDateOverrideFields] = useState([])
+  const [dateOverrideError, setDateOverrideError] = useState('')
 
   // Archive modal
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -370,9 +389,10 @@ export default function AdminEvent() {
     setCoverUploading(false)
   }
 
-  async function handleSave() {
+  async function handleSave({ allowDateOverride = false } = {}) {
     setSaving(true)
     setMsg(null)
+    if (allowDateOverride) setDateOverrideError('')
     let logo_url
     try {
       logo_url = await uploadLogo()
@@ -431,9 +451,16 @@ export default function AdminEvent() {
       const data = await apiFetch('/api/admin/event?resource=event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', eventId: event?.id, payload }),
+        body: JSON.stringify({
+          action: 'save',
+          eventId: event?.id,
+          payload,
+          ...(allowDateOverride ? { allowDateOverride: true } : {}),
+        }),
       })
       setMsg({ type: 'ok', text: 'Saved.' })
+      setDateOverrideOpen(false)
+      setDateOverrideError('')
       if (data?.event) {
         setEvent(data.event)
         populateForm(data.event)
@@ -441,7 +468,20 @@ export default function AdminEvent() {
       window.dispatchEvent(new CustomEvent('alsa:event-changed'))
       loadCurrentEvent()
     } catch (err) {
-      setMsg({ type: 'error', text: err?.message || 'Could not save event.' })
+      const message = err?.message || 'Could not save event.'
+      const changedDates = changedEventDateLabels(payload, event)
+      if (!allowDateOverride
+          && changedDates.length > 0
+          && /registration windows are frozen once registrations exist or the event closes/i.test(message)) {
+        setDateOverrideFields(changedDates)
+        setDateOverrideError('')
+        setDateOverrideOpen(true)
+        setMsg(null)
+      } else if (allowDateOverride) {
+        setDateOverrideError(message)
+      } else {
+        setMsg({ type: 'error', text: message })
+      }
     } finally {
       setSaving(false)
     }
@@ -605,6 +645,59 @@ export default function AdminEvent() {
 
   return (
     <div>
+      {/* Frozen date override confirmation modal */}
+      {dateOverrideOpen && (
+        <Dialog
+          open
+          onClose={() => { setDateOverrideOpen(false); setDateOverrideError('') }}
+          variant="center"
+          size="md"
+          className="p-6"
+        >
+          <Dialog.Title as="p" className="text-white font-bold mb-2">
+            Override frozen event dates?
+          </Dialog.Title>
+          <p className="text-[#e5e5e5]/60 text-sm mb-3">
+            The normal save was blocked because registrations exist or this event has closed.
+            A superadmin can deliberately override these date fields:
+          </p>
+          <ul className="list-disc pl-5 text-sm text-white mb-4 space-y-1">
+            {dateOverrideFields.map(field => <li key={field}>{field}</li>)}
+          </ul>
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-3 mb-4 space-y-2">
+            <p className="text-amber-300 text-xs">
+              Moving a registration boundary into the future can immediately reopen registrations
+              or roster changes. Automatic payment availability also follows the registration lock.
+            </p>
+            <p className="text-amber-300 text-xs">
+              Changing the event start date can change under-18 age calculations. Existing
+              registrations and payment records are preserved, and fees remain frozen.
+            </p>
+          </div>
+          {dateOverrideError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-4">
+              <p className="text-red-400 text-xs">{dateOverrideError}</p>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleSave({ allowDateOverride: true })}
+              disabled={saving || uploadingLogo}
+              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-bold px-5 py-2 rounded-xl text-sm transition-colors"
+            >
+              {saving || uploadingLogo ? 'Saving...' : 'Override dates and save'}
+            </button>
+            <button
+              onClick={() => { setDateOverrideOpen(false); setDateOverrideError('') }}
+              disabled={saving}
+              className="border border-line text-[#e5e5e5]/60 hover:text-white disabled:opacity-50 font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </Dialog>
+      )}
+
       {/* Archive confirmation modal */}
       {archiveOpen && (
         <Dialog open onClose={() => { setArchiveOpen(false); setArchiveError('') }} variant="center" size="sm" className="p-6">
@@ -1291,7 +1384,7 @@ export default function AdminEvent() {
       {/* Save footer */}
       {!isArchived && (
         <div className="flex items-center gap-3 mt-8 pt-6 border-t border-line">
-          <button onClick={handleSave} disabled={saving || uploadingLogo}
+          <button onClick={() => handleSave()} disabled={saving || uploadingLogo}
             className="bg-brand hover:bg-brand-hover disabled:opacity-50 text-black font-bold px-6 py-2.5 rounded-xl text-sm transition-all">
             {saving || uploadingLogo ? 'Saving…' : 'Save Changes'}
           </button>
