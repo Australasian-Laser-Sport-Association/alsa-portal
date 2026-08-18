@@ -118,6 +118,73 @@ describe('admin event resource actions', () => {
     expect(from).not.toHaveBeenCalled()
   })
 
+  it('rejects a non-boolean date override flag', async () => {
+    const response = res()
+    await handler(req({
+      action: 'save',
+      eventId: EVENT_ID,
+      allowDateOverride: 'true',
+      payload: { name: 'ZLTAC 2027', year: 2027, status: 'open' },
+    }), response)
+
+    expect(response.statusCode).toBe(400)
+    expect(response.body.error).toMatch(/must be a boolean/i)
+    expect(verifySuperAdmin).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('reverifies superadmin authority before overriding frozen event dates', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { id: EVENT_ID, name: 'ZLTAC 2027', year: 2027, status: 'open' },
+      error: null,
+    })
+
+    const response = res()
+    await handler(req({
+      action: 'save',
+      eventId: EVENT_ID,
+      allowDateOverride: true,
+      payload: {
+        name: 'ZLTAC 2027',
+        year: 2027,
+        status: 'open',
+        reg_close_date: '2027-09-20T02:00:00.000Z',
+      },
+    }), response)
+
+    expect(response.statusCode).toBe(200)
+    expect(verifySuperAdmin).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('superadmin_save_zltac_event_with_date_override', {
+      p_actor_id: SUPERADMIN_ID,
+      p_event_id: EVENT_ID,
+      p_changes: expect.objectContaining({
+        name: 'ZLTAC 2027',
+        reg_close_date: '2027-09-20T02:00:00.000Z',
+      }),
+    })
+  })
+
+  it('rejects date overrides from committee accounts that are not superadmins', async () => {
+    verifySuperAdmin.mockResolvedValueOnce({ user: null, error: 'Forbidden' })
+
+    const response = res()
+    await handler(req({
+      action: 'save',
+      eventId: EVENT_ID,
+      allowDateOverride: true,
+      payload: {
+        name: 'ZLTAC 2027',
+        year: 2027,
+        status: 'open',
+        reg_close_date: '2027-09-20T02:00:00.000Z',
+      },
+    }), response)
+
+    expect(response.statusCode).toBe(401)
+    expect(response.body.error).toMatch(/only a superadmin/i)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('updates event status through the locked configuration RPC', async () => {
     rpc.mockResolvedValueOnce({ data: { id: EVENT_ID, status: 'open' }, error: null })
 
