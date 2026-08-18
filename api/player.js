@@ -17,6 +17,7 @@ import {
 const UNDER_18_APPROVAL_COLUMNS = 'id, user_id, event_year, status, submitted_at, approved_at, approved_by, notes, document_id'
 const REGISTRATION_ACTION_FIELDS = {
   register: new Set(['action', 'year', 'dob', 'emergency_contact_name', 'emergency_contact_phone']),
+  'update-emergency-contact': new Set(['action', 'year', 'emergency_contact_name', 'emergency_contact_phone']),
   'confirm-side-events': new Set(['action', 'year', 'side_events']),
   'confirm-extras': new Set(['action', 'year', 'dinner_guests']),
   'submit-under-18': new Set(['action', 'year']),
@@ -527,6 +528,42 @@ async function handleRegistration(req, res, user) {
   const body = req.body ?? {}
   const { action } = body
 
+  if (action === 'update-emergency-contact') {
+    if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
+
+    const eventYear = validEventYear(body.year)
+    if (!eventYear) return res.status(400).json({ error: 'year is required' })
+    const emergencyContactName = typeof body.emergency_contact_name === 'string'
+      ? body.emergency_contact_name.trim() || null
+      : null
+    const emergencyContactPhone = typeof body.emergency_contact_phone === 'string'
+      ? body.emergency_contact_phone.trim() || null
+      : null
+    if ((emergencyContactName?.length ?? 0) > 120) {
+      return res.status(400).json({ error: 'Emergency contact name must be 120 characters or fewer.' })
+    }
+    if ((emergencyContactPhone?.length ?? 0) > 50) {
+      return res.status(400).json({ error: 'Emergency contact phone must be 50 characters or fewer.' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('zltac_registrations')
+      .update({
+        emergency_contact_name: emergencyContactName,
+        emergency_contact_phone: emergencyContactPhone,
+      })
+      .eq('user_id', user.id)
+      .eq('year', eventYear)
+      .neq('status', 'cancelled')
+      .select(SAFE_REGISTRATION_FIELDS.join(', '))
+      .maybeSingle()
+    if (error) return sendServerError(res, error, 'player:update-emergency-contact')
+    if (!data) return res.status(404).json({ error: 'No active registration was found for this event.' })
+
+    res.setHeader?.('Cache-Control', 'no-store')
+    return res.json({ ok: true, registration: safeRegistration(data) })
+  }
+
   if (action === 'confirm-side-events') {
     if (rejectUnexpectedFields(res, body, REGISTRATION_ACTION_FIELDS[action])) return
 
@@ -776,6 +813,12 @@ async function handleRegistration(req, res, user) {
       ? body.emergency_contact_phone.trim() || null
       : null
 
+    if ((emergencyContactName?.length ?? 0) > 120) {
+      return res.status(400).json({ error: 'Emergency contact name must be 120 characters or fewer.' })
+    }
+    if ((emergencyContactPhone?.length ?? 0) > 50) {
+      return res.status(400).json({ error: 'Emergency contact phone must be 50 characters or fewer.' })
+    }
     const { data, error } = await supabaseAdmin.rpc('register_zltac_player', {
       p_user_id: user.id,
       p_event_year: eventYear,
@@ -1059,7 +1102,7 @@ export default async function handler(req, res) {
         ? { limit: 60, window: '1 m', prefix: 'player-readiness' }
         : (resource === 'doubles' || resource === 'triples') && action === 'search'
           ? { limit: 30, window: '1 m', prefix: 'partner-search' }
-          : resource === 'registration' && ['register', 'confirm-side-events', 'confirm-extras', 'submit-under-18', 'sign-legal'].includes(action)
+          : resource === 'registration' && ['register', 'update-emergency-contact', 'confirm-side-events', 'confirm-extras', 'submit-under-18', 'sign-legal'].includes(action)
             ? { limit: 30, window: '1 m', prefix: 'player-registration-mutations' }
             : null
   if (rateConfig && !await enforceRateLimit(req, res, {

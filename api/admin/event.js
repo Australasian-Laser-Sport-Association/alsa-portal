@@ -715,6 +715,30 @@ function sendPaymentMutationError(res, error, context) {
   return sendServerError(res, error, context)
 }
 
+async function handleEmergencyContacts(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader?.('Allow', 'GET')
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  const year = Number.parseInt(req.query.year, 10)
+  if (!Number.isInteger(year) || year < 2000 || year > 2200) {
+    return res.status(400).json({ error: 'A valid event year is required.' })
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('zltac_registrations')
+    .select('id, user_id, year, status, emergency_contact_name, emergency_contact_phone, profiles:user_id(first_name, last_name, alias), teams:team_id(name)')
+    .eq('year', year)
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: true })
+  if (error) return sendServerError(res, error, 'admin:emergency-contacts')
+
+  res.setHeader?.('Cache-Control', 'no-store')
+  return res.json({ contacts: data ?? [] })
+}
+
+
 async function handlePayments(req, res, user) {
   if (req.method === 'POST') {
     const { registrationId, requestId, amountCents, datePaid, bankReference, notes, type, reason } = req.body ?? {}
@@ -2146,6 +2170,7 @@ export default async function handler(req, res) {
   if (resource === 'event')            return handleEvent(req, res, user)
   if (resource === 'event-delete-impact') return handleEventDeleteImpact(req, res)
   if (resource === 'registrations')    return handleRegistrations(req, res, user)
+  if (resource === 'emergency-contacts') return handleEmergencyContacts(req, res)
   if (resource === 'payments')         return handlePayments(req, res, user)
   if (resource === 'backup-settings')  return handleBackupSettings(req, res, user)
   if (resource === 'backup-run')       return handleBackupRun(req, res, { enforceSchedule: false, triggeredBy: user.id })
